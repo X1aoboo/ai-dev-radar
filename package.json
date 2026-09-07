@@ -1,0 +1,14 @@
+{
+  "name": "ai-dev-radar",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently -n be,fe -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
+    "dev:backend": "python -m uvicorn app.main:app --reload --app-dir backend --port 8000",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "seed": "cd backend && python -m app.seed",
+    "test": "cd backend && python -m pytest tests -q"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0"
+  }
+}
