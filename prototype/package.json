@@ -1,0 +1,21 @@
+{
+  "name": "ai-dev-radar-prototype",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "一次性 UI 原型：总览页 + 团队下钻页的布局对比。结论带回主项目后整个目录丢弃。",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "echarts": "^5.5.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
