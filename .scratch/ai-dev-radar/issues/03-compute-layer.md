@@ -1,6 +1,6 @@
 # 03 计算层：率计算与双聚合路径
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01
 
 纯函数计算层 + 完整测试覆盖。这是全看板正确性的核心，先于所有图表票完成。
@@ -26,3 +26,15 @@ Blocked by: 01
 ## 依据
 
 spec §2.2、§3；ADR-0001；`CONTEXT.md` 的渗透率/效率提升/事实记录词条。
+
+## Comments
+
+**2026-09-08 实现完成**（待人工验收）：
+
+- 新增 `backend/app/compute.py` 纯函数计算层：渗透率/比率、效率提升、数量、布尔快照，支持实际=0、负值和空数据。
+- 时间路径按 `end_date`（完成时间）生成 Asia/Shanghai 周一至周日周周期或自然月，也支持显式选择 `start_date`；迭代路径按关键研发活动的迭代标签聚合，并按产品版本/迭代顺序输出。
+- 新增受认证保护的 `GET /api/compute`，支持团队集、版本/迭代集和图表序列输出；通用研发能力请求迭代维度时返回 422，调用方应切换到时间路径。
+- 全公司均值沿用原型 `avgValue`：各团队先计算指标值，再对非空值取算术平均；筛选团队只影响展示曲线，不改变全公司均值。
+- 新增纯函数和 HTTP seam 测试，覆盖跨月/跨年周、跨周/月迭代、时区、实际=0、负值、空数据、迭代筛选和认证。
+
+验证：`.venv/bin/python -m pytest backend/tests -q` → 37 passed；`npm --prefix frontend run build` 通过；`python3 -m compileall -q backend/app backend/tests` 通过。

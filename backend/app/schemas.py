@@ -1,6 +1,7 @@
 """只读端点的响应模型。枚举与模型共用（app.models 中的共享 Enum）。"""
 
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -87,3 +88,44 @@ class FactRecordOut(BaseModel):
     source: FactSource
     entered_by: str
     entered_at: datetime
+
+
+class ComputePeriodOut(BaseModel):
+    id: int | str
+    label: str
+    kind: Literal["week", "month", "iteration"]
+    iteration_id: int | str | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class ComputePointOut(BaseModel):
+    period_id: int | str
+    value: float | bool | None
+    numerator: float | None = None
+    denominator: float | None = None
+    estimated: float | None = None
+    actual: float | None = None
+
+
+class ComputeAveragePointOut(BaseModel):
+    period_id: int | str
+    value: float | None
+
+
+class ComputeSeriesOut(BaseModel):
+    team_id: int
+    team_name: str
+    values: list[ComputePointOut]
+    snapshot: bool | None = None
+
+
+class ComputeOut(BaseModel):
+    metric_id: int
+    activity_id: int
+    dimension: Literal["time", "iteration"]
+    granularity: Literal["week", "month"]
+    time_field: Literal["start_date", "end_date"]
+    periods: list[ComputePeriodOut]
+    series: list[ComputeSeriesOut]
+    company_average: list[ComputeAveragePointOut]
