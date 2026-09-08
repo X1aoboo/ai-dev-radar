@@ -47,18 +47,17 @@ def test_registered_fake_collector_writes_auto_fact():
         activity = Activity(code="fake", name="Fake", kind="general", sort_order=0)
         db.add(activity)
         db.flush()
-        db.add(
-            Metric(
-                activity_id=activity.id,
-                code="fake-rate",
-                name="Fake rate",
-                type="ratio",
-                numerator_semantic="numerator",
-                denominator_semantic="denominator",
-                collect_method="auto",
-                sort_order=0,
-            )
+        metric = Metric(
+            activity_id=activity.id,
+            code="fake-rate",
+            name="Fake rate",
+            type="ratio",
+            numerator_semantic="numerator",
+            denominator_semantic="denominator",
+            collect_method="auto",
+            sort_order=0,
         )
+        db.add(metric)
         team = Team(name="Fake team", source_mapping={"project": "fake"})
         db.add(team)
         db.commit()
@@ -73,7 +72,7 @@ def test_registered_fake_collector_writes_auto_fact():
         assert len(facts) == 1
         assert facts[0].source == "auto"
         assert facts[0].team_id == team.id
-        assert facts[0].metric_id == 1
+        assert facts[0].metric_id == metric.id
         assert facts[0].numerator == 3
         assert facts[0].denominator == 5
         assert facts[0].start_date == date(2026, 9, 7)

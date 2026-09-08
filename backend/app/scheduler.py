@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy import select
-from sqlalchemy.orm import Session, joinedload, sessionmaker
+from sqlalchemy.orm import Session, joinedload
 
 from .collectors import CollectedFact, CollectionWindow, CollectorRegistry
 from .db import SessionLocal
@@ -177,7 +177,10 @@ def run_daily_collection(
                         collected_fact.metric_code,
                     )
                     continue
-                if metric.activity.kind == ActivityKind.KEY.value and collected_fact.iteration_id is None:
+                if (
+                    metric.activity.kind == ActivityKind.KEY.value
+                    and collected_fact.iteration_id is None
+                ):
                     raise ValueError(
                         f"key activity metric {metric.code} requires iteration_id"
                     )
