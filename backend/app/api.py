@@ -1,26 +1,69 @@
 """认证端点，以及需要登录才能访问的只读 REST 端点。"""
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from .auth import get_current_user, require_roles, require_team_access, verify_password
+from .auth import (
+    get_current_user,
+    hash_password,
+    require_roles,
+    require_team_access,
+    verify_password,
+)
 from .compute import build_series
 from .db import get_db
 from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User, UserRole
 from .schemas import (
+    ActivityIn,
     ActivityOut,
+    ActivityUpdateIn,
     AuthUserOut,
     ComputeOut,
     FactRecordOut,
     IterationOut,
     LoginIn,
     LogoutOut,
+    MetricIn,
+    MetricOut,
+    MetricUpdateIn,
+    TeamIn,
     TeamOut,
+    TeamUpdateIn,
+    UserIn,
+    UserUpdateIn,
     VersionOut,
 )
 
 router = APIRouter(prefix="/api")
+
+
+def _commit(db: Session, entity):
+    """将唯一键等数据库约束转换成 API 的可预期冲突响应。"""
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="resource already exists") from exc
+    db.refresh(entity)
+    return entity
+
+
+def _get_or_404(db: Session, model, resource_id: int, detail: str):
+    entity = db.get(model, resource_id)
+    if entity is None:
+        raise HTTPException(status_code=404, detail=detail)
+    return entity
+
+
+def _validate_user_assignment(db: Session, role: UserRole | str, team_id: int | None) -> None:
+    if role == UserRole.MAINTAINER.value or role == UserRole.MAINTAINER:
+        if team_id is None:
+            raise HTTPException(status_code=422, detail="maintainer must be bound to a team")
+        _get_or_404(db, Team, team_id, "team not found")
+    elif team_id is not None:
+        raise HTTPException(status_code=422, detail="only maintainers may be bound to a team")
 
 
 @router.post("/auth/login", response_model=AuthUserOut)
@@ -84,6 +127,218 @@ def list_teams(
     db: Session = Depends(get_db),
 ):
     return db.scalars(select(Team).order_by(Team.id)).all()
+
+
+@router.post("/teams", response_model=TeamOut, status_code=201)
+def create_team(
+    payload: TeamIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    team = Team(name=payload.name, source_mapping=payload.source_mapping.model_dump())
+    db.add(team)
+    return _commit(db, team)
+
+
+@router.patch("/teams/{team_id}", response_model=TeamOut)
+def update_team(
+    team_id: int,
+    payload: TeamUpdateIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    team = _get_or_404(db, Team, team_id, "team not found")
+    if payload.name is not None:
+        team.name = payload.name
+    if payload.source_mapping is not None:
+        team.source_mapping = payload.source_mapping.model_dump()
+    return _commit(db, team)
+
+
+@router.delete("/teams/{team_id}", status_code=204)
+def delete_team(
+    team_id: int,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    team = _get_or_404(db, Team, team_id, "team not found")
+    has_facts = db.scalar(
+        select(func.count()).select_from(FactRecord).where(FactRecord.team_id == team.id)
+    )
+    has_maintainers = db.scalar(
+        select(func.count()).select_from(User).where(User.maintainer_team_id == team.id)
+    )
+    if has_facts or has_maintainers:
+        raise HTTPException(status_code=409, detail="team is referenced by facts or maintainers")
+    db.delete(team)
+    db.commit()
+
+
+@router.post("/activities", response_model=ActivityOut, status_code=201)
+def create_activity(
+    payload: ActivityIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    sort_order = int(db.scalar(select(func.max(Activity.sort_order))) or -1) + 1
+    activity = Activity(**payload.model_dump(), sort_order=sort_order)
+    db.add(activity)
+    return _commit(db, activity)
+
+
+@router.patch("/activities/{activity_id}", response_model=ActivityOut)
+def update_activity(
+    activity_id: int,
+    payload: ActivityUpdateIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    activity = _get_or_404(db, Activity, activity_id, "activity not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if "kind" in changes and changes["kind"] != activity.kind:
+        fact_count = db.scalar(
+            select(func.count())
+            .select_from(FactRecord)
+            .join(Metric)
+            .where(Metric.activity_id == activity.id)
+        )
+        if fact_count:
+            raise HTTPException(status_code=409, detail="cannot change an activity kind with facts")
+    for field, value in changes.items():
+        setattr(activity, field, value)
+    return _commit(db, activity)
+
+
+@router.delete("/activities/{activity_id}", status_code=204)
+def delete_activity(
+    activity_id: int,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    activity = _get_or_404(db, Activity, activity_id, "activity not found")
+    metric_count = db.scalar(
+        select(func.count()).select_from(Metric).where(Metric.activity_id == activity.id)
+    )
+    if metric_count:
+        raise HTTPException(status_code=409, detail="activity still has metrics")
+    db.delete(activity)
+    db.commit()
+
+
+@router.post("/metrics", response_model=MetricOut, status_code=201)
+def create_metric(
+    payload: MetricIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    _get_or_404(db, Activity, payload.activity_id, "activity not found")
+    sort_order = int(
+        db.scalar(select(func.max(Metric.sort_order)).where(Metric.activity_id == payload.activity_id))
+        or -1
+    ) + 1
+    metric = Metric(**payload.model_dump(), sort_order=sort_order)
+    db.add(metric)
+    return _commit(db, metric)
+
+
+@router.patch("/metrics/{metric_id}", response_model=MetricOut)
+def update_metric(
+    metric_id: int,
+    payload: MetricUpdateIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    metric = _get_or_404(db, Metric, metric_id, "metric not found")
+    changes = payload.model_dump(exclude_unset=True)
+    if "activity_id" in changes:
+        _get_or_404(db, Activity, changes["activity_id"], "activity not found")
+        if changes["activity_id"] != metric.activity_id:
+            fact_count = db.scalar(
+                select(func.count()).select_from(FactRecord).where(FactRecord.metric_id == metric.id)
+            )
+            if fact_count:
+                raise HTTPException(status_code=409, detail="cannot move a metric with facts")
+    for field, value in changes.items():
+        setattr(metric, field, value)
+    return _commit(db, metric)
+
+
+@router.delete("/metrics/{metric_id}", status_code=204)
+def delete_metric(
+    metric_id: int,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    metric = _get_or_404(db, Metric, metric_id, "metric not found")
+    fact_count = db.scalar(
+        select(func.count()).select_from(FactRecord).where(FactRecord.metric_id == metric.id)
+    )
+    if fact_count:
+        raise HTTPException(status_code=409, detail="metric is referenced by facts")
+    db.delete(metric)
+    db.commit()
+
+
+@router.post("/users", response_model=AuthUserOut, status_code=201)
+def create_user(
+    payload: UserIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    _validate_user_assignment(db, payload.role, payload.maintainer_team_id)
+    user = User(
+        username=payload.username,
+        password_hash=hash_password(payload.password),
+        role=payload.role.value,
+        maintainer_team_id=payload.maintainer_team_id,
+    )
+    db.add(user)
+    return _commit(db, user)
+
+
+@router.patch("/users/{user_id}", response_model=AuthUserOut)
+def update_user(
+    user_id: int,
+    payload: UserUpdateIn,
+    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    user = _get_or_404(db, User, user_id, "user not found")
+    next_role = payload.role or UserRole(user.role)
+    next_team_id = (
+        payload.maintainer_team_id
+        if "maintainer_team_id" in payload.model_fields_set
+        else user.maintainer_team_id
+    )
+    _validate_user_assignment(db, next_role, next_team_id)
+    if user.role == UserRole.ADMIN.value and next_role != UserRole.ADMIN:
+        admin_count = db.scalar(
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN.value)
+        )
+        if admin_count <= 1:
+            raise HTTPException(status_code=409, detail="cannot demote the last admin")
+    user.role = next_role.value
+    user.maintainer_team_id = next_team_id
+    return _commit(db, user)
+
+
+@router.delete("/users/{user_id}", status_code=204)
+def delete_user(
+    user_id: int,
+    current_user: User = Depends(require_roles(UserRole.ADMIN)),
+    db: Session = Depends(get_db),
+):
+    user = _get_or_404(db, User, user_id, "user not found")
+    if user.id == current_user.id:
+        raise HTTPException(status_code=409, detail="cannot delete the current user")
+    if user.role == UserRole.ADMIN.value:
+        admin_count = db.scalar(
+            select(func.count()).select_from(User).where(User.role == UserRole.ADMIN.value)
+        )
+        if admin_count <= 1:
+            raise HTTPException(status_code=409, detail="cannot delete the last admin")
+    db.delete(user)
+    db.commit()
 
 
 @router.get("/versions", response_model=list[VersionOut])

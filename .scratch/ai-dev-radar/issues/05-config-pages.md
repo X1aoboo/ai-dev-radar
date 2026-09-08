@@ -1,6 +1,6 @@
 # 05 配置页：团队、指标目录、用户
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01, 02
 
 spec §6.6 的三块配置管理。
@@ -20,3 +20,15 @@ spec §6.6 的三块配置管理。
 ## 依据
 
 spec §2.3、§6.6。
+
+## Comments
+
+**2026-09-08 实现完成**（待人工验收）：
+
+- 管理员可通过 `/api/teams`、`/api/activities`、`/api/metrics`、`/api/users` 创建、编辑和删除配置；非 admin 对全部写接口返回 403。
+- 团队数据源映射在配置页作为产品版本号、代码仓地址两个可增删列表编辑，不暴露 JSON 文本框。
+- 新增指标会立即出现在 `/api/catalog`，现有 `/api/compute` 可按其 ID 返回目录驱动的序列响应，无需新增计算分支。
+- 为保护历史数据，存在事实记录或 maintainer 绑定的团队、存在指标的活动、存在事实记录的指标不可删除（409）；含事实记录的活动不可改变关键/通用类别，指标不可迁移活动。
+- 第一版目录强制 `manual_only`，不允许配置为未实现的自动采集；用户维护校验 maintainer 团队绑定，并防止删除或降级最后一个 admin。
+- 验证：配置 HTTP seam 30 passed；全量后端 71 passed；`npm --prefix frontend run build` 通过（仅有现有 ECharts bundle 大小警告）。
+- code-review：已修复 Spec 轴发现的采集方式与事实维度保护问题；Standards 轴无硬违规，保留 `ConfigPage` 可按团队/目录/用户三个区块进一步拆分的非阻断建议。

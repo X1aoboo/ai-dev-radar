@@ -52,6 +52,6 @@ def test_facts_endpoint_filters(authenticated_client):
     assert missing.status_code == 404
 
 
-def test_users_not_exposed(client):
-    """用户端点不在票面范围且认证未实现（spec §7），不应暴露。"""
-    assert client.get("/api/users").status_code == 404
+def test_users_collection_only_exposes_configured_mutation_methods(client):
+    """账号列表经 /auth/users 暴露；/users 仅保留配置写入口。"""
+    assert client.get("/api/users").status_code == 405

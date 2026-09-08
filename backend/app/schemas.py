@@ -35,10 +35,74 @@ class TeamOut(BaseModel):
     created_at: datetime
 
 
+class SourceMappingIn(BaseModel):
+    """团队数据源映射的结构化输入，避免配置页编辑裸 JSON。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_versions: list[str] = Field(default_factory=list, max_length=100)
+    repos: list[str] = Field(default_factory=list, max_length=100)
+
+
+class TeamIn(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    source_mapping: SourceMappingIn
+
+
+class TeamUpdateIn(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    source_mapping: SourceMappingIn | None = None
+
+
+class ActivityIn(BaseModel):
+    code: str = Field(min_length=1, max_length=20, pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=1, max_length=100)
+    kind: ActivityKind
+
+
+class ActivityUpdateIn(BaseModel):
+    code: str | None = Field(default=None, min_length=1, max_length=20, pattern=r"^[a-z0-9-]+$")
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    kind: ActivityKind | None = None
+
+
+class MetricIn(BaseModel):
+    activity_id: int = Field(ge=1)
+    code: str = Field(min_length=1, max_length=40, pattern=r"^[a-z0-9-]+$")
+    name: str = Field(min_length=1, max_length=100)
+    type: MetricType
+    numerator_semantic: str = Field(min_length=1, max_length=100)
+    denominator_semantic: str | None = Field(default=None, max_length=100)
+    collect_method: Literal[CollectMethod.MANUAL_ONLY] = CollectMethod.MANUAL_ONLY
+
+
+class MetricUpdateIn(BaseModel):
+    activity_id: int | None = Field(default=None, ge=1)
+    code: str | None = Field(default=None, min_length=1, max_length=40, pattern=r"^[a-z0-9-]+$")
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    type: MetricType | None = None
+    numerator_semantic: str | None = Field(default=None, min_length=1, max_length=100)
+    denominator_semantic: str | None = Field(default=None, max_length=100)
+    collect_method: Literal[CollectMethod.MANUAL_ONLY] | None = None
+
+
+class UserIn(BaseModel):
+    username: str = Field(min_length=1, max_length=50)
+    password: str = Field(min_length=8)
+    role: UserRole
+    maintainer_team_id: int | None = Field(default=None, ge=1)
+
+
+class UserUpdateIn(BaseModel):
+    role: UserRole | None = None
+    maintainer_team_id: int | None = Field(default=None, ge=1)
+
+
 class MetricOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    activity_id: int
     code: str
     name: str
     type: MetricType

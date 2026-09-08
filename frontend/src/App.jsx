@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import * as echarts from 'echarts'
 
 class HttpError extends Error {
@@ -14,6 +14,7 @@ async function fetchJson(url, options = {}) {
     const body = await response.json().catch(() => null)
     throw new HttpError(response.status, body?.detail ?? `请求失败（${response.status}）`)
   }
+  if (response.status === 204) return null
   return response.json()
 }
 
@@ -99,13 +100,267 @@ function ForbiddenPage({ onNavigate }) {
   )
 }
 
-function PlaceholderPage({ title, user, onNavigate, onLogout }) {
+function StringListInput({ label, values, onChange, placeholder }) {
+  function update(index, value) {
+    onChange(values.map((item, itemIndex) => (itemIndex === index ? value : item)))
+  }
+
+  function remove(index) {
+    onChange(values.filter((_, itemIndex) => itemIndex !== index))
+  }
+
+  return (
+    <fieldset style={styles.listField}>
+      <legend>{label}</legend>
+      {values.map((value, index) => (
+        <div key={`${index}-${value}`} style={styles.inlineField}>
+          <input
+            value={value}
+            placeholder={placeholder}
+            onChange={(event) => update(index, event.target.value)}
+          />
+          <button type="button" onClick={() => remove(index)} style={styles.dangerButton}>移除</button>
+        </div>
+      ))}
+      <button type="button" onClick={() => onChange([...values, ''])} style={styles.secondaryButton}>
+        添加一项
+      </button>
+    </fieldset>
+  )
+}
+
+const emptyTeam = () => ({
+  id: null,
+  name: '',
+  source_mapping: { product_versions: [], repos: [] },
+})
+
+const emptyActivity = () => ({ id: null, code: '', name: '', kind: 'general' })
+
+const emptyMetric = () => ({
+  id: null,
+  activity_id: '',
+  code: '',
+  name: '',
+  type: 'penetration',
+  numerator_semantic: '',
+  denominator_semantic: '',
+  collect_method: 'manual_only',
+})
+
+const emptyUser = () => ({ id: null, username: '', password: '', role: 'viewer', maintainer_team_id: '' })
+
+function ConfigPage({ user, onNavigate, onLogout, onSessionExpired }) {
+  const [teams, setTeams] = useState([])
+  const [catalog, setCatalog] = useState([])
+  const [users, setUsers] = useState([])
+  const [teamForm, setTeamForm] = useState(emptyTeam)
+  const [activityForm, setActivityForm] = useState(emptyActivity)
+  const [metricForm, setMetricForm] = useState(emptyMetric)
+  const [userForm, setUserForm] = useState(emptyUser)
+  const [message, setMessage] = useState(null)
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    setLoading(true)
+    try {
+      const [nextTeams, nextCatalog, nextUsers] = await Promise.all([
+        fetchJson('/api/teams'),
+        fetchJson('/api/catalog'),
+        fetchJson('/api/auth/users'),
+      ])
+      setTeams(nextTeams)
+      setCatalog(nextCatalog)
+      setUsers(nextUsers)
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setLoading(false)
+    }
+  }, [onSessionExpired])
+
+  useEffect(() => { load() }, [load])
+
+  async function mutate(url, options, success) {
+    try {
+      await fetchJson(url, options)
+      setMessage({ type: 'success', text: success })
+      await load()
+      return true
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+      if (error.status === 401) onSessionExpired()
+      return false
+    }
+  }
+
+  function structuredMapping(mapping) {
+    return {
+      product_versions: mapping.product_versions.map((item) => item.trim()).filter(Boolean),
+      repos: mapping.repos.map((item) => item.trim()).filter(Boolean),
+    }
+  }
+
+  async function submitTeam(event) {
+    event.preventDefault()
+    const editing = Boolean(teamForm.id)
+    const success = await mutate(
+      editing ? `/api/teams/${teamForm.id}` : '/api/teams',
+      {
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: teamForm.name, source_mapping: structuredMapping(teamForm.source_mapping) }),
+      },
+      editing ? '团队已更新。' : '团队已创建。',
+    )
+    if (success) setTeamForm(emptyTeam())
+  }
+
+  async function submitActivity(event) {
+    event.preventDefault()
+    const editing = Boolean(activityForm.id)
+    const success = await mutate(
+      editing ? `/api/activities/${activityForm.id}` : '/api/activities',
+      {
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: activityForm.code, name: activityForm.name, kind: activityForm.kind }),
+      },
+      editing ? '活动已更新。' : '活动已创建。',
+    )
+    if (success) setActivityForm(emptyActivity())
+  }
+
+  async function submitMetric(event) {
+    event.preventDefault()
+    const editing = Boolean(metricForm.id)
+    const success = await mutate(
+      editing ? `/api/metrics/${metricForm.id}` : '/api/metrics',
+      {
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...metricForm,
+          id: undefined,
+          activity_id: Number(metricForm.activity_id),
+          denominator_semantic: metricForm.denominator_semantic || null,
+        }),
+      },
+      editing ? '指标已更新。' : '指标已创建。',
+    )
+    if (success) setMetricForm(emptyMetric())
+  }
+
+  async function submitUser(event) {
+    event.preventDefault()
+    const editing = Boolean(userForm.id)
+    const body = editing
+      ? {
+          role: userForm.role,
+          maintainer_team_id: userForm.role === 'maintainer' ? Number(userForm.maintainer_team_id) : null,
+        }
+      : {
+          username: userForm.username,
+          password: userForm.password,
+          role: userForm.role,
+          maintainer_team_id: userForm.role === 'maintainer' ? Number(userForm.maintainer_team_id) : null,
+        }
+    const success = await mutate(
+      editing ? `/api/users/${userForm.id}` : '/api/users',
+      {
+        method: editing ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      },
+      editing ? '用户角色已更新。' : '用户已创建。',
+    )
+    if (success) setUserForm(emptyUser())
+  }
+
+  if (loading) {
+    return <p style={styles.loading}>加载配置中…</p>
+  }
+
   return (
     <main style={styles.page}>
       <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <section style={styles.card}>
-        <h1>{title}</h1>
-        <p style={styles.muted}>页面入口已受权限保护，业务内容将在后续功能票中实现。</p>
+      <h1>配置管理</h1>
+      <p style={styles.muted}>仅管理员可以修改团队、指标目录和账号权限。</p>
+      {message && <p role="alert" style={message.type === 'error' ? styles.error : styles.success}>{message.text}</p>}
+
+      <section style={styles.configSection}>
+        <h2>团队管理</h2>
+        <div style={styles.configGrid}>
+          <form onSubmit={submitTeam} style={styles.card}>
+            <h3>{teamForm.id ? '编辑团队' : '新增团队'}</h3>
+            <label style={styles.field}>名称<input required value={teamForm.name} onChange={(event) => setTeamForm({ ...teamForm, name: event.target.value })} /></label>
+            <StringListInput label="产品版本号" values={teamForm.source_mapping.product_versions} placeholder="SCC 27.1.RC1" onChange={(product_versions) => setTeamForm({ ...teamForm, source_mapping: { ...teamForm.source_mapping, product_versions } })} />
+            <StringListInput label="代码仓地址" values={teamForm.source_mapping.repos} placeholder="https://git.example.com/team/main.git" onChange={(repos) => setTeamForm({ ...teamForm, source_mapping: { ...teamForm.source_mapping, repos } })} />
+            <button type="submit" style={styles.primaryButton}>{teamForm.id ? '保存团队' : '创建团队'}</button>{' '}
+            {teamForm.id && <button type="button" onClick={() => setTeamForm(emptyTeam())} style={styles.secondaryButton}>取消</button>}
+          </form>
+          <div style={styles.card}>
+            <h3>现有团队</h3>
+            <table style={styles.table}><thead><tr><th>名称</th><th>版本号</th><th>仓库</th><th>操作</th></tr></thead><tbody>
+              {teams.map((team) => <tr key={team.id}><td>{team.name}</td><td>{team.source_mapping.product_versions.join('、') || '—'}</td><td>{team.source_mapping.repos.join('、') || '—'}</td><td style={styles.actions}><button type="button" onClick={() => setTeamForm({ ...team, source_mapping: { product_versions: team.source_mapping.product_versions ?? [], repos: team.source_mapping.repos ?? [] } })} style={styles.secondaryButton}>编辑</button><button type="button" onClick={() => window.confirm(`删除团队“${team.name}”？`) && mutate(`/api/teams/${team.id}`, { method: 'DELETE' }, '团队已删除。')} style={styles.dangerButton}>删除</button></td></tr>)}
+            </tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <section style={styles.configSection}>
+        <h2>指标目录管理</h2>
+        <div style={styles.configGrid}>
+          <form onSubmit={submitActivity} style={styles.card}>
+            <h3>{activityForm.id ? '编辑活动' : '新增活动'}</h3>
+            <label style={styles.field}>代码<input required pattern="[a-z0-9-]+" value={activityForm.code} onChange={(event) => setActivityForm({ ...activityForm, code: event.target.value })} /></label>
+            <label style={styles.field}>名称<input required value={activityForm.name} onChange={(event) => setActivityForm({ ...activityForm, name: event.target.value })} /></label>
+            <label style={styles.field}>类别<select value={activityForm.kind} onChange={(event) => setActivityForm({ ...activityForm, kind: event.target.value })}><option value="key">关键研发活动</option><option value="general">通用研发能力</option></select></label>
+            <button type="submit" style={styles.primaryButton}>{activityForm.id ? '保存活动' : '创建活动'}</button>{' '}
+            {activityForm.id && <button type="button" onClick={() => setActivityForm(emptyActivity())} style={styles.secondaryButton}>取消</button>}
+          </form>
+          <form onSubmit={submitMetric} style={styles.card}>
+            <h3>{metricForm.id ? '编辑指标' : '新增指标'}</h3>
+            <label style={styles.field}>所属活动<select required value={metricForm.activity_id} onChange={(event) => setMetricForm({ ...metricForm, activity_id: event.target.value })}><option value="">请选择</option>{catalog.map((activity) => <option key={activity.id} value={activity.id}>{activity.name}</option>)}</select></label>
+            <label style={styles.field}>代码<input required pattern="[a-z0-9-]+" value={metricForm.code} onChange={(event) => setMetricForm({ ...metricForm, code: event.target.value })} /></label>
+            <label style={styles.field}>名称<input required value={metricForm.name} onChange={(event) => setMetricForm({ ...metricForm, name: event.target.value })} /></label>
+            <label style={styles.field}>类型<select value={metricForm.type} onChange={(event) => setMetricForm({ ...metricForm, type: event.target.value })}>{['penetration', 'efficiency', 'count', 'boolean', 'ratio'].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
+            <label style={styles.field}>分子语义<input required value={metricForm.numerator_semantic} onChange={(event) => setMetricForm({ ...metricForm, numerator_semantic: event.target.value })} /></label>
+            <label style={styles.field}>分母语义<input value={metricForm.denominator_semantic} onChange={(event) => setMetricForm({ ...metricForm, denominator_semantic: event.target.value })} /></label>
+            <p style={styles.muted}>采集方式：仅补录（第一版尚未接入自动采集器）</p>
+            <button type="submit" style={styles.primaryButton}>{metricForm.id ? '保存指标' : '创建指标'}</button>{' '}
+            {metricForm.id && <button type="button" onClick={() => setMetricForm(emptyMetric())} style={styles.secondaryButton}>取消</button>}
+          </form>
+        </div>
+        <div style={styles.card}>
+          <h3>现有目录</h3>
+          <table style={styles.table}><thead><tr><th>活动</th><th>指标</th><th>类型 / 采集</th><th>分子 / 分母</th><th>操作</th></tr></thead><tbody>
+            {catalog.flatMap((activity) => activity.metrics.map((metric) => <tr key={metric.id}><td>{activity.name}<br /><small>{activity.kind}</small></td><td>{metric.name}<br /><small>{metric.code}</small></td><td>{metric.type} / {metric.collect_method}</td><td>{metric.numerator_semantic} / {metric.denominator_semantic ?? '—'}</td><td style={styles.actions}><button type="button" onClick={() => setMetricForm({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '' })} style={styles.secondaryButton}>编辑指标</button><button type="button" onClick={() => window.confirm(`删除指标“${metric.name}”？`) && mutate(`/api/metrics/${metric.id}`, { method: 'DELETE' }, '指标已删除。')} style={styles.dangerButton}>删除指标</button></td></tr>))}
+          </tbody></table>
+          <p style={styles.muted}>活动编辑与删除可在新增活动表单中完成；仍包含指标或事实记录的条目不能删除。</p>
+          <div style={styles.activityActions}>{catalog.map((activity) => <span key={activity.id}><button type="button" onClick={() => setActivityForm(activity)} style={styles.secondaryButton}>编辑 {activity.name}</button><button type="button" onClick={() => window.confirm(`删除活动“${activity.name}”？`) && mutate(`/api/activities/${activity.id}`, { method: 'DELETE' }, '活动已删除。')} style={styles.dangerButton}>删除</button></span>)}</div>
+        </div>
+      </section>
+
+      <section style={styles.configSection}>
+        <h2>用户与角色管理</h2>
+        <div style={styles.configGrid}>
+          <form onSubmit={submitUser} style={styles.card}>
+            <h3>{userForm.id ? '分配角色' : '新增账号'}</h3>
+            {!userForm.id && <><label style={styles.field}>账号<input required value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} /></label><label style={styles.field}>初始密码<input required minLength="8" type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} /></label></>}
+            <label style={styles.field}>角色<select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value, maintainer_team_id: event.target.value === 'maintainer' ? userForm.maintainer_team_id : '' })}><option value="admin">admin</option><option value="maintainer">maintainer</option><option value="viewer">viewer</option></select></label>
+            {userForm.role === 'maintainer' && <label style={styles.field}>绑定团队<select required value={userForm.maintainer_team_id} onChange={(event) => setUserForm({ ...userForm, maintainer_team_id: event.target.value })}><option value="">请选择</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}
+            <button type="submit" style={styles.primaryButton}>{userForm.id ? '保存角色' : '创建账号'}</button>{' '}
+            {userForm.id && <button type="button" onClick={() => setUserForm(emptyUser())} style={styles.secondaryButton}>取消</button>}
+          </form>
+          <div style={styles.card}>
+            <h3>现有账号</h3>
+            <table style={styles.table}><thead><tr><th>账号</th><th>角色</th><th>绑定团队</th><th>操作</th></tr></thead><tbody>
+              {users.map((account) => <tr key={account.id}><td>{account.username}</td><td>{account.role}</td><td>{teams.find((team) => team.id === account.maintainer_team_id)?.name ?? '—'}</td><td style={styles.actions}><button type="button" onClick={() => setUserForm({ ...account, password: '', maintainer_team_id: account.maintainer_team_id ? String(account.maintainer_team_id) : '' })} style={styles.secondaryButton}>编辑角色</button>{account.id !== user.id && <button type="button" onClick={() => window.confirm(`删除账号“${account.username}”？`) && mutate(`/api/users/${account.id}`, { method: 'DELETE' }, '账号已删除。')} style={styles.dangerButton}>删除</button>}</td></tr>)}
+            </tbody></table>
+          </div>
+        </div>
       </section>
     </main>
   )
@@ -251,6 +506,16 @@ const styles = {
   navButton: { background: 'transparent', border: 0, cursor: 'pointer', padding: '0.4rem 0.6rem' },
   spacer: { flex: 1 },
   card: { border: '1px solid #e5e7eb', borderRadius: 12, padding: '1.5rem' },
+  configSection: { marginTop: '2.5rem' },
+  configGrid: { alignItems: 'start', display: 'grid', gap: '1.25rem', gridTemplateColumns: 'minmax(280px, 1fr) minmax(0, 2fr)' },
+  listField: { border: '1px solid #cbd5e1', borderRadius: 6, display: 'grid', gap: 8, margin: '1rem 0', padding: '0.75rem' },
+  inlineField: { alignItems: 'center', display: 'flex', gap: 8 },
+  secondaryButton: { background: 'white', border: '1px solid #94a3b8', borderRadius: 6, cursor: 'pointer', padding: '0.4rem 0.6rem' },
+  dangerButton: { background: 'white', border: '1px solid #dc2626', borderRadius: 6, color: '#b91c1c', cursor: 'pointer', padding: '0.4rem 0.6rem' },
+  success: { color: '#15803d' },
+  table: { borderCollapse: 'collapse', fontSize: '0.9rem', width: '100%' },
+  actions: { display: 'flex', flexWrap: 'wrap', gap: 6 },
+  activityActions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
   muted: { color: '#64748b' },
   error: { color: '#b91c1c' },
   loading: { fontFamily: 'system-ui, sans-serif', margin: '2rem' },
@@ -326,7 +591,7 @@ export default function App() {
     return <ForbiddenPage onNavigate={navigate} />
   }
   if (pathname === '/config') {
-    return <PlaceholderPage title="配置" user={user} onNavigate={navigate} onLogout={logout} />
+    return <ConfigPage user={user} onNavigate={navigate} onLogout={logout} onSessionExpired={sessionExpired} />
   }
   if (pathname === '/manual-entry') {
     return <PlaceholderPage title="补录" user={user} onNavigate={navigate} onLogout={logout} />
