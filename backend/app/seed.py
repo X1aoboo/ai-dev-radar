@@ -13,6 +13,9 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
+from .auth import hash_password
+from .config import SEED_PASSWORD
+from .migrations import ensure_auth_schema
 from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User
 
 # ---------------------------------------------------------------- 指标目录（spec §2.1）
@@ -172,12 +175,16 @@ def seed_demo(db: Session) -> None:
         teams.append(team)
     db.flush()
 
-    # 用户：1 admin + 每团队 1 maintainer + 1 viewer
-    db.add(User(username="admin", role="admin"))
+    # 用户：1 admin + 每团队 1 maintainer + 1 viewer。密码仅保存 Argon2 哈希。
+    db.add(User(username="admin", password_hash=hash_password(SEED_PASSWORD), role="admin"))
     for team in teams:
-        db.add(User(username=f"maintainer.{team.name}", role="maintainer",
-                    maintainer_team_id=team.id))
-    db.add(User(username="viewer", role="viewer"))
+        db.add(User(
+            username=f"maintainer.{team.name}",
+            password_hash=hash_password(SEED_PASSWORD),
+            role="maintainer",
+            maintainer_team_id=team.id,
+        ))
+    db.add(User(username="viewer", password_hash=hash_password(SEED_PASSWORD), role="viewer"))
 
     iterations = []  # (Iteration, week_lo, week_hi)
     for vi, (vname, its) in enumerate(VERSIONS):
@@ -305,11 +312,14 @@ def main() -> None:
 
     from .db import Base, SessionLocal, engine
     if args.db:
-        session_factory = sessionmaker(bind=create_engine(args.db))
-        Base.metadata.create_all(session_factory.kw["bind"])
+        seed_engine = create_engine(args.db)
+        session_factory = sessionmaker(bind=seed_engine)
+        Base.metadata.create_all(seed_engine)
+        ensure_auth_schema(seed_engine, session_factory)
         db = session_factory()
     else:
         Base.metadata.create_all(engine)
+        ensure_auth_schema()
         db = SessionLocal()
     try:
         run_seed(db)

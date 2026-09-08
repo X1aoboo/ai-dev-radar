@@ -1,8 +1,8 @@
 """只读 REST 端点测试。"""
 
 
-def test_catalog_endpoint(client):
-    res = client.get("/api/catalog")
+def test_catalog_endpoint(authenticated_client):
+    res = authenticated_client.get("/api/catalog")
     assert res.status_code == 200
     body = res.json()
     assert len(body) == 15
@@ -15,16 +15,16 @@ def test_catalog_endpoint(client):
     assert all(m["collect_method"] == "manual_only" for a in body for m in a["metrics"])
 
 
-def test_teams_endpoint(client):
-    res = client.get("/api/teams")
+def test_teams_endpoint(authenticated_client):
+    res = authenticated_client.get("/api/teams")
     assert res.status_code == 200
     body = res.json()
     assert len(body) == 4
     assert body[0]["source_mapping"]["product_versions"] == ["SCC 27.1.RC1", "SCC 27.2.RC1"]
 
 
-def test_versions_endpoint(client):
-    res = client.get("/api/versions")
+def test_versions_endpoint(authenticated_client):
+    res = authenticated_client.get("/api/versions")
     assert res.status_code == 200
     body = res.json()
     assert [v["name"] for v in body] == ["SCC 27.1.RC1", "SCC 27.2.RC1"]
@@ -32,23 +32,23 @@ def test_versions_endpoint(client):
     assert body[1]["iterations"][0]["name"] == "SCC 27.2.RC1-迭代一"
 
 
-def test_iterations_endpoint_filters_by_version(client):
-    all_iters = client.get("/api/iterations").json()
+def test_iterations_endpoint_filters_by_version(authenticated_client):
+    all_iters = authenticated_client.get("/api/iterations").json()
     assert len(all_iters) == 4
-    version_id = client.get("/api/versions").json()[0]["id"]
-    filtered = client.get(f"/api/iterations?version_id={version_id}").json()
+    version_id = authenticated_client.get("/api/versions").json()[0]["id"]
+    filtered = authenticated_client.get(f"/api/iterations?version_id={version_id}").json()
     assert len(filtered) == 2
 
 
-def test_facts_endpoint_filters(client):
-    all_facts = client.get("/api/facts").json()
+def test_facts_endpoint_filters(authenticated_client):
+    all_facts = authenticated_client.get("/api/facts").json()
     assert len(all_facts) > 1000
     team_id = all_facts[0]["team_id"]
-    by_team = client.get(f"/api/facts?team_id={team_id}").json()
+    by_team = authenticated_client.get(f"/api/facts?team_id={team_id}").json()
     assert by_team and all(f["team_id"] == team_id for f in by_team)
-    manual = client.get("/api/facts?source=manual").json()
+    manual = authenticated_client.get("/api/facts?source=manual").json()
     assert len(manual) == len(all_facts)  # 第一版全部仅补录
-    missing = client.get("/api/facts/999999")
+    missing = authenticated_client.get("/api/facts/999999")
     assert missing.status_code == 404
 
 

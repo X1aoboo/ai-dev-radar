@@ -157,5 +157,6 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     username: Mapped[str] = mapped_column(String(50), unique=True)
+    password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(15))  # admin / maintainer / viewer
     maintainer_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)

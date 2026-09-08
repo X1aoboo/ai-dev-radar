@@ -2,9 +2,27 @@
 
 from datetime import date, datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
-from .models import ActivityKind, CollectMethod, FactSource, MetricType
+from .models import ActivityKind, CollectMethod, FactSource, MetricType, UserRole
+
+
+class LoginIn(BaseModel):
+    username: str = Field(min_length=1, max_length=50)
+    password: str = Field(min_length=1)
+
+
+class AuthUserOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    username: str
+    role: UserRole
+    maintainer_team_id: int | None
+
+
+class LogoutOut(BaseModel):
+    detail: str
 
 
 class TeamOut(BaseModel):
