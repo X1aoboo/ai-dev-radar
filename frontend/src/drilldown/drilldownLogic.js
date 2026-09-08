@@ -1,5 +1,31 @@
+import { assignTeamColorSlots } from '../overview/overviewLogic.js'
+
 function numeric(value) {
   return typeof value === 'number' && Number.isFinite(value)
+}
+
+export function teamAccentColor(teamId, teamIds = [teamId], previousSlots = {}) {
+  const ids = teamIds.length ? teamIds : [teamId]
+  const assigned = assignTeamColorSlots(ids, previousSlots)
+  return assigned.colors[String(teamId)] ?? null
+}
+
+export function mergePeriods(dataList = []) {
+  const periodsById = new Map()
+  for (const data of dataList) {
+    for (const period of data?.periods ?? []) {
+      const key = String(period.id)
+      if (!periodsById.has(key)) periodsById.set(key, period)
+    }
+  }
+
+  return [...periodsById.values()].sort((left, right) => (
+    String(left.start_date ?? left.id).localeCompare(
+      String(right.start_date ?? right.id),
+      undefined,
+      { numeric: true },
+    )
+  ))
 }
 
 function pointsForTeam(data, teamId) {

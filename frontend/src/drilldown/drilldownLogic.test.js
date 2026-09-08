@@ -4,7 +4,9 @@ import assert from 'node:assert/strict'
 import {
   averageMetricValues,
   deltaForSelection,
+  mergePeriods,
   sourceForPeriod,
+  teamAccentColor,
   valueForSelection,
 } from './drilldownLogic.js'
 
@@ -94,4 +96,18 @@ test('maps fact sources to a period and prefers manual when both sources exist',
     start_date: '2026-03-01',
     end_date: '2026-03-31',
   }), null)
+})
+
+test('keeps a directly opened team on the same fixed color slot as the overview', () => {
+  assert.equal(teamAccentColor(2, [1, 2, 3, 4]), '#eb6834')
+  assert.equal(teamAccentColor(2, [1, 2, 3, 4], { 2: 1 }), '#eb6834')
+})
+
+test('merges and orders all periods represented by an activity metrics set', () => {
+  const periods = mergePeriods([
+    { periods: [{ id: '2026-02', start_date: '2026-02-01' }] },
+    { periods: [{ id: '2026-01', start_date: '2026-01-01' }, { id: '2026-02', start_date: '2026-02-01' }] },
+  ])
+
+  assert.deepEqual(periods.map((period) => period.id), ['2026-01', '2026-02'])
 })

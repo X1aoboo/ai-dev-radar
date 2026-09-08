@@ -679,6 +679,7 @@ function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
         <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
         <TeamDrilldownPage
           catalog={catalog}
+          teams={teams}
           versions={versions}
           team={team}
           filter={filter}

@@ -5,7 +5,6 @@ import EChart from '../components/EChart'
 import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
 import {
-  assignTeamColorSlots,
   formatMetricValue,
   INITIAL_FILTER,
   isGeneralIterationFallback,
@@ -16,9 +15,11 @@ import { buildIterationCompareOption, buildTeamTrendOption } from './chartOption
 import {
   averageMetricValues,
   deltaForSelection,
+  mergePeriods,
   pointForSelection,
   previousPeriodId,
   sourceForPeriod,
+  teamAccentColor,
   valueForSelection,
 } from './drilldownLogic'
 import './drilldown.css'
@@ -232,8 +233,7 @@ function factTableCell(metric, column, point, source) {
 
 function FactTable({ activity, trendData, facts, factsLoading, factsError, teamId }) {
   const metrics = activity.metrics.filter((metric) => metric.type !== 'boolean')
-  const firstData = metrics.map((metric) => trendData[metric.id]).find((data) => data?.periods?.length)
-  const periods = firstData?.periods ?? []
+  const periods = mergePeriods(metrics.map((metric) => trendData[metric.id]))
 
   if (factsLoading) return <div className="drilldown-detail-loading">正在加载事实记录…</div>
   if (factsError) return <ErrorMessage error={factsError} />
@@ -380,7 +380,9 @@ function ActivityTrendCard({
           />
           <p className="drilldown-fact-note">
             {selectedPeriodId === 'all' ? '全部周期' : `周期 ${currentPeriod?.label ?? selectedPeriodId}`}：{formatMetricValue(metric, currentValue)}
-            {activity.kind === 'key' ? ' · 按迭代标签聚合' : ' · 按时间字段聚合'}
+            {filter.dimension === 'iteration' && activity.kind === 'key'
+              ? ' · 按迭代标签聚合'
+              : ' · 按时间字段聚合'}
             {fallback && ' · 通用研发能力无迭代维度，固定按月'}
           </p>
         </>
@@ -420,10 +422,10 @@ function currentFilterDescription(filter, versions, periods) {
   return `${dimension} · 周期：${filter.periodId === 'all' ? '全部周期' : period?.label ?? '最新'}`
 }
 
-function teamAccent(teamId) {
+function teamAccent(teamId, teamIds = [teamId]) {
   try {
     const stored = JSON.parse(window.localStorage.getItem(TEAM_COLOR_STORAGE_KEY) ?? '{}')
-    return assignTeamColorSlots([teamId], stored).colors[String(teamId)] ?? TEAM_ACCENT_FALLBACK
+    return teamAccentColor(teamId, teamIds, stored) ?? TEAM_ACCENT_FALLBACK
   } catch {
     return TEAM_ACCENT_FALLBACK
   }
@@ -433,6 +435,7 @@ function TeamDrilldownContent({
   catalog,
   versions,
   team,
+  teams = [],
   onNavigate,
   onSessionExpired,
   filter: controlledFilter,
@@ -447,7 +450,11 @@ function TeamDrilldownContent({
   const iterationFilter = useMemo(() => ({ ...filter, dimension: 'iteration', granularity: 'month' }), [filter.versionId])
   const iterationComputed = useComputedMetrics(keyActivities, iterationFilter, onSessionExpired)
   const factsState = useTeamFacts(team.id, onSessionExpired)
-  const accent = useMemo(() => teamAccent(team.id), [team.id])
+  const teamIdsKey = teams.map((item) => item.id).join(',')
+  const accent = useMemo(
+    () => teamAccent(team.id, teams.map((item) => item.id)),
+    [team.id, teamIdsKey],
+  )
   const entries = useMemo(() => metricEntries(catalog, computed.data), [catalog, computed.data])
   const keyEntries = entries.filter(({ activity }) => activity.kind === 'key')
   const reviewEntry = metricEntry(entries, (metric, activity) => (
