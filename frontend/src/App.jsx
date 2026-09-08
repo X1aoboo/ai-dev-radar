@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 
 import { fetchJson } from './api'
+import TeamDrilldownPage from './drilldown/TeamDrilldownPage'
 import OverviewPage from './overview/OverviewPage'
+import { INITIAL_FILTER } from './overview/overviewLogic'
 
 function usePathname() {
   const [pathname, setPathname] = useState(window.location.pathname || '/')
@@ -628,23 +630,11 @@ function Navigation({ user, onNavigate, onLogout }) {
   )
 }
 
-function TeamDrilldownPlaceholder({ user, team, onNavigate, onLogout }) {
-  return (
-    <main style={styles.page}>
-      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <button type="button" onClick={() => onNavigate('/')} style={styles.secondaryButton}>
-        ← 返回总览
-      </button>
-      <h1>{team?.name ?? '团队'}下钻</h1>
-      <p style={styles.muted}>团队下钻页将在 issue 08 中实现，当前已接通趋势卡的导航入口。</p>
-    </main>
-  )
-}
-
 function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
   const [catalog, setCatalog] = useState(null)
   const [teams, setTeams] = useState(null)
   const [versions, setVersions] = useState(null)
+  const [filter, setFilter] = useState(INITIAL_FILTER)
   const [error, setError] = useState(null)
 
   useEffect(() => {
@@ -684,7 +674,20 @@ function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
   const teamMatch = pathname.match(/^\/team\/([^/]+)$/)
   if (teamMatch) {
     const team = teams.find((item) => String(item.id) === decodeURIComponent(teamMatch[1]))
-    return <TeamDrilldownPlaceholder user={user} team={team} onNavigate={onNavigate} onLogout={onLogout} />
+    return (
+      <>
+        <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
+        <TeamDrilldownPage
+          catalog={catalog}
+          versions={versions}
+          team={team}
+          filter={filter}
+          onFilterChange={setFilter}
+          onNavigate={onNavigate}
+          onSessionExpired={onSessionExpired}
+        />
+      </>
+    )
   }
 
   return (
@@ -694,6 +697,8 @@ function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
         catalog={catalog}
         teams={teams}
         versions={versions}
+        filter={filter}
+        onFilterChange={setFilter}
         onNavigate={onNavigate}
         onSessionExpired={onSessionExpired}
       />

@@ -1,101 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { fetchJson } from '../api'
 import EChart from '../components/EChart'
 import FilterBar from './FilterBar'
 import { buildTrendOption } from './chartOption'
+import { hasNumericValues, useComputedMetrics } from './metricData'
 import {
   assignTeamColorSlots,
   currentSnapshot,
   formatMetricValue,
+  INITIAL_FILTER,
   isGeneralIterationFallback,
   iterationPeriods,
   latestPeriodId,
-  queryForActivity,
-  trimToRecentPeriods,
 } from './overviewLogic'
 import './overview.css'
 
 const TEAM_COLOR_STORAGE_KEY = 'ai-dev-radar.team-color-slots'
-const INITIAL_FILTER = {
-  dimension: 'time',
-  granularity: 'month',
-  versionId: 'all',
-  periodId: null,
-  metricSlot: 0,
-}
-
-function metricRequests(catalog, filter) {
-  return catalog.flatMap((activity) => activity.metrics.map((metric) => ({ activity, metric })))
-    .map(({ activity, metric }) => {
-      const query = queryForActivity(activity, filter)
-      const params = new URLSearchParams({
-        metric_id: String(metric.id),
-        dim: query.dimension,
-        gran: query.granularity,
-      })
-      if (query.dimension === 'iteration') params.set('version_id', String(query.versionId))
-      return { activity, metric, url: `/api/compute?${params.toString()}`, fallback: query.fallback }
-    })
-}
-
-function useComputedMetrics(catalog, filter, onSessionExpired) {
-  const [state, setState] = useState({ loading: true, data: {}, errors: {} })
-  const sessionExpiredRef = useRef(onSessionExpired)
-  sessionExpiredRef.current = onSessionExpired
-
-  useEffect(() => {
-    if (!catalog) return undefined
-
-    const controller = new AbortController()
-    let active = true
-    const requests = metricRequests(catalog, filter)
-    setState({ loading: true, data: {}, errors: {} })
-
-    Promise.allSettled(
-      requests.map(async (request) => {
-        const response = await fetchJson(request.url, { signal: controller.signal })
-        return {
-          metricId: request.metric.id,
-          data: request.fallback ? trimToRecentPeriods(response, 6) : response,
-        }
-      }),
-    ).then((results) => {
-      if (!active) return
-
-      const data = {}
-      const errors = {}
-      let sessionExpired = false
-      results.forEach((result, index) => {
-        const request = requests[index]
-        if (result.status === 'fulfilled') {
-          data[result.value.metricId] = result.value.data
-        } else if (result.reason?.name !== 'AbortError') {
-          errors[request.metric.id] = result.reason
-          if (result.reason?.status === 401 && !sessionExpired) {
-            sessionExpired = true
-            sessionExpiredRef.current()
-          }
-        }
-      })
-      setState({ loading: false, data, errors })
-    })
-
-    return () => {
-      active = false
-      controller.abort()
-    }
-  }, [catalog, filter.dimension, filter.granularity, filter.versionId])
-
-  return state
-}
-
-function hasNumericValues(data) {
-  return (data?.series ?? []).some((series) => (
-    (series.values ?? []).some((point) => typeof point.value === 'number')
-  )) || (data?.company_average ?? []).some((point) => typeof point.value === 'number')
-}
-
 function ErrorState({ error }) {
   return (
     <div className="overview-empty overview-error" role="alert">
@@ -281,8 +201,18 @@ function ActivitySection({
   )
 }
 
-export default function OverviewPage({ catalog, teams, versions, onNavigate, onSessionExpired }) {
-  const [filter, setFilter] = useState(INITIAL_FILTER)
+export default function OverviewPage({
+  catalog,
+  teams,
+  versions,
+  onNavigate,
+  onSessionExpired,
+  filter: controlledFilter,
+  onFilterChange,
+}) {
+  const [localFilter, setLocalFilter] = useState(INITIAL_FILTER)
+  const filter = controlledFilter ?? localFilter
+  const setFilter = onFilterChange ?? setLocalFilter
   const [metricSlots, setMetricSlots] = useState({})
   const computed = useComputedMetrics(catalog, filter, onSessionExpired)
   const teamIdsKey = teams.map((team) => team.id).join(',')

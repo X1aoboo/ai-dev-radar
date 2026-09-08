@@ -1,5 +1,13 @@
 export const TEAM_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
 
+export const INITIAL_FILTER = {
+  dimension: 'time',
+  granularity: 'month',
+  versionId: 'all',
+  periodId: null,
+  metricSlot: 0,
+}
+
 const EXTENDED_TEAM_COLORS = [
   ...TEAM_COLORS,
   '#8256a1',

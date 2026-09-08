@@ -21,7 +21,7 @@ function SegmentedControl({ label, options, value, onChange }) {
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading }) {
+export default function FilterBar({ filter, onChange, versions, periods, loading, showMetricSlot = true }) {
   const isIteration = filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
@@ -115,15 +115,17 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         </select>
       </label>
 
-      <SegmentedControl
-        label="展示指标"
-        options={[
-          { value: 0, label: '第一指标' },
-          { value: 1, label: '第二指标' },
-        ]}
-        value={filter.metricSlot}
-        onChange={(metricSlot) => onChange({ ...filter, metricSlot })}
-      />
+      {showMetricSlot && (
+        <SegmentedControl
+          label="展示指标"
+          options={[
+            { value: 0, label: '第一指标' },
+            { value: 1, label: '第二指标' },
+          ]}
+          value={filter.metricSlot}
+          onChange={(metricSlot) => onChange({ ...filter, metricSlot })}
+        />
+      )}
     </div>
   )
 }

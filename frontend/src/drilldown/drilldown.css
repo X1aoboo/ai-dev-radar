@@ -1,0 +1,419 @@
+.drilldown-shell {
+  --drilldown-accent: #2a78d6;
+}
+
+.drilldown-page-head {
+  align-items: end;
+}
+
+.drilldown-back-button {
+  background: transparent;
+  border: 0;
+  color: var(--drilldown-accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.75rem;
+  margin: 0 0 0.45rem;
+  padding: 0;
+}
+
+.drilldown-back-button:hover,
+.drilldown-back-button:focus-visible {
+  text-decoration: underline;
+}
+
+.drilldown-kpi-row {
+  display: grid;
+  gap: 0.75rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin: 0 0 1.25rem;
+}
+
+.drilldown-kpi-tile {
+  background: var(--overview-surface);
+  border: 1px solid var(--overview-border);
+  border-radius: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.drilldown-kpi-label {
+  color: var(--overview-secondary);
+  font-size: 0.72rem;
+  line-height: 1.35;
+  min-height: 2.1em;
+}
+
+.drilldown-kpi-value {
+  color: var(--overview-ink);
+  font-size: 1.75rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 650;
+  line-height: 1.3;
+  margin: 0.15rem 0 0.2rem;
+}
+
+.drilldown-kpi-value.is-negative {
+  color: #d03b3b;
+}
+
+.drilldown-kpi-footer {
+  align-items: center;
+  color: var(--overview-muted);
+  display: flex;
+  font-size: 0.68rem;
+  gap: 0.45rem;
+  justify-content: space-between;
+  min-height: 1.35rem;
+}
+
+.drilldown-kpi-delta.is-positive,
+.drilldown-kpi-status.is-positive {
+  color: #006300;
+}
+
+.drilldown-kpi-delta.is-negative,
+.drilldown-kpi-status.is-negative {
+  color: #d03b3b;
+}
+
+.drilldown-sparkline {
+  color: var(--overview-muted);
+  flex: 0 0 auto;
+}
+
+.drilldown-sparkline-placeholder {
+  display: block;
+  height: 1.35rem;
+  width: 4.75rem;
+}
+
+.drilldown-layout {
+  align-items: start;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 12rem minmax(0, 1fr);
+}
+
+.drilldown-directory {
+  background: var(--overview-surface);
+  border: 1px solid var(--overview-border);
+  border-radius: 0.65rem;
+  position: sticky;
+  top: 1rem;
+}
+
+.drilldown-directory section + section {
+  border-top: 1px solid var(--overview-grid);
+}
+
+.drilldown-directory h2 {
+  color: var(--overview-muted);
+  font-size: 0.68rem;
+  font-weight: 500;
+  margin: 0;
+  padding: 0.7rem 0.7rem 0.25rem;
+}
+
+.drilldown-directory button {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-left: 3px solid transparent;
+  color: var(--overview-secondary);
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 0.74rem;
+  gap: 0.25rem;
+  justify-content: space-between;
+  padding: 0.36rem 0.55rem;
+  text-align: left;
+  width: 100%;
+}
+
+.drilldown-directory button:hover,
+.drilldown-directory button:focus-visible {
+  background: #f0efec;
+  border-left-color: var(--drilldown-accent);
+  color: var(--overview-ink);
+  outline: none;
+}
+
+.drilldown-directory button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drilldown-directory button small {
+  color: var(--overview-muted);
+  flex: 0 0 auto;
+  font-size: 0.62rem;
+}
+
+.drilldown-main {
+  min-width: 0;
+}
+
+.drilldown-activity-group + .drilldown-activity-group {
+  margin-top: 1.7rem;
+}
+
+.drilldown-section-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 0.55rem;
+  margin: 0 0 0.65rem;
+}
+
+.drilldown-activity-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.drilldown-activity-card {
+  background: var(--overview-surface);
+  border: 1px solid var(--overview-border);
+  border-radius: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem 0.8rem;
+  scroll-margin-top: 1rem;
+}
+
+.drilldown-activity-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  justify-content: space-between;
+}
+
+.drilldown-activity-title {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.drilldown-activity-title h3 {
+  font-size: 0.9rem;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drilldown-activity-title span {
+  background: #f0efec;
+  border-radius: 0.35rem;
+  color: var(--overview-secondary);
+  font-size: 0.68rem;
+  padding: 0.15rem 0.45rem;
+}
+
+.drilldown-card-actions {
+  align-items: center;
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  justify-content: flex-end;
+}
+
+.drilldown-metric-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.drilldown-metric-pills button,
+.drilldown-detail-button {
+  background: transparent;
+  border: 1px solid var(--overview-grid);
+  border-radius: 0.4rem;
+  color: var(--overview-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.16rem 0.48rem;
+}
+
+.drilldown-metric-pills button:hover,
+.drilldown-metric-pills button:focus-visible,
+.drilldown-detail-button:hover,
+.drilldown-detail-button:focus-visible {
+  background: #f0efec;
+  outline: none;
+}
+
+.drilldown-metric-pills button.is-active,
+.drilldown-detail-button.is-active {
+  background: var(--drilldown-accent);
+  border-color: var(--drilldown-accent);
+  color: #fff;
+}
+
+.drilldown-metric-name {
+  color: var(--overview-muted);
+  font-size: 0.72rem;
+  margin: 0.35rem 0 0;
+}
+
+.drilldown-empty,
+.drilldown-detail-loading,
+.drilldown-detail-empty {
+  align-items: center;
+  color: var(--overview-muted);
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: center;
+  min-height: 10rem;
+  text-align: center;
+}
+
+.drilldown-error {
+  color: #b91c1c;
+}
+
+.drilldown-boolean-status {
+  color: #006300;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 1.2rem 0 1rem;
+}
+
+.drilldown-boolean-status.is-negative {
+  color: #d03b3b;
+}
+
+.drilldown-fact-note {
+  color: var(--overview-muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  margin: 0.1rem 0 0;
+}
+
+.drilldown-details {
+  border-top: 1px solid var(--overview-grid);
+  margin-top: 0.55rem;
+  padding-top: 0.15rem;
+}
+
+.drilldown-detail-section + .drilldown-detail-section {
+  border-top: 1px solid var(--overview-grid);
+  margin-top: 0.55rem;
+  padding-top: 0.15rem;
+}
+
+.drilldown-detail-section h4 {
+  color: var(--overview-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+  margin: 0.65rem 0 0.15rem;
+}
+
+.drilldown-table-wrap {
+  overflow-x: auto;
+}
+
+.drilldown-fact-table {
+  border-collapse: collapse;
+  font-size: 0.7rem;
+  min-width: 42rem;
+  width: 100%;
+}
+
+.drilldown-fact-table th,
+.drilldown-fact-table td {
+  border-bottom: 1px solid var(--overview-grid);
+  padding: 0.38rem 0.45rem;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.drilldown-fact-table thead th {
+  color: var(--overview-secondary);
+  font-size: 0.66rem;
+  font-weight: 500;
+}
+
+.drilldown-fact-table tbody th,
+.drilldown-fact-table td {
+  font-variant-numeric: tabular-nums;
+}
+
+.drilldown-fact-table tbody th {
+  color: var(--overview-secondary);
+  font-weight: 500;
+}
+
+.drilldown-source {
+  color: var(--overview-muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.64rem;
+}
+
+.drilldown-source.is-manual {
+  color: #925700;
+}
+
+.drilldown-source.is-auto {
+  color: #006300;
+}
+
+.drilldown-muted {
+  color: var(--overview-muted);
+}
+
+@media (max-width: 900px) {
+  .drilldown-kpi-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .drilldown-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .drilldown-directory {
+    position: static;
+  }
+
+  .drilldown-directory section {
+    display: inline;
+  }
+
+  .drilldown-directory section + section {
+    border-top: 0;
+  }
+
+  .drilldown-directory h2 {
+    display: inline-block;
+    padding-bottom: 0.55rem;
+  }
+
+  .drilldown-directory button {
+    display: inline-flex;
+    margin: 0 0.25rem 0.35rem 0;
+    width: auto;
+  }
+}
+
+@media (max-width: 520px) {
+  .drilldown-kpi-row {
+    grid-template-columns: 1fr;
+  }
+
+  .drilldown-activity-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .drilldown-card-actions {
+    justify-content: flex-start;
+    width: 100%;
+  }
+}
