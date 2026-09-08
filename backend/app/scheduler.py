@@ -65,9 +65,16 @@ def _existing_fact(
     else:
         conditions.append(FactRecord.iteration_id == collected_fact.iteration_id)
 
+    manual = db.scalars(
+        select(FactRecord)
+        .where(*conditions, FactRecord.source == FactSource.MANUAL.value)
+        .order_by(FactRecord.id.desc())
+    ).first()
+    if manual is not None:
+        return manual
     return db.scalars(
         select(FactRecord)
-        .where(*conditions)
+        .where(*conditions, FactRecord.source == FactSource.AUTO.value)
         .order_by(FactRecord.id.desc())
     ).first()
 

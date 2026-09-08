@@ -8,7 +8,7 @@
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, Index, String, text
+from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -125,18 +125,6 @@ class FactRecord(Base):
     """
 
     __tablename__ = "fact_records"
-    __table_args__ = (
-        # 补录粒度（spec §4）：团队 × 迭代 × 指标一条——仅约束关键活动（迭代非空）；
-        # 通用能力无迭代，按周期补录，不做唯一约束（SQLite 对含 NULL 的唯一约束也不生效）
-        Index(
-            "uq_fact_key_scope",
-            "team_id", "metric_id", "iteration_id",
-            unique=True,
-            sqlite_where=text("iteration_id IS NOT NULL"),
-            postgresql_where=text("iteration_id IS NOT NULL"),
-        ),
-    )
-
     id: Mapped[int] = mapped_column(primary_key=True)
     team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
     metric_id: Mapped[int] = mapped_column(ForeignKey("metrics.id"))

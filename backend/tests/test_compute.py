@@ -25,6 +25,7 @@ def fact(
     start_date=date(2026, 1, 1),
     end_date=date(2026, 1, 1),
     entered_at=None,
+    source=None,
 ):
     return SimpleNamespace(
         id=fact_id,
@@ -36,6 +37,7 @@ def fact(
         start_date=start_date,
         end_date=end_date,
         entered_at=entered_at,
+        source=source,
     )
 
 
@@ -105,7 +107,7 @@ def test_month_periods_keep_cross_year_month_boundaries():
     assert periods[0]["end_date"] == date(2025, 12, 31)
 
 
-def test_iteration_periods_group_records_by_label_even_when_they_cross_months():
+def test_iteration_periods_use_latest_record_by_label_even_when_they_cross_months():
     first = iteration(
         10,
         "版本一-迭代一",
@@ -139,9 +141,9 @@ def test_iteration_periods_group_records_by_label_even_when_they_cross_months():
     )
 
     assert [period["label"] for period in result["periods"]] == ["版本一-迭代一", "版本一-迭代二"]
-    assert [point["value"] for point in result["series"][0]["values"]] == [pytest.approx(4 / 6), pytest.approx(2 / 5)]
-    assert result["series"][0]["values"][0]["numerator"] == 4
-    assert result["series"][0]["values"][0]["denominator"] == 6
+    assert [point["value"] for point in result["series"][0]["values"]] == [pytest.approx(3 / 4), pytest.approx(2 / 5)]
+    assert result["series"][0]["values"][0]["numerator"] == 3
+    assert result["series"][0]["values"][0]["denominator"] == 4
 
 
 def test_iteration_periods_follow_product_version_order_before_iteration_order():
@@ -267,3 +269,22 @@ def test_boolean_value_uses_latest_fact_as_a_snapshot():
     assert result["periods"] == []
     assert result["series"][0]["snapshot"] is False
     assert result["company_average"] == []
+
+
+def test_manual_fact_overrides_auto_fact_for_the_same_scope():
+    facts = [
+        fact(1, numerator=1, denominator=2, source="auto"),
+        fact(2, numerator=9, denominator=10, source="manual"),
+    ]
+
+    result = build_series(
+        facts=facts,
+        metric_type="penetration",
+        activity_kind="general",
+        teams=[team(1, "团队A")],
+        iterations=[],
+        dimension="time",
+        granularity="week",
+    )
+
+    assert result["series"][0]["values"][0]["value"] == 0.9

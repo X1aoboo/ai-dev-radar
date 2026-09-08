@@ -10,7 +10,7 @@ from .api import router
 from .collectors import CollectorRegistry
 from .config import SESSION_HTTPS_ONLY, SESSION_MAX_AGE, SESSION_SECRET
 from .db import Base, SessionLocal, engine
-from .migrations import ensure_auth_schema
+from .migrations import ensure_auth_schema, ensure_fact_schema
 from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User  # noqa: F401
 from .scheduler import create_scheduler
 
@@ -21,6 +21,7 @@ collector_registry = CollectorRegistry()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
+    ensure_fact_schema()
     ensure_auth_schema()
     with SessionLocal() as db:
         if db.scalar(select(func.count()).select_from(Activity)) == 0:

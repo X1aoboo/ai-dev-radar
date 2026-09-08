@@ -304,8 +304,56 @@ def _fact_order_key(fact: Any) -> tuple[float, int]:
     return timestamp, int(fact_id)
 
 
+def _fact_scope_key(fact: Any) -> tuple[Any, ...]:
+    """返回事实记录的逻辑键，不把 manual 修正记录折叠成数据库唯一键。"""
+
+    team_id = getattr(fact, "team_id", None)
+    metric_id = getattr(fact, "metric_id", None)
+    iteration_id = getattr(fact, "iteration_id", None)
+    if iteration_id is not None:
+        return ("iteration", team_id, metric_id, iteration_id)
+    return (
+        "period",
+        team_id,
+        metric_id,
+        _as_local_date(getattr(fact, "start_date")),
+        _as_local_date(getattr(fact, "end_date")),
+    )
+
+
+def select_current_facts(
+    facts: Iterable[Any],
+    *,
+    source: str | None = None,
+) -> list[Any]:
+    """选择每个逻辑键当前生效的事实记录。
+
+    manual 记录表示人工修正，因此只要同键存在 manual，就优先取最新 manual；
+    否则取最新 auto。传入 source 时只在该来源内取最新记录，用于历史筛选。
+    """
+
+    grouped: dict[tuple[Any, ...], list[Any]] = {}
+    for fact in facts:
+        fact_source = _enum_value(getattr(fact, "source", None))
+        if source is not None and fact_source != _enum_value(source):
+            continue
+        grouped.setdefault(_fact_scope_key(fact), []).append(fact)
+
+    selected = []
+    for candidates in grouped.values():
+        if source is None:
+            manual = [
+                fact
+                for fact in candidates
+                if _enum_value(getattr(fact, "source", None)) == "manual"
+            ]
+            candidates = manual or candidates
+        selected.append(max(candidates, key=_fact_order_key))
+    return sorted(selected, key=lambda fact: int(getattr(fact, "id", 0) or 0))
+
+
 def _snapshot_value(facts: Iterable[Any]) -> bool | None:
-    fact_list = list(facts)
+    fact_list = select_current_facts(facts)
     if not fact_list:
         return None
     latest = max(fact_list, key=_fact_order_key)
@@ -363,7 +411,7 @@ def build_series(
     if resolved_dimension == "iteration" and resolved_kind == "general":
         raise ValueError("general activity has no iteration dimension")
 
-    fact_list = list(facts)
+    fact_list = select_current_facts(facts)
     team_list = list(teams)
     all_team_ids = [_team_id(team) for team in team_list]
     selected_ids = set(all_team_ids if team_ids is None else team_ids)

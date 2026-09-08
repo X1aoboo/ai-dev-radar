@@ -366,6 +366,256 @@ function ConfigPage({ user, onNavigate, onLogout, onSessionExpired }) {
   )
 }
 
+function ManualEntryPage({ user, onNavigate, onLogout, onSessionExpired }) {
+  const [teams, setTeams] = useState([])
+  const [catalog, setCatalog] = useState([])
+  const [versions, setVersions] = useState([])
+  const [teamId, setTeamId] = useState('')
+  const [scope, setScope] = useState('iteration')
+  const [iterationId, setIterationId] = useState('')
+  const [periodStart, setPeriodStart] = useState('')
+  const [periodEnd, setPeriodEnd] = useState('')
+  const [facts, setFacts] = useState([])
+  const [values, setValues] = useState({})
+  const [loading, setLoading] = useState(true)
+  const [loadingFacts, setLoadingFacts] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [message, setMessage] = useState(null)
+
+  useEffect(() => {
+    let active = true
+    setLoading(true)
+    Promise.all([
+      fetchJson('/api/teams'),
+      fetchJson('/api/catalog'),
+      fetchJson('/api/versions'),
+    ])
+      .then(([nextTeams, nextCatalog, nextVersions]) => {
+        if (!active) return
+        setTeams(nextTeams)
+        setCatalog(nextCatalog)
+        setVersions(nextVersions)
+      })
+      .catch((error) => {
+        if (!active) return
+        setMessage({ type: 'error', text: error.message })
+        if (error.status === 401) onSessionExpired()
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => { active = false }
+  }, [onSessionExpired])
+
+  const availableTeams = user.role === 'maintainer'
+    ? teams.filter((team) => team.id === user.maintainer_team_id)
+    : teams
+  const allIterations = versions.flatMap((version) => version.iterations.map((iteration) => ({
+    ...iteration,
+    versionName: version.name,
+  })))
+
+  useEffect(() => {
+    if (teamId || !availableTeams.length) return
+    setTeamId(String(availableTeams[0].id))
+  }, [availableTeams, teamId])
+
+  useEffect(() => {
+    if (!iterationId && allIterations.length) setIterationId(String(allIterations[0].id))
+  }, [allIterations, iterationId])
+
+  const loadCurrentFacts = useCallback(async () => {
+    const selectedMetrics = catalog
+      .filter((activity) => activity.kind === (scope === 'iteration' ? 'key' : 'general'))
+      .flatMap((activity) => activity.metrics)
+    const readyForQuery = teamId && (
+      scope === 'iteration'
+        ? iterationId
+        : periodStart && periodEnd
+    )
+    if (!readyForQuery) {
+      setFacts([])
+      setValues(Object.fromEntries(selectedMetrics.map((metric) => [metric.id, { numerator: '', denominator: '' }])))
+      return
+    }
+
+    const params = new URLSearchParams({ team_id: teamId })
+    if (scope === 'iteration') {
+      params.set('iteration_id', iterationId)
+    } else {
+      params.set('start_date', periodStart)
+      params.set('end_date', periodEnd)
+    }
+
+    setLoadingFacts(true)
+    try {
+      const nextFacts = await fetchJson(`/api/facts?${params.toString()}`)
+      const nextValues = Object.fromEntries(selectedMetrics.map((metric) => {
+        const fact = nextFacts.find((item) => item.metric_id === metric.id)
+        return [metric.id, {
+          numerator: fact?.numerator ?? '',
+          denominator: fact?.denominator ?? '',
+        }]
+      }))
+      setFacts(nextFacts)
+      setValues(nextValues)
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setLoadingFacts(false)
+    }
+  }, [catalog, iterationId, onSessionExpired, periodEnd, periodStart, scope, teamId])
+
+  useEffect(() => { loadCurrentFacts() }, [loadCurrentFacts])
+
+  const selectedMetrics = catalog
+    .filter((activity) => activity.kind === (scope === 'iteration' ? 'key' : 'general'))
+    .flatMap((activity) => activity.metrics)
+
+  function updateValue(metricId, field, value) {
+    setValues((previous) => ({
+      ...previous,
+      [metricId]: { ...(previous[metricId] ?? {}), [field]: value },
+    }))
+  }
+
+  async function submit(event) {
+    event.preventDefault()
+    setMessage(null)
+    if (scope === 'period' && periodStart > periodEnd) {
+      setMessage({ type: 'error', text: '周期开始日期不能晚于结束日期。' })
+      return
+    }
+    const missing = selectedMetrics.filter((metric) => {
+      const value = values[metric.id] ?? {}
+      return value.numerator === '' || (metric.denominator_semantic && value.denominator === '')
+    })
+    if (missing.length) {
+      setMessage({ type: 'error', text: `请填写全部指标的${missing.map((metric) => metric.name).join('、')}。` })
+      return
+    }
+
+    setSubmitting(true)
+    let savedCount = 0
+    let failedMetric = null
+    try {
+      for (const metric of selectedMetrics) {
+        failedMetric = metric
+        const value = values[metric.id]
+        const payload = {
+          team_id: Number(teamId),
+          metric_id: metric.id,
+          numerator: Number(value.numerator),
+          denominator: metric.denominator_semantic ? Number(value.denominator) : null,
+        }
+        if (scope === 'iteration') payload.iteration_id = Number(iterationId)
+        else {
+          payload.start_date = periodStart
+          payload.end_date = periodEnd
+        }
+        await fetchJson('/api/facts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+        savedCount += 1
+      }
+      setMessage({ type: 'success', text: `已保存 ${selectedMetrics.length} 条补录记录。` })
+      await loadCurrentFacts()
+    } catch (error) {
+      const prefix = savedCount
+        ? `已保存 ${savedCount} 条；指标“${failedMetric?.name ?? '未知'}”提交失败：`
+        : ''
+      setMessage({ type: 'error', text: `${prefix}${error.message}` })
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  if (loading) return <p style={styles.loading}>加载补录目录中…</p>
+
+  const selectedTeam = availableTeams.find((team) => String(team.id) === teamId)
+  const selectedIteration = allIterations.find((iteration) => String(iteration.id) === iterationId)
+
+  return (
+    <main style={styles.page}>
+      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
+      <h1>数据补录</h1>
+      <p style={styles.muted}>补录会追加事实记录；重复补录不会删除历史，当前看板取最新人工记录。</p>
+      {message && <p role="alert" style={message.type === 'error' ? styles.error : styles.success}>{message.text}</p>}
+
+      <section style={styles.card}>
+        <div style={styles.manualSelectionGrid}>
+          <label style={styles.field}>
+            团队
+            <select value={teamId} disabled={user.role === 'maintainer'} onChange={(event) => setTeamId(event.target.value)}>
+              {availableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+            </select>
+          </label>
+          <label style={styles.field}>
+            补录范围
+            <select value={scope} onChange={(event) => setScope(event.target.value)}>
+              <option value="iteration">迭代（关键研发活动）</option>
+              <option value="period">周期（通用研发能力）</option>
+            </select>
+          </label>
+          {scope === 'iteration' ? (
+            <label style={styles.field}>
+              迭代
+              <select value={iterationId} onChange={(event) => setIterationId(event.target.value)}>
+                {allIterations.map((iteration) => <option key={iteration.id} value={iteration.id}>{iteration.versionName} / {iteration.name}</option>)}
+              </select>
+            </label>
+          ) : (
+            <>
+              <label style={styles.field}>周期开始<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
+              <label style={styles.field}>周期结束<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
+            </>
+          )}
+        </div>
+        {scope === 'iteration' && selectedIteration && (
+          <p style={styles.muted}>迭代时间：{selectedIteration.start_date} 至 {selectedIteration.end_date}</p>
+        )}
+        {selectedTeam && <p style={styles.muted}>当前团队：{selectedTeam.name}</p>}
+      </section>
+
+      <form onSubmit={submit} style={{ ...styles.card, marginTop: '1.25rem' }}>
+        <h2>{scope === 'iteration' ? '关键研发活动指标' : '通用研发能力指标'}</h2>
+        {loadingFacts ? <p style={styles.loading}>读取已有记录中…</p> : selectedMetrics.length === 0 ? (
+          <p style={styles.muted}>当前目录没有可补录指标。</p>
+        ) : (
+          <>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={styles.table}>
+                <thead><tr><th>指标</th><th>分子</th><th>分母</th><th>当前记录</th></tr></thead>
+                <tbody>
+                  {selectedMetrics.map((metric) => {
+                    const value = values[metric.id] ?? { numerator: '', denominator: '' }
+                    const fact = facts.find((item) => item.metric_id === metric.id)
+                    return (
+                      <tr key={metric.id}>
+                        <td><strong>{metric.name}</strong><br /><small>{metric.numerator_semantic}</small></td>
+                        <td><input required type="number" step="any" value={value.numerator} onChange={(event) => updateValue(metric.id, 'numerator', event.target.value)} /></td>
+                        <td>{metric.denominator_semantic ? <><input required type="number" step="any" value={value.denominator} onChange={(event) => updateValue(metric.id, 'denominator', event.target.value)} /><br /><small>{metric.denominator_semantic}</small></> : <span style={styles.muted}>不适用</span>}</td>
+                        <td>{fact ? <small>{fact.source === 'manual' ? 'manual' : 'auto'} / {fact.entered_by}<br />{new Date(fact.entered_at).toLocaleString('zh-CN')}</small> : <span style={styles.muted}>暂无</span>}</td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <button type="submit" disabled={submitting || !teamId || (scope === 'iteration' ? !iterationId : !periodStart || !periodEnd)} style={styles.primaryButton}>
+              {submitting ? '保存中…' : '保存全部指标'}
+            </button>
+          </>
+        )}
+      </form>
+    </main>
+  )
+}
+
 function Navigation({ user, onNavigate, onLogout }) {
   return (
     <nav style={styles.navigation} aria-label="主导航">
@@ -508,6 +758,7 @@ const styles = {
   card: { border: '1px solid #e5e7eb', borderRadius: 12, padding: '1.5rem' },
   configSection: { marginTop: '2.5rem' },
   configGrid: { alignItems: 'start', display: 'grid', gap: '1.25rem', gridTemplateColumns: 'minmax(280px, 1fr) minmax(0, 2fr)' },
+  manualSelectionGrid: { alignItems: 'end', display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' },
   listField: { border: '1px solid #cbd5e1', borderRadius: 6, display: 'grid', gap: 8, margin: '1rem 0', padding: '0.75rem' },
   inlineField: { alignItems: 'center', display: 'flex', gap: 8 },
   secondaryButton: { background: 'white', border: '1px solid #94a3b8', borderRadius: 6, cursor: 'pointer', padding: '0.4rem 0.6rem' },
@@ -594,7 +845,7 @@ export default function App() {
     return <ConfigPage user={user} onNavigate={navigate} onLogout={logout} onSessionExpired={sessionExpired} />
   }
   if (pathname === '/manual-entry') {
-    return <PlaceholderPage title="补录" user={user} onNavigate={navigate} onLogout={logout} />
+    return <ManualEntryPage user={user} onNavigate={navigate} onLogout={logout} onSessionExpired={sessionExpired} />
   }
   return (
     <Dashboard

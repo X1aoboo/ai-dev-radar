@@ -1,4 +1,4 @@
-"""轻量级启动迁移。项目尚未引入迁移框架，先集中处理认证 schema 演进。"""
+"""轻量级启动迁移。项目尚未引入迁移框架，集中处理 schema 演进。"""
 
 from sqlalchemy import Engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -7,6 +7,21 @@ from .auth import hash_password
 from .config import SEED_PASSWORD
 from .db import SessionLocal, engine
 from .models import User
+
+
+def ensure_fact_schema(db_engine: Engine = engine) -> None:
+    """移除 01 票遗留的事实记录唯一索引，允许补录保留修正历史。"""
+
+    inspector = inspect(db_engine)
+    if "fact_records" not in inspector.get_table_names():
+        return
+
+    index_names = {
+        index["name"] for index in inspector.get_indexes("fact_records")
+    }
+    if "uq_fact_key_scope" in index_names:
+        with db_engine.begin() as connection:
+            connection.execute(text("DROP INDEX IF EXISTS uq_fact_key_scope"))
 
 
 def ensure_auth_schema(

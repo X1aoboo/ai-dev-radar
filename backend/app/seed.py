@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import hash_password
 from .config import SEED_PASSWORD
-from .migrations import ensure_auth_schema
+from .migrations import ensure_auth_schema, ensure_fact_schema
 from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User
 
 # ---------------------------------------------------------------- 指标目录（spec §2.1）
@@ -138,7 +138,7 @@ VERSIONS = [
     ]),
 ]
 
-ENTERED_AT = datetime(2026, 9, 8, 12, 0, 0)
+ENTERED_AT = datetime(2026, 1, 1, 12, 0, 0)
 
 # ---------------------------------------------------------------- 种子实现
 
@@ -315,10 +315,12 @@ def main() -> None:
         seed_engine = create_engine(args.db)
         session_factory = sessionmaker(bind=seed_engine)
         Base.metadata.create_all(seed_engine)
+        ensure_fact_schema(seed_engine)
         ensure_auth_schema(seed_engine, session_factory)
         db = session_factory()
     else:
         Base.metadata.create_all(engine)
+        ensure_fact_schema()
         ensure_auth_schema()
         db = SessionLocal()
     try:

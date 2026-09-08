@@ -1,6 +1,6 @@
 # 06 补录：API 与页面
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01, 02
 
 spec §6.5。补录兼作补充与修正，是第一版唯一的数据入口。
@@ -21,3 +21,14 @@ spec §6.5。补录兼作补充与修正，是第一版唯一的数据入口。
 ## 依据
 
 spec §5、§6.5；`CONTEXT.md` 的数据补录/事实记录词条。
+
+## Comments
+
+**2026-09-08 实现完成**（待人工验收）：
+
+- 新增受认证保护的 `POST /api/facts`：admin 可补录全部团队，maintainer 仅可补录关联团队；自动写入 `source=manual`、当前用户名和录入时间。
+- 关键研发活动按迭代补录，通用研发能力按显式开始/结束日期补录；指标目录语义驱动分母校验和表单。
+- 移除旧的事实记录唯一索引并加入启动迁移；重复补录追加历史，当前查询与计算取最新 manual 记录，历史可通过 `history=true` 查询。
+- 补录页已替换占位页，支持团队、迭代/周期选择、指标目录表单、当前值回显和来源/录入人/时间展示。
+- 采集器在同键存在 manual 修正时跳过自动更新，避免覆盖人工修正。
+- 验证：`.venv/bin/python -m pytest backend/tests -q` → 78 passed；`npm --prefix frontend run build` 通过（保留既有 bundle 大小警告）。

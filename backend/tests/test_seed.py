@@ -84,11 +84,8 @@ def test_seed_idempotent():
         assert after["facts"] > 0
 
 
-def test_manual_entry_granularity_unique():
-    """补录粒度（spec §4）：团队 × 迭代 × 指标一条——关键活动重复插入应被拒。"""
-    import pytest
-    from sqlalchemy.exc import IntegrityError
-
+def test_manual_entry_granularity_keeps_correction_history():
+    """同一团队、迭代、指标可追加修正记录，历史行不被唯一索引阻断。"""
     with SessionLocal() as db:
         rec = db.scalars(
             select(FactRecord).where(FactRecord.iteration_id.is_not(None))
@@ -100,6 +97,6 @@ def test_manual_entry_granularity_unique():
             source="manual", entered_by="测试",
         )
         db.add(dup)
-        with pytest.raises(IntegrityError):
-            db.flush()
+        db.flush()
+        assert dup.id > rec.id
         db.rollback()

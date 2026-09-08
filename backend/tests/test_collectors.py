@@ -86,6 +86,26 @@ def test_registered_fake_collector_writes_auto_fact():
         assert second_summary.facts_written == 0
         assert second_summary.facts_updated == 1
         assert len(collector.calls) == 2
+
+        db.add(
+            FactRecord(
+                team_id=team.id,
+                metric_id=metric.id,
+                numerator=9,
+                denominator=10,
+                start_date=date(2026, 9, 7),
+                end_date=date(2026, 9, 7),
+                source="manual",
+                entered_by="maintainer",
+            )
+        )
+        db.commit()
+        third_summary = run_daily_collection(db, registry, run_date=date(2026, 9, 8))
+        facts = db.scalars(select(FactRecord).order_by(FactRecord.id)).all()
+        assert len(facts) == 2
+        assert facts[-1].source == "manual"
+        assert facts[-1].numerator == 9
+        assert third_summary.facts_skipped_manual == 1
     finally:
         db.close()
 

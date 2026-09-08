@@ -1,4 +1,6 @@
-"""认证端点，以及需要登录才能访问的只读 REST 端点。"""
+"""认证端点，以及需要登录才能访问的 REST 端点。"""
+
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -12,9 +14,19 @@ from .auth import (
     require_team_access,
     verify_password,
 )
-from .compute import build_series
+from .compute import build_series, select_current_facts
 from .db import get_db
-from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User, UserRole
+from .models import (
+    Activity,
+    FactRecord,
+    FactSource,
+    Iteration,
+    Metric,
+    ProductVersion,
+    Team,
+    User,
+    UserRole,
+)
 from .schemas import (
     ActivityIn,
     ActivityOut,
@@ -25,6 +37,7 @@ from .schemas import (
     IterationOut,
     LoginIn,
     LogoutOut,
+    ManualFactIn,
     MetricIn,
     MetricOut,
     MetricUpdateIn,
@@ -368,8 +381,8 @@ def list_iterations(
 @router.get("/compute", response_model=ComputeOut)
 def compute_metric(
     metric_id: int = Query(ge=1),
-    team_id: list[int] | None = Query(default=None, ge=1),
-    iteration_id: list[int] | None = Query(default=None, ge=1),
+    team_id: list[int] | None = Query(default=None),
+    iteration_id: list[int] | None = Query(default=None),
     version_id: str | None = Query(default=None, pattern="^(all|[1-9][0-9]*)$"),
     dim: str = Query(default="time", pattern="^(time|iteration|iter)$"),
     gran: str = Query(default="week", pattern="^(week|month)$"),
@@ -396,6 +409,8 @@ def compute_metric(
     team_by_id = {team.id: team for team in teams}
     selected_team_ids = None if team_id is None else list(dict.fromkeys(team_id))
     if selected_team_ids is not None:
+        if any(item < 1 for item in selected_team_ids):
+            raise HTTPException(status_code=422, detail="team_id must be positive")
         unknown_team_ids = [item for item in selected_team_ids if item not in team_by_id]
         if unknown_team_ids:
             raise HTTPException(status_code=404, detail="team not found")
@@ -411,6 +426,8 @@ def compute_metric(
         .order_by(ProductVersion.sort_order, Iteration.sort_order, Iteration.id)
     ).all()
     if iteration_id is not None:
+        if any(item < 1 for item in iteration_id):
+            raise HTTPException(status_code=422, detail="iteration_id must be positive")
         known_iteration_ids = {iteration.id for iteration in iterations}
         unknown_iteration_ids = [item for item in iteration_id if item not in known_iteration_ids]
         if unknown_iteration_ids:
@@ -450,12 +467,88 @@ def compute_metric(
     }
 
 
+@router.post("/facts", response_model=FactRecordOut, status_code=201)
+def create_manual_fact(
+    payload: ManualFactIn,
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MAINTAINER)),
+    db: Session = Depends(get_db),
+):
+    """追加一条人工事实记录；修正不覆盖历史行。"""
+
+    team = _get_or_404(db, Team, payload.team_id, "team not found")
+    if (
+        current_user.role == UserRole.MAINTAINER.value
+        and current_user.maintainer_team_id != team.id
+    ):
+        raise HTTPException(status_code=403, detail="team access denied")
+
+    metric = db.scalar(
+        select(Metric)
+        .options(joinedload(Metric.activity))
+        .where(Metric.id == payload.metric_id)
+    )
+    if metric is None:
+        raise HTTPException(status_code=404, detail="metric not found")
+
+    if metric.activity.kind == "key":
+        if payload.iteration_id is None:
+            raise HTTPException(status_code=422, detail="key activity requires iteration_id")
+        if payload.start_date is not None or payload.end_date is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="key activity dates are taken from the iteration",
+            )
+        iteration = _get_or_404(db, Iteration, payload.iteration_id, "iteration not found")
+        start_date = iteration.start_date
+        end_date = iteration.end_date
+    else:
+        if payload.iteration_id is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="general activity cannot have iteration_id",
+            )
+        if payload.start_date is None or payload.end_date is None:
+            raise HTTPException(
+                status_code=422,
+                detail="general activity requires start_date and end_date",
+            )
+        if payload.start_date > payload.end_date:
+            raise HTTPException(status_code=422, detail="start_date must not be after end_date")
+        start_date = payload.start_date
+        end_date = payload.end_date
+
+    if metric.denominator_semantic is None and payload.denominator is not None:
+        raise HTTPException(status_code=422, detail="metric does not accept a denominator")
+    if metric.denominator_semantic is not None and payload.denominator is None:
+        raise HTTPException(status_code=422, detail="metric requires a denominator")
+    if metric.type == "boolean" and payload.numerator not in (0, 1):
+        raise HTTPException(status_code=422, detail="boolean metric numerator must be 0 or 1")
+
+    fact = FactRecord(
+        team_id=team.id,
+        metric_id=metric.id,
+        iteration_id=payload.iteration_id,
+        numerator=payload.numerator,
+        denominator=payload.denominator,
+        start_date=start_date,
+        end_date=end_date,
+        source=FactSource.MANUAL.value,
+        entered_by=current_user.username,
+        entered_at=datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    db.add(fact)
+    return _commit(db, fact)
+
+
 @router.get("/facts", response_model=list[FactRecordOut])
 def list_facts(
     team_id: int | None = None,
     metric_id: int | None = None,
     iteration_id: int | None = None,
     source: str | None = Query(None, pattern="^(manual|auto)$"),
+    start_date: date | None = None,
+    end_date: date | None = None,
+    history: bool = False,
     limit: int = Query(default=10000, ge=1, le=50000),
     _current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -469,7 +562,14 @@ def list_facts(
         stmt = stmt.where(FactRecord.iteration_id == iteration_id)
     if source is not None:
         stmt = stmt.where(FactRecord.source == source)
-    return db.scalars(stmt).all()
+    if start_date is not None:
+        stmt = stmt.where(FactRecord.start_date == start_date)
+    if end_date is not None:
+        stmt = stmt.where(FactRecord.end_date == end_date)
+    facts = db.scalars(stmt).all()
+    if not history:
+        facts = select_current_facts(facts, source=source)
+    return facts[:limit]
 
 
 @router.get("/facts/{fact_id}", response_model=FactRecordOut)

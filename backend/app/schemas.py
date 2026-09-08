@@ -154,6 +154,20 @@ class FactRecordOut(BaseModel):
     entered_at: datetime
 
 
+class ManualFactIn(BaseModel):
+    """人工补录的事实记录；关键活动或通用能力决定时间字段形态。"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    team_id: int = Field(ge=1)
+    metric_id: int = Field(ge=1)
+    iteration_id: int | None = Field(default=None, ge=1)
+    numerator: float
+    denominator: float | None = None
+    start_date: date | None = None
+    end_date: date | None = None
+
+
 class ComputePeriodOut(BaseModel):
     id: int | str
     label: str
