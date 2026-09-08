@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    environment:
+      APP_ENV: "${APP_ENV:-production}"
+      DATABASE_URL: "${DATABASE_URL:-sqlite:////data/ai-dev-radar.db}"
+      SESSION_SECRET: "${SESSION_SECRET:?Set SESSION_SECRET in .env}"
+      SESSION_MAX_AGE: "${SESSION_MAX_AGE:-28800}"
+      SESSION_HTTPS_ONLY: "${SESSION_HTTPS_ONLY:-0}"
+      SEED_PASSWORD: "${SEED_PASSWORD:?Set SEED_PASSWORD in .env}"
+      COLLECTION_CRON: "${COLLECTION_CRON:-0 2 * * *}"
+    volumes:
+      - ai-dev-radar-data:/data
+    restart: unless-stopped
+
+volumes:
+  ai-dev-radar-data:

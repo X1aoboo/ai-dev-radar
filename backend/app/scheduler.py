@@ -7,17 +7,18 @@ import logging
 from zoneinfo import ZoneInfo
 
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
 from .collectors import CollectedFact, CollectionWindow, CollectorRegistry
+from .config import COLLECTION_CRON
 from .db import SessionLocal
 from .models import ActivityKind, CollectMethod, FactRecord, FactSource, Metric, Team
 
 
 LOGGER = logging.getLogger(__name__)
 COLLECTION_TIMEZONE = ZoneInfo("Asia/Shanghai")
-DAILY_COLLECTION_HOUR = 2
 SCHEDULED_ACTOR = "scheduled-collector"
 SessionFactory = Callable[[], Session]
 
@@ -246,8 +247,7 @@ def create_scheduler(
     registry: CollectorRegistry,
     session_factory: SessionFactory = SessionLocal,
     *,
-    hour: int = DAILY_COLLECTION_HOUR,
-    minute: int = 0,
+    cron: str = COLLECTION_CRON,
     timezone: ZoneInfo = COLLECTION_TIMEZONE,
 ) -> BackgroundScheduler:
     """创建已配置但尚未启动的每日批量采集 scheduler。"""
@@ -255,9 +255,7 @@ def create_scheduler(
     scheduler = BackgroundScheduler(timezone=timezone)
     scheduler.add_job(
         scheduled_collection_job,
-        trigger="cron",
-        hour=hour,
-        minute=minute,
+        trigger=CronTrigger.from_crontab(cron, timezone=timezone),
         timezone=timezone,
         args=[registry, session_factory],
         id="daily-collection",

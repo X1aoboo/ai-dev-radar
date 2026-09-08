@@ -1,9 +1,15 @@
 """运行配置：连接串环境变量化，预留 MySQL 迁移路径（改 DATABASE_URL 即可）。"""
 
 import os
+from pathlib import Path
 
 # SQLite 默认；切 MySQL 时设 DATABASE_URL=mysql+pymysql://user:pass@host/db
 DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./ai-dev-radar.db")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+STATIC_DIR = Path(
+    os.environ.get("STATIC_DIR", str(PROJECT_ROOT / "frontend" / "dist"))
+)
+COLLECTION_CRON = os.environ.get("COLLECTION_CRON", "0 2 * * *").strip()
 
 APP_ENV = os.environ.get("APP_ENV", "production").lower()
 _DEFAULT_SESSION_SECRET = "ai-dev-radar-local-session-secret-change-me"
