@@ -1,0 +1,339 @@
+.overview-shell {
+  --overview-page: #f9f9f7;
+  --overview-surface: #fcfcfb;
+  --overview-ink: #0b0b0b;
+  --overview-secondary: #52514e;
+  --overview-muted: #898781;
+  --overview-border: rgba(11, 11, 11, 0.1);
+  --overview-grid: #e1e0d9;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.25rem 1.25rem 4rem;
+  color: var(--overview-ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+}
+
+.overview-page-head {
+  align-items: end;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin: 0 0 0.85rem;
+}
+
+.overview-eyebrow {
+  color: var(--overview-muted);
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  margin: 0 0 0.2rem;
+}
+
+.overview-page-head h1 {
+  font-size: 1.25rem;
+  line-height: 1.25;
+  margin: 0;
+}
+
+.overview-slice-description {
+  color: var(--overview-muted);
+  font-size: 0.78rem;
+  margin: 0;
+  text-align: right;
+}
+
+.overview-filterbar {
+  align-items: center;
+  background: var(--overview-surface);
+  border-bottom: 1px solid var(--overview-border);
+  border-top: 1px solid var(--overview-border);
+  display: flex;
+  gap: 1rem;
+  margin: 0 -1.25rem 1.1rem;
+  overflow-x: auto;
+  padding: 0.6rem 1.25rem;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.overview-filter-control {
+  align-items: center;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 0.4rem;
+}
+
+.overview-filter-label {
+  color: var(--overview-muted);
+  font-size: 0.72rem;
+}
+
+.overview-segmented {
+  border: 1px solid var(--overview-grid);
+  border-radius: 0.45rem;
+  display: inline-flex;
+  overflow: hidden;
+}
+
+.overview-segmented button,
+.overview-select,
+.overview-metric-pills button {
+  background: transparent;
+  border: 0;
+  color: var(--overview-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.76rem;
+}
+
+.overview-segmented button {
+  padding: 0.3rem 0.62rem;
+}
+
+.overview-segmented button + button {
+  border-left: 1px solid var(--overview-grid);
+}
+
+.overview-segmented button:hover,
+.overview-segmented button:focus-visible,
+.overview-metric-pills button:hover,
+.overview-metric-pills button:focus-visible {
+  background: #f0efec;
+  outline: none;
+}
+
+.overview-segmented button.is-active {
+  background: var(--overview-ink);
+  color: #fff;
+}
+
+.overview-select {
+  appearance: auto;
+  background: #fff;
+  border: 1px solid var(--overview-grid);
+  border-radius: 0.45rem;
+  min-width: 8.5rem;
+  padding: 0.28rem 1.8rem 0.28rem 0.5rem;
+}
+
+.overview-select:focus-visible {
+  outline: 2px solid #2a78d6;
+  outline-offset: 1px;
+}
+
+.overview-period-select {
+  min-width: 10rem;
+}
+
+.overview-section + .overview-section {
+  margin-top: 1.75rem;
+}
+
+.overview-section-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  font-size: 0.9rem;
+  gap: 0.55rem;
+  margin: 0 0 0.65rem;
+}
+
+.overview-badge,
+.overview-kind {
+  background: #f0efec;
+  border-radius: 0.35rem;
+  color: var(--overview-secondary);
+  font-size: 0.68rem;
+  font-weight: 400;
+  padding: 0.15rem 0.45rem;
+}
+
+.overview-card-grid {
+  display: grid;
+  gap: 0.8rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+}
+
+.overview-card {
+  background: var(--overview-surface);
+  border: 1px solid var(--overview-border);
+  border-radius: 0.65rem;
+  min-width: 0;
+  padding: 0.75rem 0.85rem 0.8rem;
+}
+
+.overview-card-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  justify-content: space-between;
+}
+
+.overview-card-title-row {
+  align-items: center;
+  display: inline-flex;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.overview-card-title-row h3 {
+  font-size: 0.9rem;
+  margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-metric-pills {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  justify-content: flex-end;
+}
+
+.overview-metric-pills button {
+  border: 1px solid var(--overview-grid);
+  border-radius: 0.4rem;
+  padding: 0.16rem 0.48rem;
+}
+
+.overview-metric-pills button.is-active {
+  background: #2a78d6;
+  border-color: #2a78d6;
+  color: #fff;
+}
+
+.overview-metric-name {
+  color: var(--overview-muted);
+  font-size: 0.72rem;
+  margin: 0.35rem 0 0;
+}
+
+.overview-chart {
+  min-height: 12rem;
+  width: 100%;
+}
+
+.overview-empty {
+  align-items: center;
+  color: var(--overview-muted);
+  display: flex;
+  font-size: 0.78rem;
+  justify-content: center;
+  min-height: 12rem;
+  text-align: center;
+}
+
+.overview-error {
+  color: #b91c1c;
+}
+
+.overview-slice {
+  border-top: 1px solid var(--overview-grid);
+  margin-top: 0.05rem;
+  padding-top: 0.45rem;
+}
+
+.overview-slice-heading {
+  color: var(--overview-muted);
+  font-size: 0.68rem;
+  margin-bottom: 0.35rem;
+}
+
+.overview-slice-values {
+  display: grid;
+  gap: 0.25rem 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+}
+
+.overview-slice-value {
+  align-items: baseline;
+  color: var(--overview-secondary);
+  display: flex;
+  font-size: 0.7rem;
+  gap: 0.35rem;
+  justify-content: space-between;
+  min-width: 0;
+}
+
+.overview-slice-value span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overview-slice-value strong {
+  color: var(--overview-ink);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.overview-company-value strong {
+  color: var(--overview-muted);
+}
+
+.overview-boolean-list {
+  display: grid;
+  gap: 0.45rem 0.6rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  min-height: 12rem;
+  padding-top: 0.75rem;
+}
+
+.overview-boolean-value {
+  align-items: center;
+  border: 1px solid var(--overview-grid);
+  border-radius: 0.45rem;
+  display: flex;
+  font-size: 0.75rem;
+  gap: 0.45rem;
+  justify-content: space-between;
+  padding: 0.55rem 0.6rem;
+}
+
+.overview-boolean-value strong {
+  font-weight: 600;
+}
+
+.overview-boolean-value.is-yes strong {
+  color: #006300;
+}
+
+.overview-boolean-value.is-no strong {
+  color: #d03b3b;
+}
+
+.overview-boolean-value.is-unknown strong {
+  color: var(--overview-muted);
+}
+
+.overview-card-note {
+  color: var(--overview-muted);
+  font-size: 0.7rem;
+  line-height: 1.45;
+  margin: 0.35rem 0 0;
+}
+
+@media (max-width: 700px) {
+  .overview-shell {
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+  }
+
+  .overview-page-head {
+    align-items: start;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  .overview-slice-description {
+    text-align: left;
+  }
+
+  .overview-filterbar {
+    margin-left: -0.8rem;
+    margin-right: -0.8rem;
+    padding-left: 0.8rem;
+    padding-right: 0.8rem;
+  }
+}

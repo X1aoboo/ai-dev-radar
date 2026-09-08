@@ -1,22 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import * as echarts from 'echarts'
+import { useCallback, useEffect, useState } from 'react'
 
-class HttpError extends Error {
-  constructor(status, message) {
-    super(message)
-    this.status = status
-  }
-}
-
-async function fetchJson(url, options = {}) {
-  const response = await fetch(url, { credentials: 'include', ...options })
-  if (!response.ok) {
-    const body = await response.json().catch(() => null)
-    throw new HttpError(response.status, body?.detail ?? `请求失败（${response.status}）`)
-  }
-  if (response.status === 204) return null
-  return response.json()
-}
+import { fetchJson } from './api'
+import OverviewPage from './overview/OverviewPage'
 
 function usePathname() {
   const [pathname, setPathname] = useState(window.location.pathname || '/')
@@ -643,25 +628,37 @@ function Navigation({ user, onNavigate, onLogout }) {
   )
 }
 
-function Dashboard({ user, onNavigate, onLogout, onSessionExpired }) {
+function TeamDrilldownPlaceholder({ user, team, onNavigate, onLogout }) {
+  return (
+    <main style={styles.page}>
+      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
+      <button type="button" onClick={() => onNavigate('/')} style={styles.secondaryButton}>
+        ← 返回总览
+      </button>
+      <h1>{team?.name ?? '团队'}下钻</h1>
+      <p style={styles.muted}>团队下钻页将在 issue 08 中实现，当前已接通趋势卡的导航入口。</p>
+    </main>
+  )
+}
+
+function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
   const [catalog, setCatalog] = useState(null)
   const [teams, setTeams] = useState(null)
-  const [facts, setFacts] = useState(null)
+  const [versions, setVersions] = useState(null)
   const [error, setError] = useState(null)
-  const chartRef = useRef(null)
 
   useEffect(() => {
     let active = true
     Promise.all([
       fetchJson('/api/catalog'),
       fetchJson('/api/teams'),
-      fetchJson('/api/facts'),
+      fetchJson('/api/versions'),
     ])
-      .then(([nextCatalog, nextTeams, nextFacts]) => {
+      .then(([nextCatalog, nextTeams, nextVersions]) => {
         if (!active) return
         setCatalog(nextCatalog)
         setTeams(nextTeams)
-        setFacts(nextFacts)
+        setVersions(nextVersions)
       })
       .catch((nextError) => {
         if (active) setError(nextError)
@@ -672,24 +669,6 @@ function Dashboard({ user, onNavigate, onLogout, onSessionExpired }) {
     }
   }, [user])
 
-  useEffect(() => {
-    if (!teams || !facts || !chartRef.current) return undefined
-    const counts = Object.entries(
-      facts.reduce((acc, fact) => ((acc[fact.team_id] = (acc[fact.team_id] ?? 0) + 1), acc), {}),
-    )
-    const chart = echarts.init(chartRef.current)
-    chart.setOption({
-      grid: { left: 80, right: 24, top: 24, bottom: 32 },
-      xAxis: { type: 'value' },
-      yAxis: {
-        type: 'category',
-        data: counts.map(([id]) => teams.find((team) => team.id === Number(id))?.name ?? id),
-      },
-      series: [{ type: 'bar', barMaxWidth: 24, data: counts.map(([, count]) => count) }],
-    })
-    return () => chart.dispose()
-  }, [teams, facts])
-
   if (error) {
     return (
       <main style={styles.page}>
@@ -698,29 +677,27 @@ function Dashboard({ user, onNavigate, onLogout, onSessionExpired }) {
       </main>
     )
   }
-  if (!catalog || !teams || !facts) {
+  if (!catalog || !teams || !versions) {
     return <p style={styles.loading}>加载中…</p>
   }
 
+  const teamMatch = pathname.match(/^\/team\/([^/]+)$/)
+  if (teamMatch) {
+    const team = teams.find((item) => String(item.id) === decodeURIComponent(teamMatch[1]))
+    return <TeamDrilldownPlaceholder user={user} team={team} onNavigate={onNavigate} onLogout={onLogout} />
+  }
+
   return (
-    <main style={styles.page}>
+    <>
       <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <h1>研发提效看板</h1>
-      <p>
-        活动 {catalog.length} 个（关键 {catalog.filter((activity) => activity.kind === 'key').length} / 通用{' '}
-        {catalog.filter((activity) => activity.kind === 'general').length}）、团队 {teams.length} 个、事实记录{' '}
-        {facts.length} 条。
-      </p>
-      <ul>
-        {catalog.map((activity) => (
-          <li key={activity.code}>
-            {activity.name}（{activity.kind === 'key' ? '关键研发活动' : '通用研发能力'}）：
-            {activity.metrics.map((metric) => `${metric.name}[${metric.type}]`).join('、')}
-          </li>
-        ))}
-      </ul>
-      <div ref={chartRef} style={{ width: '100%', height: 240 }} />
-    </main>
+      <OverviewPage
+        catalog={catalog}
+        teams={teams}
+        versions={versions}
+        onNavigate={onNavigate}
+        onSessionExpired={onSessionExpired}
+      />
+    </>
   )
 }
 
@@ -849,6 +826,7 @@ export default function App() {
   }
   return (
     <Dashboard
+      pathname={pathname}
       user={user}
       onNavigate={navigate}
       onLogout={logout}
