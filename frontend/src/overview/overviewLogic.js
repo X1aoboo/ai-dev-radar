@@ -1,4 +1,5 @@
 export const TEAM_COLORS = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100']
+export const TEAM_COLOR_STORAGE_KEY = 'ai-dev-radar.team-color-slots'
 
 export const INITIAL_FILTER = {
   dimension: 'time',

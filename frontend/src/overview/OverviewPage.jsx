@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import EChart from '../components/EChart'
+import { booleanStatusRows } from '../metricDetail/metricDetailLogic'
 import FilterBar from './FilterBar'
 import { buildTrendOption } from './chartOption'
 import { hasNumericValues, useComputedMetrics } from './metricData'
@@ -12,10 +13,10 @@ import {
   isGeneralIterationFallback,
   iterationPeriods,
   latestPeriodId,
+  TEAM_COLOR_STORAGE_KEY,
 } from './overviewLogic'
 import './overview.css'
 
-const TEAM_COLOR_STORAGE_KEY = 'ai-dev-radar.team-color-slots'
 function ErrorState({ error }) {
   return (
     <div className="overview-empty overview-error" role="alert">
@@ -52,17 +53,40 @@ function CurrentSlice({ data, metric, periodId }) {
   )
 }
 
-function BooleanCard({ activity, metric, data, teams, fallback }) {
-  const valuesByTeam = new Map((data?.series ?? []).map((series) => [series.team_id, series.snapshot]))
-  const hasValue = teams.some((team) => valuesByTeam.get(team.id) !== null && valuesByTeam.get(team.id) !== undefined)
+function BooleanCard({ data, teams, fallback, table = false, statusRows }) {
+  const rows = statusRows ?? booleanStatusRows(data, teams)
+  const hasValue = rows.some((row) => row.value !== null && row.value !== undefined)
 
   if (!hasValue) return <EmptyState>当前筛选切片暂无布尔状态数据。</EmptyState>
 
+  if (table) {
+    return (
+      <div className="metric-detail-boolean-table-wrap">
+        <table className="metric-detail-boolean-table">
+          <thead>
+            <tr><th scope="col">团队</th><th scope="col">状态</th></tr>
+          </thead>
+          <tbody>
+            {rows.map(({ team, value, state }) => {
+              return (
+                <tr key={team.id}>
+                  <th scope="row">{team.name}</th>
+                  <td className={`metric-detail-boolean-status is-${state}`}>
+                    {state === 'unknown' ? '暂无数据' : value ? '✓ 具备' : '✗ 不具备'}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <p className="overview-card-note">布尔指标按最新事实展示，周期筛选不改变状态。</p>
+      </div>
+    )
+  }
+
   return (
     <div className="overview-boolean-list">
-      {teams.map((team) => {
-        const value = valuesByTeam.get(team.id)
-        const state = value === null || value === undefined ? 'unknown' : value ? 'yes' : 'no'
+      {rows.map(({ team, value, state }) => {
         return (
           <span key={team.id} className={`overview-boolean-value is-${state}`}>
             <span>{team.name}</span>
@@ -70,13 +94,13 @@ function BooleanCard({ activity, metric, data, teams, fallback }) {
           </span>
         )
       })}
-      <p className="overview-card-note">布尔指标按最新事实展示，不绘制趋势。</p>
+      <p className="overview-card-note">布尔指标按最新事实展示，周期筛选不改变状态。</p>
       {fallback && <p className="overview-card-note">通用研发能力无迭代维度，固定按月展示。</p>}
     </div>
   )
 }
 
-function TrendCard({
+export function TrendCard({
   activity,
   metric,
   data,
@@ -88,13 +112,18 @@ function TrendCard({
   fallback,
   onMetricSlotChange,
   onNavigate,
+  showMetricPills = true,
+  showMetricDetailLink = true,
+  booleanTable = false,
+  booleanRows,
+  countAsBars = false,
 }) {
   const selectedPeriodId = fallback ? 'all' : (periodId ?? 'all')
   const option = useMemo(() => (
     data && metric.type !== 'boolean'
-      ? buildTrendOption({ data, metric, teamColors, selectedPeriodId })
+      ? buildTrendOption({ data, metric, teamColors, selectedPeriodId, countAsBars })
       : null
-  ), [data, metric, teamColors, selectedPeriodId])
+  ), [countAsBars, data, metric, teamColors, selectedPeriodId])
 
   function handleChartClick(params) {
     if (!params?.seriesName || params.seriesName === '全公司均值') return
@@ -110,26 +139,35 @@ function TrendCard({
           <h3>{activity.name}</h3>
           <span className="overview-kind">{activity.kind === 'key' ? '关键' : '通用'}</span>
         </div>
-        <div className="overview-metric-pills" role="group" aria-label={`${activity.name} 展示指标`}>
-          {activity.metrics.map((item, index) => (
-            <button
-              key={item.id}
-              type="button"
-              className={index === isSelectedMetric ? 'is-active' : ''}
-              aria-pressed={index === isSelectedMetric}
-              onClick={() => onMetricSlotChange(index)}
-            >
-              {item.name}
-            </button>
-          ))}
-        </div>
+        {showMetricPills && (
+          <div className="overview-metric-pills" role="group" aria-label={`${activity.name} 展示指标`}>
+            {activity.metrics.map((item, index) => (
+              <button
+                key={item.id}
+                type="button"
+                className={index === isSelectedMetric ? 'is-active' : ''}
+                aria-pressed={index === isSelectedMetric}
+                onClick={() => onMetricSlotChange(index)}
+              >
+                {item.name}
+              </button>
+            ))}
+          </div>
+        )}
       </header>
 
-      <p className="overview-metric-name">{metric.name}</p>
+      <div className="overview-metric-meta">
+        <p className="overview-metric-name">{metric.name}</p>
+        {showMetricDetailLink && onNavigate && (
+          <button type="button" className="overview-detail-link" onClick={() => onNavigate(`/metric/${metric.id}`)}>
+            指标详情 →
+          </button>
+        )}
+      </div>
       {loading && <div className="overview-empty">正在更新指标数据…</div>}
       {!loading && error && <ErrorState error={error} />}
       {!loading && !error && metric.type === 'boolean' && (
-        <BooleanCard activity={activity} metric={metric} data={data} teams={teams} fallback={fallback} />
+        <BooleanCard data={data} teams={teams} fallback={fallback} table={booleanTable} statusRows={booleanRows} />
       )}
       {!loading && !error && metric.type !== 'boolean' && !hasNumericValues(data) && <EmptyState />}
       {!loading && !error && metric.type !== 'boolean' && hasNumericValues(data) && (

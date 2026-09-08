@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react'
 
 import { fetchJson } from './api'
 import TeamDrilldownPage from './drilldown/TeamDrilldownPage'
+import MetricDetailPage from './metricDetail/MetricDetailPage'
+import { findMetric } from './metricDetail/metricDetailLogic'
 import OverviewPage from './overview/OverviewPage'
 import { INITIAL_FILTER } from './overview/overviewLogic'
 
@@ -669,6 +671,26 @@ function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
   }
   if (!catalog || !teams || !versions) {
     return <p style={styles.loading}>加载中…</p>
+  }
+
+  const metricMatch = pathname.match(/^\/metric\/([^/]+)$/)
+  if (metricMatch) {
+    const metricEntry = findMetric(catalog, decodeURIComponent(metricMatch[1]))
+    return (
+      <>
+        <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
+        <MetricDetailPage
+          activity={metricEntry?.activity}
+          metric={metricEntry?.metric}
+          teams={teams}
+          versions={versions}
+          filter={filter}
+          onFilterChange={setFilter}
+          onNavigate={onNavigate}
+          onSessionExpired={onSessionExpired}
+        />
+      </>
+    )
   }
 
   const teamMatch = pathname.match(/^\/team\/([^/]+)$/)

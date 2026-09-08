@@ -418,9 +418,19 @@ def build_series(
     company_ids = all_team_ids if company_team_ids is None else list(company_team_ids)
     output_teams = [team for team in team_list if _team_id(team) in selected_ids]
 
+    periods = periods_for(
+        fact_list,
+        dimension=resolved_dimension,
+        granularity=granularity,
+        iterations=iterations,
+        version_id=version_id,
+        iteration_ids=iteration_ids,
+        time_field=time_field,
+    )
+
     if resolved_metric_type == "boolean":
         return {
-            "periods": [],
+            "periods": periods,
             "series": [
                 {
                     "team_id": _team_id(team),
@@ -434,16 +444,6 @@ def build_series(
             ],
             "company_average": [],
         }
-
-    periods = periods_for(
-        fact_list,
-        dimension=resolved_dimension,
-        granularity=granularity,
-        iterations=iterations,
-        version_id=version_id,
-        iteration_ids=iteration_ids,
-        time_field=time_field,
-    )
 
     values_by_team: dict[Any, list[dict[str, Any]]] = {}
     for team in team_list:

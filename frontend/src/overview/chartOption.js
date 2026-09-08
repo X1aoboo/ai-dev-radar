@@ -32,23 +32,49 @@ function chartPoint(point, periodId) {
   }
 }
 
-export function buildTrendOption({ data, metric, teamColors, selectedPeriodId }) {
-  const teamSeries = (data?.series ?? []).map((series) => ({
+function isCountMetric(metric, countAsBars) {
+  return countAsBars && metric.type === 'count'
+}
+
+function buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars }) {
+  const color = teamColors[String(series.team_id)]
+  const data = (series.values ?? []).map((point) => chartPoint(point, selectedPeriodId))
+  if (isCountMetric(metric, countAsBars)) {
+    return {
+      name: series.team_name,
+      type: 'bar',
+      data,
+      color,
+      itemStyle: { color, borderRadius: [4, 4, 0, 0] },
+      barMaxWidth: 24,
+      barGap: '25%',
+    }
+  }
+
+  return {
     name: series.team_name,
     type: 'line',
-    data: (series.values ?? []).map((point) => chartPoint(point, selectedPeriodId)),
-    color: teamColors[String(series.team_id)],
+    data,
+    color,
     lineStyle: { width: 2, cap: 'round', join: 'round' },
-    itemStyle: { color: teamColors[String(series.team_id)] },
+    itemStyle: { color },
     symbol: 'circle',
     showSymbol: selectedPeriodId !== 'all',
     emphasis: { focus: 'series', showSymbol: true },
-  }))
+  }
+}
+
+export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, countAsBars = false }) {
+  const countMetric = isCountMetric(metric, countAsBars)
+  const teamSeries = (data?.series ?? []).map((series) => (
+    buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars })
+  ))
   const companyColor = COLORS.muted
+  const companyData = (data?.company_average ?? []).map((point) => chartPoint(point, selectedPeriodId))
   const companySeries = {
     name: '全公司均值',
     type: 'line',
-    data: (data?.company_average ?? []).map((point) => chartPoint(point, selectedPeriodId)),
+    data: companyData,
     color: companyColor,
     lineStyle: { width: 2, type: 'dashed', cap: 'round' },
     itemStyle: { color: companyColor },
@@ -69,11 +95,13 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId })
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: {
-        type: 'cross',
-        lineStyle: { color: COLORS.axis },
-        crossStyle: { color: COLORS.axis },
-      },
+      axisPointer: countMetric
+        ? { type: 'shadow' }
+        : {
+            type: 'cross',
+            lineStyle: { color: COLORS.axis },
+            crossStyle: { color: COLORS.axis },
+          },
       formatter: (params) => {
         const items = Array.isArray(params) ? params : [params]
         const periodLabel = items[0]?.axisValue ?? ''
@@ -91,7 +119,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId })
     xAxis: {
       type: 'category',
       data: (data?.periods ?? []).map((period) => period.label),
-      boundaryGap: false,
+      boundaryGap: countMetric,
       axisLine: { lineStyle: { color: COLORS.axis } },
       axisTick: { show: false },
       axisLabel: { color: COLORS.muted, fontSize: 11, hideOverlap: true },

@@ -253,7 +253,7 @@ def test_general_activity_cannot_be_aggregated_by_iteration():
 def test_boolean_value_uses_latest_fact_as_a_snapshot():
     facts = [
         fact(1, numerator=1, entered_at=datetime(2026, 1, 1, 12, 0)),
-        fact(2, numerator=0, entered_at=datetime(2026, 2, 1, 12, 0)),
+        fact(2, numerator=0, end_date=date(2026, 2, 1), entered_at=datetime(2026, 2, 1, 12, 0)),
     ]
 
     result = build_series(
@@ -266,7 +266,7 @@ def test_boolean_value_uses_latest_fact_as_a_snapshot():
         granularity="month",
     )
 
-    assert result["periods"] == []
+    assert [period["id"] for period in result["periods"]] == ["2026-01", "2026-02"]
     assert result["series"][0]["snapshot"] is False
     assert result["company_average"] == []
 

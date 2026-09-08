@@ -209,6 +209,29 @@
   margin: 0.35rem 0 0;
 }
 
+.overview-metric-meta {
+  align-items: baseline;
+  display: flex;
+  gap: 0.6rem;
+  justify-content: space-between;
+}
+
+.overview-detail-link {
+  background: transparent;
+  border: 0;
+  color: #2a78d6;
+  cursor: pointer;
+  flex: 0 0 auto;
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.15rem 0;
+}
+
+.overview-detail-link:hover,
+.overview-detail-link:focus-visible {
+  text-decoration: underline;
+}
+
 .overview-chart {
   min-height: 12rem;
   width: 100%;
@@ -312,6 +335,50 @@
   font-size: 0.7rem;
   line-height: 1.45;
   margin: 0.35rem 0 0;
+}
+
+.metric-detail-boolean-table-wrap {
+  padding-top: 0.75rem;
+}
+
+.metric-detail-boolean-table {
+  border-collapse: collapse;
+  font-size: 0.78rem;
+  width: 100%;
+}
+
+.metric-detail-boolean-table th,
+.metric-detail-boolean-table td {
+  border-bottom: 1px solid var(--overview-grid);
+  padding: 0.55rem 0.45rem;
+  text-align: left;
+}
+
+.metric-detail-boolean-table thead th {
+  color: var(--overview-secondary);
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.metric-detail-boolean-table tbody th {
+  color: var(--overview-secondary);
+  font-weight: 500;
+}
+
+.metric-detail-boolean-status {
+  font-weight: 600;
+}
+
+.metric-detail-boolean-status.is-yes {
+  color: #006300;
+}
+
+.metric-detail-boolean-status.is-no {
+  color: #d03b3b;
+}
+
+.metric-detail-boolean-status.is-unknown {
+  color: var(--overview-muted);
 }
 
 @media (max-width: 700px) {

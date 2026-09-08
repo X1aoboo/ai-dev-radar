@@ -32,3 +32,31 @@ test('trend option uses a crosshair and de-emphasized company average', () => {
   assert.equal(option.series[0].data[1].symbol, 'circle')
   assert.equal(option.series[0].data[0].symbol, 'none')
 })
+
+test('count metrics use grouped bars instead of trend lines', () => {
+  const option = buildTrendOption({
+    data,
+    metric: { type: 'count', numerator_semantic: '执行数' },
+    teamColors: { 1: '#2a78d6' },
+    selectedPeriodId: 'p2',
+    countAsBars: true,
+  })
+
+  assert.equal(option.tooltip.axisPointer.type, 'shadow')
+  assert.equal(option.xAxis.boundaryGap, true)
+  assert.deepEqual(option.series.map((series) => series.type), ['bar', 'line'])
+  assert.equal(option.series[0].barMaxWidth, 24)
+  assert.equal(option.series[1].name, '全公司均值')
+  assert.equal(option.series[1].lineStyle.type, 'dashed')
+})
+
+test('count metrics remain trend lines in the overview default', () => {
+  const option = buildTrendOption({
+    data,
+    metric: { type: 'count', numerator_semantic: '执行数' },
+    teamColors: { 1: '#2a78d6' },
+    selectedPeriodId: 'p2',
+  })
+
+  assert.deepEqual(option.series.map((series) => series.type), ['line', 'line'])
+})
