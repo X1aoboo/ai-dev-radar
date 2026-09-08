@@ -7,10 +7,15 @@ from sqlalchemy import func, select
 from starlette.middleware.sessions import SessionMiddleware
 
 from .api import router
+from .collectors import CollectorRegistry
 from .config import SESSION_HTTPS_ONLY, SESSION_MAX_AGE, SESSION_SECRET
 from .db import Base, SessionLocal, engine
 from .migrations import ensure_auth_schema
 from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User  # noqa: F401
+from .scheduler import create_scheduler
+
+
+collector_registry = CollectorRegistry()
 
 
 @asynccontextmanager
@@ -21,7 +26,14 @@ async def lifespan(app: FastAPI):
         if db.scalar(select(func.count()).select_from(Activity)) == 0:
             from .seed import run_seed
             run_seed(db)
-    yield
+
+    scheduler = create_scheduler(collector_registry)
+    scheduler.start()
+    app.state.scheduler = scheduler
+    try:
+        yield
+    finally:
+        scheduler.shutdown(wait=True)
 
 
 def create_app(*, session_max_age: int | None = None) -> FastAPI:

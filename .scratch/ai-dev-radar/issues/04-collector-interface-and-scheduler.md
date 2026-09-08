@@ -1,6 +1,6 @@
 # 04 采集器接口预留与每日任务骨架
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01
 
 只定义接口和调度骨架，不实现任何真实采集器（ADR-0002）。
@@ -20,3 +20,15 @@ Blocked by: 01
 ## 依据
 
 spec §5；ADR-0002；`CONTEXT.md` 的采集器/事实记录词条。
+
+## Comments
+
+**2026-09-08 实现完成**（待人工验收）：
+
+- 新增 `Collector` Protocol、`CollectionWindow`、`CollectedFact` 和进程内 `CollectorRegistry`，支持按指标或活动组注册。
+- 新增 APScheduler 3.x 每日 02:00（Asia/Shanghai）任务骨架；只处理目录中 `collect_method=auto` 的指标，全部 `manual_only` 时安全空跑并记录日志。
+- 采集结果由调度层补齐 `source=auto` 与录入元数据；重复自动记录更新，已有手动记录保留。
+- FastAPI lifespan 负责 scheduler 启停；未实现任何真实平台采集器。
+- 新增 fake collector、活动组注册、仅补录过滤、重复执行和 scheduler 配置测试。
+
+验证：`.venv/bin/python -m pytest backend/tests -q` → 41 passed；`.venv/bin/python -m compileall -q backend/app backend/tests` 通过。
