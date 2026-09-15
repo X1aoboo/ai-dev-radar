@@ -8,11 +8,11 @@
   --app-text-tertiary: #98a2b3;
   --app-border: #e4e7ec;
   --app-border-strong: #d0d5dd;
-  --app-sidebar: #101828;
+  --app-sidebar: #24272e;
   --app-sidebar-text: #e4e7ec;
   --app-sidebar-muted: #98a2b3;
   --app-sidebar-hover: rgba(255, 255, 255, .08);
-  --app-sidebar-active: rgba(37, 99, 235, .24);
+  --app-sidebar-active: rgba(96, 139, 190, .18);
   --app-sidebar-selected: #bfdbfe;
   --app-sidebar-marker: #60a5fa;
   --app-motion: 240ms cubic-bezier(.2, 0, 0, 1);
@@ -166,7 +166,10 @@ textarea:focus-visible {
   flex: 1 1 auto;
   gap: 24px;
   min-height: 0;
+  min-width: 0;
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, .24) transparent;
 }
 
@@ -197,7 +200,13 @@ textarea:focus-visible {
   gap: 12px;
   min-height: 40px;
   padding: 0 12px;
+  justify-content: center;
+  justify-self: center;
+  max-width: 224px;
+  min-width: 0;
+  overflow: hidden;
   text-decoration: none;
+  transition: padding var(--app-motion), gap var(--app-motion), max-width var(--app-motion);
   width: 100%;
 }
 
@@ -251,6 +260,7 @@ textarea:focus-visible {
 
 .app-nav__pending {
   min-width: 0;
+  overflow: hidden;
 }
 
 .app-nav__pending summary {
@@ -293,6 +303,14 @@ textarea:focus-visible {
 .app-shell--collapsed .app-nav__label {
   max-width: 0;
   opacity: 0;
+}
+
+.app-shell--collapsed .app-nav__link {
+  gap: 0;
+  justify-content: center;
+  max-width: 40px;
+  padding: 0;
+  justify-self: center;
 }
 
 .app-shell--collapsed .app-nav__pending {
@@ -627,7 +645,8 @@ textarea:focus-visible {
   .app-shell__body,
   .app-brand__copy,
   .app-nav__label,
-  .app-nav__text {
+  .app-nav__text,
+  .app-nav__link {
     transition: none;
   }
 }
