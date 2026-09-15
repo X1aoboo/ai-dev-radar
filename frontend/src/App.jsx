@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Result, Tag } from 'antd'
-import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
+import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Result, Tag, Tooltip } from 'antd'
+import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
 import {
   Navigate,
   NavLink,
@@ -202,24 +202,33 @@ function useUrlMaturity(teams) {
   return [state, setMaturity]
 }
 
-function AppSidebar({ user }) {
-  const { search } = useLocation()
+function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
+  const { search, pathname } = useLocation()
   const groups = SIDEBAR_GROUPS
     .map((group) => ({ ...group, items: group.items.filter((item) => !item.roles || item.roles.includes(user.role)) }))
     .filter((group) => group.items.length > 0)
 
   return (
     <aside className="app-sidebar" aria-label="主导航">
-      <div className="app-brand"><span className="app-brand__mark" aria-hidden="true">R</span><span><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>
-      <nav className="app-nav">
+      <div className="app-sidebar__header"><div className="app-brand"><span className="app-brand__mark" aria-hidden="true">R</span><span><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>
+      {onToggle && <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right">
+        <Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} />
+      </Tooltip>}</div>
+      <nav id="app-navigation" className="app-nav">
         {groups.map((group) => (
           <section key={group.label} className="app-nav__group">
             <h2 className="app-nav__label">{group.label}</h2>
-            {group.items.map((item) => {
+            {group.items.filter((item) => !item.disabled).map((item) => {
               const Icon = item.icon
-              if (item.disabled) return <span key={item.key} className="app-nav__disabled" aria-disabled="true"><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span><span className="app-nav__status">待定义</span></span>
-              return <NavLink key={item.key} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link"><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span></NavLink>
+              const content = <><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span></>
+              return <Tooltip key={item.key} title={collapsed ? item.label : undefined} placement="right">
+                <NavLink onClick={onNavigate} aria-label={item.label} data-section-active={item.key === 'overview' && (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/')) ? 'true' : undefined} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link">{content}</NavLink>
+              </Tooltip>
             })}
+            {!collapsed && group.items.some((item) => item.disabled) && <details className="app-nav__pending">
+              <summary>未开放</summary>
+              {group.items.filter((item) => item.disabled).map((item) => <span key={item.key} className="app-nav__disabled" aria-disabled="true" aria-label={`${item.label} · 待定义`}><span className="app-nav__text">{item.label}</span><span className="app-nav__status">待定义</span></span>)}
+            </details>}
           </section>
         ))}
       </nav>
@@ -228,14 +237,34 @@ function AppSidebar({ user }) {
 }
 
 function AppShell({ user, onLogout }) {
+  const [collapsed, setCollapsed] = useState(() => {
+    try { return globalThis.localStorage?.getItem('ai-dev-radar.sidebar-collapsed') === 'true' } catch { return false }
+  })
+  const [narrow, setNarrow] = useState(() => globalThis.matchMedia?.('(max-width: 680px)').matches ?? false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+  const navigationButton = useRef(null)
+  useEffect(() => {
+    const media = globalThis.matchMedia?.('(max-width: 680px)')
+    const update = () => { setNarrow(media.matches); setDrawerOpen(false) }
+    media?.addEventListener?.('change', update)
+    return () => media?.removeEventListener?.('change', update)
+  }, [])
+  function toggleSidebar() {
+    const next = !collapsed
+    setCollapsed(next)
+    try { globalThis.localStorage?.setItem('ai-dev-radar.sidebar-collapsed', String(next)) } catch { /* Storage is optional. */ }
+  }
   const location = useLocation()
   const meta = getRouteMeta(location.pathname)
   return (
-    <div className="app-shell">
+    <div className={`app-shell${!narrow && collapsed ? ' app-shell--collapsed' : ''}`}>
       <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
-      <AppSidebar user={user} />
+      {!narrow && <AppSidebar user={user} collapsed={collapsed} onToggle={toggleSidebar} />}
+      {narrow && <Drawer title="导航" placement="left" size={280} open={drawerOpen} onClose={() => setDrawerOpen(false)} afterOpenChange={(open) => { if (!open) navigationButton.current?.focus() }} styles={{ body: { padding: 0 } }}>
+        <AppSidebar user={user} onNavigate={() => setDrawerOpen(false)} />
+      </Drawer>}
       <div className="app-shell__body">
-        <header className="app-topbar"><div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuUnfoldOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
         <div id="main-content" className="app-shell__content" role="main" tabIndex={-1}><Outlet /></div>
       </div>
     </div>
