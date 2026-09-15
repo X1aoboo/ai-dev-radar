@@ -34,7 +34,6 @@ vi.mock('@ant-design/icons', () => {
     UserOutlined: Icon,
   }
 })
-
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 function StubPage({ page, children = page }) {
@@ -150,15 +149,20 @@ test('sidebar toggles reversibly without changing navigation contracts or fetchi
   const requests = globalThis.fetch.mock.calls.length
   const toggle = () => renderer.root.findAllByType('button').find(node => node.props['aria-controls'] === 'app-navigation')
   expect(toggle().props['aria-expanded']).toBe(true)
+  expect(renderer.root.findByProps({ className: 'app-sidebar__footer' }).findAllByType('button')).toHaveLength(1)
   await act(async () => toggle().props.onClick())
   expect(toggle().props['aria-expanded']).toBe(false)
   expect(links().map(node => [node.props.href, node.props['aria-label']])).toEqual(before)
   expect(links().some(node => node.props['aria-current'] === 'page')).toBe(true)
   expect(links().some(node => node.props.href === '/settings/users')).toBe(false)
-  expect(renderer.root.findAll(node => node.props['aria-disabled'] === 'true').length).toBe(0)
+  const pending = renderer.root.findByType('details')
+  expect(pending.props['aria-hidden']).toBe(true)
+  expect(pending.findByType('summary').props.tabIndex).toBe(-1)
+  expect(pending.findAll(node => node.props['aria-disabled'] === 'true')).toHaveLength(4)
   expect(globalThis.fetch.mock.calls.length).toBe(requests)
   await act(async () => toggle().props.onClick())
   expect(toggle().props['aria-expanded']).toBe(true)
+  expect(renderer.root.findByType('details').props['aria-hidden']).toBeUndefined()
   await act(async () => renderer.unmount())
 })
 

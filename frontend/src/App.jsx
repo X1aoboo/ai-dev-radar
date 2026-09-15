@@ -60,7 +60,6 @@ const APP_THEME = {
     Breadcrumb: { fontSize: 12 },
   },
 }
-
 const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
 
 function LoginPage({ onLogin, error }) {
@@ -84,7 +83,7 @@ function LoginPage({ onLogin, error }) {
     <main className="auth-page">
       <form onSubmit={submit} className="auth-card">
         <div className="auth-card__brand">
-          <span className="app-brand__mark" aria-hidden="true">R</span>
+          <img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" />
           <div><h1>ai-dev-radar</h1><p>Enterprise Analytics</p></div>
         </div>
         <p className="auth-card__intro">登录后查看研发团队的 AI 研发效能分析。</p>
@@ -210,10 +209,7 @@ function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
 
   return (
     <aside className="app-sidebar" aria-label="主导航">
-      <div className="app-sidebar__header"><div className="app-brand"><span className="app-brand__mark" aria-hidden="true">R</span><span><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>
-      {onToggle && <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right">
-        <Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} />
-      </Tooltip>}</div>
+      <div className="app-sidebar__header"><div className="app-brand"><img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" /><span className="app-brand__copy"><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div></div>
       <nav id="app-navigation" className="app-nav">
         {groups.map((group) => (
           <section key={group.label} className="app-nav__group">
@@ -225,13 +221,16 @@ function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
                 <NavLink onClick={onNavigate} aria-label={item.label} data-section-active={item.key === 'overview' && (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/')) ? 'true' : undefined} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link">{content}</NavLink>
               </Tooltip>
             })}
-            {!collapsed && group.items.some((item) => item.disabled) && <details className="app-nav__pending">
-              <summary>未开放</summary>
+            {group.items.some((item) => item.disabled) && <details className="app-nav__pending" aria-hidden={collapsed || undefined}>
+              <summary tabIndex={collapsed ? -1 : undefined}>未开放</summary>
               {group.items.filter((item) => item.disabled).map((item) => <span key={item.key} className="app-nav__disabled" aria-disabled="true" aria-label={`${item.label} · 待定义`}><span className="app-nav__text">{item.label}</span><span className="app-nav__status">待定义</span></span>)}
             </details>}
           </section>
         ))}
       </nav>
+      {onToggle && <div className="app-sidebar__footer"><Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right">
+        <Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} />
+      </Tooltip></div>}
     </aside>
   )
 }

@@ -34,7 +34,9 @@ flowchart LR
 
 客户端共用 `api.js` 的 `fetchJson` 携带 cookie 和统一 HTTP 异常；领域页面拆出逻辑和图表配置。当前路径由 `routing/routeMetadata.js` 定义：`/`、`/analytics/teams/:teamId`、`/analytics/metrics/:metricId`、`/data/ir`、`/settings/*`；旧路径保留重定向。
 
-AppShell 分别持有桌面折叠选择、matchMedia 窄屏状态与抽屉开关。localStorage 的 ai-dev-radar.sidebar-collapsed 只保存桌面布尔偏好；读取失败默认展开，写入失败不影响使用。监听 680px 断点，变化时关闭抽屉并恢复独立桌面选择。桌面 CSS 同步 248px/64px 导航宽度与正文偏移；窄屏使用现有 Ant Design Drawer，不保留图标栏，关闭后焦点返回顶栏打开按钮。AppSidebar 复用角色过滤与路由元数据，原生 details 显示默认关闭的未开放入口，图标模式隐藏该组。总览及其下钻使用所属入口样式，精确匹配才使用 aria-current=page。导航独立滚动，切换不发业务请求、不改变路由和权限。
+AppShell 分别持有桌面折叠选择、matchMedia 窄屏状态与抽屉开关。localStorage 的 ai-dev-radar.sidebar-collapsed 只保存桌面布尔偏好；读取失败默认展开，写入失败不影响使用。监听 680px 断点，变化时关闭抽屉并恢复独立桌面选择。桌面 CSS 用同一自定义宽度变量同步 248px/64px 侧栏宽度与正文左偏移，并以 240ms cubic-bezier(.2,0,0,1) 过渡；首屏直接使用保存状态，连续切换由 CSS 从当前动画位置反向过渡，prefers-reduced-motion: reduce 时禁用新增过渡。
+
+AppSidebar 顶部只放共享的 frontend/public/favicon.svg 雷达 Logo，中间 app-nav 独立滚动，底部固定折叠按钮。图标列、分组标题高度和未开放 details 的布局占位不随折叠改变；文字使用透明度与最大宽度裁切保持单行，未开放 details 在折叠时 visibility hidden、不可指针操作且 summary 不进入 Tab 顺序。窄屏使用现有 Ant Design Drawer，抽屉和侧栏共用深色表面，不保留图标栏，关闭后焦点返回顶栏打开按钮。AppSidebar 复用角色过滤与路由元数据，原生 details 显示默认关闭的未开放入口。总览及其下钻使用所属入口样式，精确匹配才使用 aria-current=page。导航切换不发业务请求、不改变路由和权限。
 
 ## 数据流和模型
 
