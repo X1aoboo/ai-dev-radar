@@ -6,7 +6,13 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.collectors import CollectedFact, CollectorRegistry
+from app.collectors import (
+    CollectedFact,
+    CollectedSourceRecord,
+    CollectionWindow,
+    CollectorRegistry,
+    SourceCollectorRegistry,
+)
 from app.db import Base
 from app.models import Activity, FactRecord, Metric, Team
 from app.scheduler import run_daily_collection
@@ -179,3 +185,29 @@ def test_activity_group_registration_matches_automatic_metric():
         assert len(db.scalars(select(FactRecord)).all()) == 1
     finally:
         db.close()
+
+
+def test_source_collector_registry_exposes_domain_records_without_metric_knowledge():
+    class FakeSourceCollector:
+        def collect(self, source_mapping, window):
+            return [CollectedSourceRecord(
+                domain="ir",
+                source_id="IR-001",
+                attributes={"requirement_name": "需求一"},
+                source_system="requirement-platform",
+            )]
+
+    collector = FakeSourceCollector()
+    registry = SourceCollectorRegistry()
+    registry.register(collector, domains="ir")
+
+    registration = registry.registrations[0]
+    records = list(collector.collect({"project": "cnae"}, CollectionWindow(date(2026, 8, 1), date(2026, 8, 31))))
+
+    assert registration.domains == frozenset({"ir"})
+    assert records == [CollectedSourceRecord(
+        domain="ir",
+        source_id="IR-001",
+        attributes={"requirement_name": "需求一"},
+        source_system="requirement-platform",
+    )]

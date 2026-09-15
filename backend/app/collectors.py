@@ -97,3 +97,67 @@ class CollectorRegistry:
     @property
     def registrations(self) -> tuple[CollectorRegistration, ...]:
         return tuple(self._registrations)
+
+
+@dataclass(frozen=True, slots=True)
+class CollectedSourceRecord:
+    """采集器产出的源数据记录草稿，不感知具体 ORM 模型。"""
+
+    domain: str
+    source_id: str
+    attributes: Mapping[str, Any]
+    source_system: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.domain:
+            raise ValueError("collected source record domain must not be empty")
+        if not self.source_id:
+            raise ValueError("collected source record source_id must not be empty")
+
+
+class SourceCollector(Protocol):
+    """源数据平台适配器的最小接口。"""
+
+    def collect(
+        self,
+        source_mapping: Mapping[str, Any],
+        window: CollectionWindow,
+    ) -> Iterable[CollectedSourceRecord]:
+        """按数据源映射和时间窗口返回标准化源数据记录草稿。"""
+
+
+@dataclass(frozen=True, slots=True)
+class SourceCollectorRegistration:
+    collector: SourceCollector
+    domains: frozenset[str]
+
+    def matches(self, domain: str) -> bool:
+        return domain in self.domains
+
+
+class SourceCollectorRegistry:
+    """源数据采集器绑定表；注册只存在于当前进程，不落库。"""
+
+    def __init__(self) -> None:
+        self._registrations: list[SourceCollectorRegistration] = []
+
+    def register(
+        self,
+        collector: SourceCollector,
+        *,
+        domains: Iterable[str] | str,
+    ) -> None:
+        normalized_domains = _normalize_codes(domains)
+        if not normalized_domains:
+            raise ValueError("source collector registration requires a domain")
+        registration = SourceCollectorRegistration(
+            collector=collector,
+            domains=normalized_domains,
+        )
+        if registration in self._registrations:
+            raise ValueError("source collector registration already exists")
+        self._registrations.append(registration)
+
+    @property
+    def registrations(self) -> tuple[SourceCollectorRegistration, ...]:
+        return tuple(self._registrations)

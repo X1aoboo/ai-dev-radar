@@ -15,8 +15,29 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import hash_password
 from .config import SEED_PASSWORD
-from .migrations import ensure_auth_schema, ensure_fact_schema
-from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User
+from .migrations import (
+    ensure_auth_schema,
+    ensure_data_management_schema,
+    ensure_fact_schema,
+    ensure_maturity_schema,
+)
+from .models import (
+    Activity,
+    AuditLog,
+    DataMetricDefinition,
+    FactRecord,
+    IRRequirement,
+    ImportBatch,
+    ImportRow,
+    Iteration,
+    Metric,
+    MaturityRecord,
+    Product,
+    ProductVersion,
+    Team,
+    TeamMember,
+    User,
+)
 
 # ---------------------------------------------------------------- 指标目录（spec §2.1）
 
@@ -175,6 +196,20 @@ def seed_demo(db: Session) -> None:
         teams.append(team)
     db.flush()
 
+    products = []
+    for team in teams:
+        product = Product(team_id=team.id, name=f"{team.name}产品")
+        db.add(product)
+        products.append(product)
+        for index in range(1, 3):
+            db.add(TeamMember(
+                team_id=team.id,
+                employee_id=f"{team.name[-1]}{index:03d}",
+                name=f"{team.name}成员{index}",
+                role="研发工程师" if index == 1 else "测试工程师",
+            ))
+    db.flush()
+
     # 用户：1 admin + 每团队 1 maintainer + 1 viewer。密码仅保存 Argon2 哈希。
     db.add(User(username="admin", password_hash=hash_password(SEED_PASSWORD), role="admin"))
     for team in teams:
@@ -187,9 +222,12 @@ def seed_demo(db: Session) -> None:
     db.add(User(username="viewer", password_hash=hash_password(SEED_PASSWORD), role="viewer"))
 
     iterations = []  # (Iteration, week_lo, week_hi)
+    versions = []
     for vi, (vname, its) in enumerate(VERSIONS):
-        version = ProductVersion(name=vname, sort_order=vi)
+        # 演示数据只为第一支团队挂载一套产品版本；旧版事实看板仍可跨团队展示。
+        version = ProductVersion(name=vname, product_id=products[0].id, sort_order=vi)
         db.add(version)
+        versions.append(version)
         db.flush()
         for ii, (iname, w_lo, w_hi) in enumerate(its):
             it = Iteration(version_id=version.id, name=iname, sort_order=ii,
@@ -286,13 +324,93 @@ def seed_demo(db: Session) -> None:
     for rec in facts_of(team_d, it_271_1):
         rec.denominator = round(rec.numerator * 1.4, 1)
 
+    # 首期数据管理工作台的 IR 示例数据。
+    ir_samples = [
+        ("IR-DEMO-001", "CNAE 智能配置", True, "CNAE"),
+        ("IR-DEMO-002", "CNAE 批量导入", False, "CNAE"),
+    ]
+    first_version = versions[0]
+    first_iterations = [item for item, *_ in iterations if item.version_id == first_version.id]
+    for index, (number, name, ai_assisted, module) in enumerate(ir_samples):
+        db.add(IRRequirement(
+            requirement_no=number,
+            requirement_name=name,
+            responsible_employee_id=f"A{index + 1:03d}",
+            product_id=products[0].id,
+            version_id=first_version.id,
+            iteration_id=first_iterations[index].id,
+            completed_at=first_iterations[index].end_date,
+            business_module=module,
+            requirement_scenario="AI研发效能数据管理",
+            estimated_workload=10.0 + index,
+            actual_workload=5.0 + index,
+            sa_estimated_workload=4.0,
+            sa_actual_workload=2.0,
+            se_estimated_workload=6.0 + index,
+            se_actual_workload=3.0 + index,
+            ai_assisted=ai_assisted,
+            ai_attribute_metadata={
+                "ai_assisted": {
+                    "source": "manual",
+                    "updated_by": "演示种子",
+                    "updated_at": ENTERED_AT.isoformat(),
+                }
+            },
+            record_source="seed",
+            updated_by="演示种子",
+            updated_at=ENTERED_AT,
+        ))
+
+
+def seed_data_metrics(db: Session) -> None:
+    definitions = [
+        DataMetricDefinition(
+            domain="ir",
+            code="ir-ai-penetration",
+            name="IR需求AI渗透率",
+            metric_type="penetration",
+            numerator_field="ai_assisted",
+            denominator_field="record_count",
+            filter_definition={},
+        ),
+        DataMetricDefinition(
+            domain="ir",
+            code="ir-sa-efficiency",
+            name="SA设计效率提升",
+            metric_type="efficiency",
+            activity_code="sa",
+            numerator_field="sa_estimated_workload",
+            denominator_field="sa_actual_workload",
+            filter_definition={},
+        ),
+        DataMetricDefinition(
+            domain="ir",
+            code="ir-se-efficiency",
+            name="SE设计效率提升",
+            metric_type="efficiency",
+            activity_code="se",
+            numerator_field="se_estimated_workload",
+            denominator_field="se_actual_workload",
+            filter_definition={},
+        ),
+    ]
+    db.add_all(definitions)
+
 
 def clear(db: Session) -> None:
     """先清后插：按外键依赖逆序清空。"""
+    db.execute(delete(AuditLog))
+    db.execute(delete(ImportRow))
+    db.execute(delete(ImportBatch))
+    db.execute(delete(IRRequirement))
+    db.execute(delete(DataMetricDefinition))
+    db.execute(delete(MaturityRecord))
     db.execute(delete(FactRecord))
     db.execute(delete(Iteration))
     db.execute(delete(ProductVersion))
     db.execute(delete(User))
+    db.execute(delete(TeamMember))
+    db.execute(delete(Product))
     db.execute(delete(Team))
     db.execute(delete(Metric))
     db.execute(delete(Activity))
@@ -302,6 +420,7 @@ def run_seed(db: Session) -> None:
     clear(db)
     seed_catalog(db)
     seed_demo(db)
+    seed_data_metrics(db)
     db.commit()
 
 
@@ -317,11 +436,15 @@ def main() -> None:
         Base.metadata.create_all(seed_engine)
         ensure_fact_schema(seed_engine)
         ensure_auth_schema(seed_engine, session_factory)
+        ensure_data_management_schema(seed_engine)
+        ensure_maturity_schema(seed_engine)
         db = session_factory()
     else:
         Base.metadata.create_all(engine)
         ensure_fact_schema()
         ensure_auth_schema()
+        ensure_data_management_schema()
+        ensure_maturity_schema()
         db = SessionLocal()
     try:
         run_seed(db)

@@ -1,28 +1,67 @@
-import { useCallback, useEffect, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Result, Tag } from 'antd'
+import { LogoutOutlined, UserOutlined } from '@ant-design/icons'
+import {
+  Navigate,
+  NavLink,
+  Outlet,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useOutletContext,
+  useParams,
+  useSearchParams,
+} from 'react-router'
 
 import { fetchJson } from './api'
-import TeamDrilldownPage from './drilldown/TeamDrilldownPage'
-import MetricDetailPage from './metricDetail/MetricDetailPage'
+import './app.css'
 import { findMetric } from './metricDetail/metricDetailLogic'
-import OverviewPage from './overview/OverviewPage'
-import { INITIAL_FILTER } from './overview/overviewLogic'
+import {
+  filterFromSearchParams,
+  filterToSearchParams,
+  FILTER_QUERY_KEYS,
+  filtersEqual,
+  MATURITY_QUERY_KEYS,
+  maturityStateFromSearchParams,
+  maturityStateToSearchParams,
+  maturityStatesEqual,
+  normalizeFilter,
+  normalizeMaturityState,
+} from './overview/overviewLogic'
+import { ADMIN_ROLES, DATA_READ_ROLES, SETTINGS_READ_ROLES, canAccess, isPendingDomain } from './routing/routeLogic'
+import { getRouteMeta, LEGACY_REDIRECT_TARGETS, ROUTE_PATHS, SIDEBAR_GROUPS } from './routing/routeMetadata'
 
-function usePathname() {
-  const [pathname, setPathname] = useState(window.location.pathname || '/')
+const OverviewPage = lazy(() => import('./overview/OverviewPage'))
+const TeamDrilldownPage = lazy(() => import('./drilldown/TeamDrilldownPage'))
+const MetricDetailPage = lazy(() => import('./metricDetail/MetricDetailPage'))
+const DataManagementPage = lazy(() => import('./dataManagement/DataManagementPage'))
+const UsersSettingsPage = lazy(() => import('./settings/UsersSettingsPage'))
 
-  useEffect(() => {
-    const onPopState = () => setPathname(window.location.pathname || '/')
-    window.addEventListener('popstate', onPopState)
-    return () => window.removeEventListener('popstate', onPopState)
-  }, [])
-
-  const navigate = (nextPath) => {
-    window.history.pushState({}, '', nextPath)
-    setPathname(nextPath)
-  }
-
-  return [pathname, navigate]
+const APP_THEME = {
+  token: {
+    colorPrimary: '#2563EB',
+    colorBgLayout: '#F5F7FA',
+    colorBgContainer: '#FFFFFF',
+    colorText: '#172033',
+    colorTextSecondary: '#667085',
+    borderRadius: 6,
+    controlHeight: 32,
+    paddingXXS: 4,
+    paddingXS: 8,
+    paddingSM: 12,
+    padding: 16,
+    paddingLG: 24,
+    paddingXL: 32,
+    fontFamily: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+  },
+  components: {
+    Button: { borderRadius: 6, controlHeight: 32 },
+    Breadcrumb: { fontSize: 12 },
+  },
 }
+
+const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
 
 function LoginPage({ onLogin, error }) {
   const [username, setUsername] = useState('')
@@ -42,823 +81,359 @@ function LoginPage({ onLogin, error }) {
   }
 
   return (
-    <main style={styles.centeredPage}>
-      <form onSubmit={submit} style={styles.loginCard}>
-        <h1 style={{ marginTop: 0 }}>ai-dev-radar</h1>
-        <p style={styles.muted}>登录后查看研发提效看板。</p>
-        <label style={styles.field}>
-          账号
-          <input
-            autoComplete="username"
-            value={username}
-            onChange={(event) => setUsername(event.target.value)}
-            required
-          />
-        </label>
-        <label style={styles.field}>
-          密码
-          <input
-            type="password"
-            autoComplete="current-password"
-            value={password}
-            onChange={(event) => setPassword(event.target.value)}
-            required
-          />
-        </label>
-        {error && <p role="alert" style={styles.error}>{error}</p>}
-        <button type="submit" disabled={submitting} style={styles.primaryButton}>
-          {submitting ? '登录中…' : '登录'}
-        </button>
+    <main className="auth-page">
+      <form onSubmit={submit} className="auth-card">
+        <div className="auth-card__brand">
+          <span className="app-brand__mark" aria-hidden="true">R</span>
+          <div><h1>ai-dev-radar</h1><p>Enterprise Analytics</p></div>
+        </div>
+        <p className="auth-card__intro">登录后查看研发团队的 AI 研发效能分析。</p>
+        <label className="auth-field">账号<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
+        <label className="auth-field">密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+        {error && <p role="alert" className="auth-error">{error}</p>}
+        <Button type="primary" htmlType="submit" block loading={submitting}>登录</Button>
       </form>
     </main>
   )
 }
 
-function ForbiddenPage({ onNavigate }) {
+function ForbiddenPage() {
+  const navigate = useNavigate()
+  return <div className="status-page"><Result status="403" title="无权访问" subTitle="当前角色不能访问此页面。" extra={<Button type="primary" onClick={() => navigate('/')}>返回总览</Button>} /></div>
+}
+
+function LoadingPage({ text = '加载中…' }) {
+  return <div className="status-page"><p className="app-loading">{text}</p></div>
+}
+
+function NotFoundPage() {
+  const navigate = useNavigate()
+  return <div className="status-page"><Result status="404" title="页面未找到" subTitle="请求的页面不存在，或链接已经失效。" extra={<Button type="primary" onClick={() => navigate('/')}>返回总览</Button>} /></div>
+}
+
+function PendingDomainPage({ domain }) {
+  const navigate = useNavigate()
+  return <div className="status-page"><Result status="info" title={`${domain} 领域规格待定义`} subTitle="当前阶段尚未定义该数据域的字段、校验规则和指标口径，暂不提供表单。" extra={<Button type="primary" onClick={() => navigate('/data/ir')}>查看 IR 数据</Button>} /></div>
+}
+
+function appendSearch(pathname, search) {
+  if (!search || pathname.includes('?')) return pathname
+  return `${pathname}${search}`
+}
+
+function useSearchPreservingNavigate() {
+  const navigate = useNavigate()
+  const { search } = useLocation()
+  return useCallback((pathname, options) => navigate(appendSearch(pathname, search), options), [navigate, search])
+}
+
+function useUrlFilter(versions) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const searchString = searchParams.toString()
+  const [filter, setFilterState] = useState(() => filterFromSearchParams(searchParams))
+  const lastSearchString = useRef(searchString)
+  const readingUrl = useRef(false)
+  const pendingHistoryMode = useRef(null)
+
+  useEffect(() => {
+    if (searchString === lastSearchString.current) return
+    readingUrl.current = true
+    lastSearchString.current = searchString
+    const fromUrl = filterFromSearchParams(searchParams, { versions })
+    setFilterState((current) => filtersEqual(current, fromUrl) ? current : fromUrl)
+  }, [searchParams, searchString, versions])
+
+  const normalizedFilter = normalizeFilter(filter, { versions })
+  const normalizedSearchParams = new URLSearchParams(searchString)
+  Object.values(FILTER_QUERY_KEYS).forEach((key) => normalizedSearchParams.delete(key))
+  filterToSearchParams(normalizedFilter).forEach((value, key) => normalizedSearchParams.set(key, value))
+  const normalizedSearchString = normalizedSearchParams.toString()
+
+  useEffect(() => {
+    if (readingUrl.current) {
+      readingUrl.current = false
+      return
+    }
+    if (normalizedSearchString === searchString) {
+      lastSearchString.current = searchString
+      return
+    }
+    lastSearchString.current = normalizedSearchString
+    const historyMode = pendingHistoryMode.current ?? 'replace'
+    pendingHistoryMode.current = null
+    setSearchParams(new URLSearchParams(normalizedSearchString), { replace: historyMode === 'replace' })
+  }, [normalizedSearchString, searchString, setSearchParams])
+
+  const setFilter = useCallback((nextFilter, options = {}) => {
+    pendingHistoryMode.current = options.history ?? 'replace'
+    setFilterState((current) => normalizeFilter(typeof nextFilter === 'function' ? nextFilter(current) : nextFilter, { versions }))
+  }, [versions])
+
+  return [normalizedFilter, setFilter]
+}
+
+function useUrlMaturity(teams) {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const searchString = searchParams.toString()
+  const [state, setState] = useState(() => maturityStateFromSearchParams(searchParams, { teams }))
+  const stateRef = useRef(state)
+  stateRef.current = state
+
+  useEffect(() => {
+    const fromUrl = maturityStateFromSearchParams(searchParams, { teams })
+    if (!maturityStatesEqual(stateRef.current, fromUrl)) {
+      stateRef.current = fromUrl
+      setState(fromUrl)
+    }
+  }, [searchParams, searchString, teams])
+
+  const setMaturity = useCallback((nextState, options = {}) => {
+    const candidate = typeof nextState === 'function' ? nextState(stateRef.current) : nextState
+    const next = normalizeMaturityState(candidate, { teams })
+    stateRef.current = next
+    setState(next)
+
+    const nextParams = new URLSearchParams(searchString)
+    Object.values(MATURITY_QUERY_KEYS).forEach((key) => nextParams.delete(key))
+    maturityStateToSearchParams(next).forEach((value, key) => nextParams.set(key, value))
+    setSearchParams(nextParams, { replace: options.history !== 'push' })
+  }, [searchString, setSearchParams, teams])
+
+  return [state, setMaturity]
+}
+
+function AppSidebar({ user }) {
+  const { search } = useLocation()
+  const groups = SIDEBAR_GROUPS
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.roles || item.roles.includes(user.role)) }))
+    .filter((group) => group.items.length > 0)
+
   return (
-    <main style={styles.centeredPage}>
-      <section style={styles.loginCard}>
-        <p style={styles.error}>403</p>
-        <h1>无权访问</h1>
-        <p style={styles.muted}>当前角色不能访问此页面。</p>
-        <button type="button" onClick={() => onNavigate('/')} style={styles.primaryButton}>
-          返回看板
-        </button>
-      </section>
-    </main>
+    <aside className="app-sidebar" aria-label="主导航">
+      <div className="app-brand"><span className="app-brand__mark" aria-hidden="true">R</span><span><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>
+      <nav className="app-nav">
+        {groups.map((group) => (
+          <section key={group.label} className="app-nav__group">
+            <h2 className="app-nav__label">{group.label}</h2>
+            {group.items.map((item) => {
+              const Icon = item.icon
+              if (item.disabled) return <span key={item.key} className="app-nav__disabled" aria-disabled="true"><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span><span className="app-nav__status">待定义</span></span>
+              return <NavLink key={item.key} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link"><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span></NavLink>
+            })}
+          </section>
+        ))}
+      </nav>
+    </aside>
   )
 }
 
-function StringListInput({ label, values, onChange, placeholder }) {
-  function update(index, value) {
-    onChange(values.map((item, itemIndex) => (itemIndex === index ? value : item)))
-  }
-
-  function remove(index) {
-    onChange(values.filter((_, itemIndex) => itemIndex !== index))
-  }
-
+function AppShell({ user, onLogout }) {
+  const location = useLocation()
+  const meta = getRouteMeta(location.pathname)
   return (
-    <fieldset style={styles.listField}>
-      <legend>{label}</legend>
-      {values.map((value, index) => (
-        <div key={`${index}-${value}`} style={styles.inlineField}>
-          <input
-            value={value}
-            placeholder={placeholder}
-            onChange={(event) => update(index, event.target.value)}
-          />
-          <button type="button" onClick={() => remove(index)} style={styles.dangerButton}>移除</button>
-        </div>
-      ))}
-      <button type="button" onClick={() => onChange([...values, ''])} style={styles.secondaryButton}>
-        添加一项
-      </button>
-    </fieldset>
+    <div className="app-shell">
+      <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
+      <AppSidebar user={user} />
+      <div className="app-shell__body">
+        <header className="app-topbar"><div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <div id="main-content" className="app-shell__content" role="main" tabIndex={-1}><Outlet /></div>
+      </div>
+    </div>
   )
 }
 
-const emptyTeam = () => ({
-  id: null,
-  name: '',
-  source_mapping: { product_versions: [], repos: [] },
-})
-
-const emptyActivity = () => ({ id: null, code: '', name: '', kind: 'general' })
-
-const emptyMetric = () => ({
-  id: null,
-  activity_id: '',
-  code: '',
-  name: '',
-  type: 'penetration',
-  numerator_semantic: '',
-  denominator_semantic: '',
-  collect_method: 'manual_only',
-})
-
-const emptyUser = () => ({ id: null, username: '', password: '', role: 'viewer', maintainer_team_id: '' })
-
-function ConfigPage({ user, onNavigate, onLogout, onSessionExpired }) {
-  const [teams, setTeams] = useState([])
-  const [catalog, setCatalog] = useState([])
-  const [users, setUsers] = useState([])
-  const [teamForm, setTeamForm] = useState(emptyTeam)
-  const [activityForm, setActivityForm] = useState(emptyActivity)
-  const [metricForm, setMetricForm] = useState(emptyMetric)
-  const [userForm, setUserForm] = useState(emptyUser)
-  const [message, setMessage] = useState(null)
-  const [loading, setLoading] = useState(true)
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const [nextTeams, nextCatalog, nextUsers] = await Promise.all([
-        fetchJson('/api/teams'),
-        fetchJson('/api/catalog'),
-        fetchJson('/api/auth/users'),
-      ])
-      setTeams(nextTeams)
-      setCatalog(nextCatalog)
-      setUsers(nextUsers)
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message })
-      if (error.status === 401) onSessionExpired()
-    } finally {
-      setLoading(false)
-    }
-  }, [onSessionExpired])
-
-  useEffect(() => { load() }, [load])
-
-  async function mutate(url, options, success) {
-    try {
-      await fetchJson(url, options)
-      setMessage({ type: 'success', text: success })
-      await load()
-      return true
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message })
-      if (error.status === 401) onSessionExpired()
-      return false
-    }
-  }
-
-  function structuredMapping(mapping) {
-    return {
-      product_versions: mapping.product_versions.map((item) => item.trim()).filter(Boolean),
-      repos: mapping.repos.map((item) => item.trim()).filter(Boolean),
-    }
-  }
-
-  async function submitTeam(event) {
-    event.preventDefault()
-    const editing = Boolean(teamForm.id)
-    const success = await mutate(
-      editing ? `/api/teams/${teamForm.id}` : '/api/teams',
-      {
-        method: editing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: teamForm.name, source_mapping: structuredMapping(teamForm.source_mapping) }),
-      },
-      editing ? '团队已更新。' : '团队已创建。',
-    )
-    if (success) setTeamForm(emptyTeam())
-  }
-
-  async function submitActivity(event) {
-    event.preventDefault()
-    const editing = Boolean(activityForm.id)
-    const success = await mutate(
-      editing ? `/api/activities/${activityForm.id}` : '/api/activities',
-      {
-        method: editing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: activityForm.code, name: activityForm.name, kind: activityForm.kind }),
-      },
-      editing ? '活动已更新。' : '活动已创建。',
-    )
-    if (success) setActivityForm(emptyActivity())
-  }
-
-  async function submitMetric(event) {
-    event.preventDefault()
-    const editing = Boolean(metricForm.id)
-    const success = await mutate(
-      editing ? `/api/metrics/${metricForm.id}` : '/api/metrics',
-      {
-        method: editing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...metricForm,
-          id: undefined,
-          activity_id: Number(metricForm.activity_id),
-          denominator_semantic: metricForm.denominator_semantic || null,
-        }),
-      },
-      editing ? '指标已更新。' : '指标已创建。',
-    )
-    if (success) setMetricForm(emptyMetric())
-  }
-
-  async function submitUser(event) {
-    event.preventDefault()
-    const editing = Boolean(userForm.id)
-    const body = editing
-      ? {
-          role: userForm.role,
-          maintainer_team_id: userForm.role === 'maintainer' ? Number(userForm.maintainer_team_id) : null,
-        }
-      : {
-          username: userForm.username,
-          password: userForm.password,
-          role: userForm.role,
-          maintainer_team_id: userForm.role === 'maintainer' ? Number(userForm.maintainer_team_id) : null,
-        }
-    const success = await mutate(
-      editing ? `/api/users/${userForm.id}` : '/api/users',
-      {
-        method: editing ? 'PATCH' : 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      },
-      editing ? '用户角色已更新。' : '用户已创建。',
-    )
-    if (success) setUserForm(emptyUser())
-  }
-
-  if (loading) {
-    return <p style={styles.loading}>加载配置中…</p>
-  }
-
-  return (
-    <main style={styles.page}>
-      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <h1>配置管理</h1>
-      <p style={styles.muted}>仅管理员可以修改团队、指标目录和账号权限。</p>
-      {message && <p role="alert" style={message.type === 'error' ? styles.error : styles.success}>{message.text}</p>}
-
-      <section style={styles.configSection}>
-        <h2>团队管理</h2>
-        <div style={styles.configGrid}>
-          <form onSubmit={submitTeam} style={styles.card}>
-            <h3>{teamForm.id ? '编辑团队' : '新增团队'}</h3>
-            <label style={styles.field}>名称<input required value={teamForm.name} onChange={(event) => setTeamForm({ ...teamForm, name: event.target.value })} /></label>
-            <StringListInput label="产品版本号" values={teamForm.source_mapping.product_versions} placeholder="SCC 27.1.RC1" onChange={(product_versions) => setTeamForm({ ...teamForm, source_mapping: { ...teamForm.source_mapping, product_versions } })} />
-            <StringListInput label="代码仓地址" values={teamForm.source_mapping.repos} placeholder="https://git.example.com/team/main.git" onChange={(repos) => setTeamForm({ ...teamForm, source_mapping: { ...teamForm.source_mapping, repos } })} />
-            <button type="submit" style={styles.primaryButton}>{teamForm.id ? '保存团队' : '创建团队'}</button>{' '}
-            {teamForm.id && <button type="button" onClick={() => setTeamForm(emptyTeam())} style={styles.secondaryButton}>取消</button>}
-          </form>
-          <div style={styles.card}>
-            <h3>现有团队</h3>
-            <table style={styles.table}><thead><tr><th>名称</th><th>版本号</th><th>仓库</th><th>操作</th></tr></thead><tbody>
-              {teams.map((team) => <tr key={team.id}><td>{team.name}</td><td>{team.source_mapping.product_versions.join('、') || '—'}</td><td>{team.source_mapping.repos.join('、') || '—'}</td><td style={styles.actions}><button type="button" onClick={() => setTeamForm({ ...team, source_mapping: { product_versions: team.source_mapping.product_versions ?? [], repos: team.source_mapping.repos ?? [] } })} style={styles.secondaryButton}>编辑</button><button type="button" onClick={() => window.confirm(`删除团队“${team.name}”？`) && mutate(`/api/teams/${team.id}`, { method: 'DELETE' }, '团队已删除。')} style={styles.dangerButton}>删除</button></td></tr>)}
-            </tbody></table>
-          </div>
-        </div>
-      </section>
-
-      <section style={styles.configSection}>
-        <h2>指标目录管理</h2>
-        <div style={styles.configGrid}>
-          <form onSubmit={submitActivity} style={styles.card}>
-            <h3>{activityForm.id ? '编辑活动' : '新增活动'}</h3>
-            <label style={styles.field}>代码<input required pattern="[a-z0-9-]+" value={activityForm.code} onChange={(event) => setActivityForm({ ...activityForm, code: event.target.value })} /></label>
-            <label style={styles.field}>名称<input required value={activityForm.name} onChange={(event) => setActivityForm({ ...activityForm, name: event.target.value })} /></label>
-            <label style={styles.field}>类别<select value={activityForm.kind} onChange={(event) => setActivityForm({ ...activityForm, kind: event.target.value })}><option value="key">关键研发活动</option><option value="general">通用研发能力</option></select></label>
-            <button type="submit" style={styles.primaryButton}>{activityForm.id ? '保存活动' : '创建活动'}</button>{' '}
-            {activityForm.id && <button type="button" onClick={() => setActivityForm(emptyActivity())} style={styles.secondaryButton}>取消</button>}
-          </form>
-          <form onSubmit={submitMetric} style={styles.card}>
-            <h3>{metricForm.id ? '编辑指标' : '新增指标'}</h3>
-            <label style={styles.field}>所属活动<select required value={metricForm.activity_id} onChange={(event) => setMetricForm({ ...metricForm, activity_id: event.target.value })}><option value="">请选择</option>{catalog.map((activity) => <option key={activity.id} value={activity.id}>{activity.name}</option>)}</select></label>
-            <label style={styles.field}>代码<input required pattern="[a-z0-9-]+" value={metricForm.code} onChange={(event) => setMetricForm({ ...metricForm, code: event.target.value })} /></label>
-            <label style={styles.field}>名称<input required value={metricForm.name} onChange={(event) => setMetricForm({ ...metricForm, name: event.target.value })} /></label>
-            <label style={styles.field}>类型<select value={metricForm.type} onChange={(event) => setMetricForm({ ...metricForm, type: event.target.value })}>{['penetration', 'efficiency', 'count', 'boolean', 'ratio'].map((type) => <option key={type} value={type}>{type}</option>)}</select></label>
-            <label style={styles.field}>分子语义<input required value={metricForm.numerator_semantic} onChange={(event) => setMetricForm({ ...metricForm, numerator_semantic: event.target.value })} /></label>
-            <label style={styles.field}>分母语义<input value={metricForm.denominator_semantic} onChange={(event) => setMetricForm({ ...metricForm, denominator_semantic: event.target.value })} /></label>
-            <p style={styles.muted}>采集方式：仅补录（第一版尚未接入自动采集器）</p>
-            <button type="submit" style={styles.primaryButton}>{metricForm.id ? '保存指标' : '创建指标'}</button>{' '}
-            {metricForm.id && <button type="button" onClick={() => setMetricForm(emptyMetric())} style={styles.secondaryButton}>取消</button>}
-          </form>
-        </div>
-        <div style={styles.card}>
-          <h3>现有目录</h3>
-          <table style={styles.table}><thead><tr><th>活动</th><th>指标</th><th>类型 / 采集</th><th>分子 / 分母</th><th>操作</th></tr></thead><tbody>
-            {catalog.flatMap((activity) => activity.metrics.map((metric) => <tr key={metric.id}><td>{activity.name}<br /><small>{activity.kind}</small></td><td>{metric.name}<br /><small>{metric.code}</small></td><td>{metric.type} / {metric.collect_method}</td><td>{metric.numerator_semantic} / {metric.denominator_semantic ?? '—'}</td><td style={styles.actions}><button type="button" onClick={() => setMetricForm({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '' })} style={styles.secondaryButton}>编辑指标</button><button type="button" onClick={() => window.confirm(`删除指标“${metric.name}”？`) && mutate(`/api/metrics/${metric.id}`, { method: 'DELETE' }, '指标已删除。')} style={styles.dangerButton}>删除指标</button></td></tr>))}
-          </tbody></table>
-          <p style={styles.muted}>活动编辑与删除可在新增活动表单中完成；仍包含指标或事实记录的条目不能删除。</p>
-          <div style={styles.activityActions}>{catalog.map((activity) => <span key={activity.id}><button type="button" onClick={() => setActivityForm(activity)} style={styles.secondaryButton}>编辑 {activity.name}</button><button type="button" onClick={() => window.confirm(`删除活动“${activity.name}”？`) && mutate(`/api/activities/${activity.id}`, { method: 'DELETE' }, '活动已删除。')} style={styles.dangerButton}>删除</button></span>)}</div>
-        </div>
-      </section>
-
-      <section style={styles.configSection}>
-        <h2>用户与角色管理</h2>
-        <div style={styles.configGrid}>
-          <form onSubmit={submitUser} style={styles.card}>
-            <h3>{userForm.id ? '分配角色' : '新增账号'}</h3>
-            {!userForm.id && <><label style={styles.field}>账号<input required value={userForm.username} onChange={(event) => setUserForm({ ...userForm, username: event.target.value })} /></label><label style={styles.field}>初始密码<input required minLength="8" type="password" value={userForm.password} onChange={(event) => setUserForm({ ...userForm, password: event.target.value })} /></label></>}
-            <label style={styles.field}>角色<select value={userForm.role} onChange={(event) => setUserForm({ ...userForm, role: event.target.value, maintainer_team_id: event.target.value === 'maintainer' ? userForm.maintainer_team_id : '' })}><option value="admin">admin</option><option value="maintainer">maintainer</option><option value="viewer">viewer</option></select></label>
-            {userForm.role === 'maintainer' && <label style={styles.field}>绑定团队<select required value={userForm.maintainer_team_id} onChange={(event) => setUserForm({ ...userForm, maintainer_team_id: event.target.value })}><option value="">请选择</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label>}
-            <button type="submit" style={styles.primaryButton}>{userForm.id ? '保存角色' : '创建账号'}</button>{' '}
-            {userForm.id && <button type="button" onClick={() => setUserForm(emptyUser())} style={styles.secondaryButton}>取消</button>}
-          </form>
-          <div style={styles.card}>
-            <h3>现有账号</h3>
-            <table style={styles.table}><thead><tr><th>账号</th><th>角色</th><th>绑定团队</th><th>操作</th></tr></thead><tbody>
-              {users.map((account) => <tr key={account.id}><td>{account.username}</td><td>{account.role}</td><td>{teams.find((team) => team.id === account.maintainer_team_id)?.name ?? '—'}</td><td style={styles.actions}><button type="button" onClick={() => setUserForm({ ...account, password: '', maintainer_team_id: account.maintainer_team_id ? String(account.maintainer_team_id) : '' })} style={styles.secondaryButton}>编辑角色</button>{account.id !== user.id && <button type="button" onClick={() => window.confirm(`删除账号“${account.username}”？`) && mutate(`/api/users/${account.id}`, { method: 'DELETE' }, '账号已删除。')} style={styles.dangerButton}>删除</button>}</td></tr>)}
-            </tbody></table>
-          </div>
-        </div>
-      </section>
-    </main>
-  )
-}
-
-function ManualEntryPage({ user, onNavigate, onLogout, onSessionExpired }) {
-  const [teams, setTeams] = useState([])
-  const [catalog, setCatalog] = useState([])
-  const [versions, setVersions] = useState([])
-  const [teamId, setTeamId] = useState('')
-  const [scope, setScope] = useState('iteration')
-  const [iterationId, setIterationId] = useState('')
-  const [periodStart, setPeriodStart] = useState('')
-  const [periodEnd, setPeriodEnd] = useState('')
-  const [facts, setFacts] = useState([])
-  const [values, setValues] = useState({})
-  const [loading, setLoading] = useState(true)
-  const [loadingFacts, setLoadingFacts] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
-  const [message, setMessage] = useState(null)
+function AnalyticsDataLayout({ onSessionExpired }) {
+  const [state, setState] = useState({ catalog: null, teams: null, versions: null, error: null })
+  const [filter, setFilter] = useUrlFilter(state.versions ?? [])
+  const [maturity, setMaturity] = useUrlMaturity(state.teams ?? [])
+  const sessionExpiredRef = useRef(onSessionExpired)
+  sessionExpiredRef.current = onSessionExpired
 
   useEffect(() => {
     let active = true
-    setLoading(true)
-    Promise.all([
-      fetchJson('/api/teams'),
-      fetchJson('/api/catalog'),
-      fetchJson('/api/versions'),
-    ])
-      .then(([nextTeams, nextCatalog, nextVersions]) => {
-        if (!active) return
-        setTeams(nextTeams)
-        setCatalog(nextCatalog)
-        setVersions(nextVersions)
-      })
-      .catch((error) => {
-        if (!active) return
-        setMessage({ type: 'error', text: error.message })
-        if (error.status === 401) onSessionExpired()
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
+    Promise.all([fetchJson('/api/catalog'), fetchJson('/api/teams'), fetchJson('/api/versions')])
+      .then(([catalog, teams, versions]) => { if (active) setState({ catalog, teams, versions, error: null }) })
+      .catch((error) => { if (!active) return; setState((current) => ({ ...current, error })); if (error.status === 401) sessionExpiredRef.current() })
     return () => { active = false }
-  }, [onSessionExpired])
+  }, [])
 
-  const availableTeams = user.role === 'maintainer'
-    ? teams.filter((team) => team.id === user.maintainer_team_id)
-    : teams
-  const allIterations = versions.flatMap((version) => version.iterations.map((iteration) => ({
-    ...iteration,
-    versionName: version.name,
-  })))
+  if (state.error) return <div className="status-page"><Result status="error" title="分析数据加载失败" subTitle={state.error.message} /></div>
+  if (!state.catalog || !state.teams || !state.versions) return <LoadingPage text="加载研发分析…" />
+  return <Outlet context={{ ...state, filter, onFilterChange: setFilter, maturity, onMaturityChange: setMaturity }} />
+}
 
-  useEffect(() => {
-    if (teamId || !availableTeams.length) return
-    setTeamId(String(availableTeams[0].id))
-  }, [availableTeams, teamId])
+function OverviewRoute({ Page, onSessionExpired, user }) {
+  const analytics = useOutletContext()
+  const navigate = useSearchPreservingNavigate()
+  return <Page {...analytics} user={user} maturityState={analytics.maturity} onMaturityChange={analytics.onMaturityChange} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
+}
 
-  useEffect(() => {
-    if (!iterationId && allIterations.length) setIterationId(String(allIterations[0].id))
-  }, [allIterations, iterationId])
+function TeamAnalyticsRoute({ Page, onSessionExpired }) {
+  const { teamId } = useParams()
+  const analytics = useOutletContext()
+  const navigate = useSearchPreservingNavigate()
+  const team = analytics.teams.find((item) => String(item.id) === decodeURIComponent(teamId))
+  return <Page {...analytics} team={team} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
+}
 
-  const loadCurrentFacts = useCallback(async () => {
-    const selectedMetrics = catalog
-      .filter((activity) => activity.kind === (scope === 'iteration' ? 'key' : 'general'))
-      .flatMap((activity) => activity.metrics)
-    const readyForQuery = teamId && (
-      scope === 'iteration'
-        ? iterationId
-        : periodStart && periodEnd
-    )
-    if (!readyForQuery) {
-      setFacts([])
-      setValues(Object.fromEntries(selectedMetrics.map((metric) => [metric.id, { numerator: '', denominator: '' }])))
-      return
-    }
+function MetricAnalyticsRoute({ Page, onSessionExpired }) {
+  const { metricId } = useParams()
+  const analytics = useOutletContext()
+  const navigate = useSearchPreservingNavigate()
+  const entry = findMetric(analytics.catalog, decodeURIComponent(metricId))
+  return <Page {...analytics} activity={entry?.activity} metric={entry?.metric} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
+}
 
-    const params = new URLSearchParams({ team_id: teamId })
-    if (scope === 'iteration') {
-      params.set('iteration_id', iterationId)
-    } else {
-      params.set('start_date', periodStart)
-      params.set('end_date', periodEnd)
-    }
+function DataRoute({ Page, section, user, onSessionExpired }) {
+  return <Page section={section} user={user} onSessionExpired={onSessionExpired} />
+}
 
-    setLoadingFacts(true)
-    try {
-      const nextFacts = await fetchJson(`/api/facts?${params.toString()}`)
-      const nextValues = Object.fromEntries(selectedMetrics.map((metric) => {
-        const fact = nextFacts.find((item) => item.metric_id === metric.id)
-        return [metric.id, {
-          numerator: fact?.numerator ?? '',
-          denominator: fact?.denominator ?? '',
-        }]
-      }))
-      setFacts(nextFacts)
-      setValues(nextValues)
-    } catch (error) {
-      setMessage({ type: 'error', text: error.message })
-      if (error.status === 401) onSessionExpired()
-    } finally {
-      setLoadingFacts(false)
-    }
-  }, [catalog, iterationId, onSessionExpired, periodEnd, periodStart, scope, teamId])
+function RequireRole({ user, roles }) {
+  if (!canAccess(roles, user.role)) return <ForbiddenPage />
+  return <Outlet />
+}
 
-  useEffect(() => { loadCurrentFacts() }, [loadCurrentFacts])
+function LegacyDataManagementRoute() {
+  const { domain } = useParams()
+  const { search } = useLocation()
+  const normalizedDomain = domain?.toLowerCase()
+  const target = LEGACY_REDIRECT_TARGETS[`/data-management/${normalizedDomain}`]
+  if (target) return <Navigate to={appendSearch(target, search)} replace />
+  if (isPendingDomain(normalizedDomain)) return <PendingDomainPage domain={normalizedDomain.toUpperCase()} />
+  return <NotFoundPage />
+}
 
-  const selectedMetrics = catalog
-    .filter((activity) => activity.kind === (scope === 'iteration' ? 'key' : 'general'))
-    .flatMap((activity) => activity.metrics)
+function LegacyTeamRedirect() {
+  const { id } = useParams()
+  const { search } = useLocation()
+  return <Navigate to={appendSearch(`/analytics/teams/${encodeURIComponent(id)}`, search)} replace />
+}
 
-  function updateValue(metricId, field, value) {
-    setValues((previous) => ({
-      ...previous,
-      [metricId]: { ...(previous[metricId] ?? {}), [field]: value },
-    }))
-  }
+function LegacyMetricRedirect() {
+  const { id } = useParams()
+  const { search } = useLocation()
+  return <Navigate to={appendSearch(`/analytics/metrics/${encodeURIComponent(id)}`, search)} replace />
+}
 
-  async function submit(event) {
-    event.preventDefault()
-    setMessage(null)
-    if (scope === 'period' && periodStart > periodEnd) {
-      setMessage({ type: 'error', text: '周期开始日期不能晚于结束日期。' })
-      return
-    }
-    const missing = selectedMetrics.filter((metric) => {
-      const value = values[metric.id] ?? {}
-      return value.numerator === '' || (metric.denominator_semantic && value.denominator === '')
-    })
-    if (missing.length) {
-      setMessage({ type: 'error', text: `请填写全部指标的${missing.map((metric) => metric.name).join('、')}。` })
-      return
-    }
+function LegacyDataManagementRootRedirect() {
+  const { search } = useLocation()
+  return <Navigate to={appendSearch(LEGACY_REDIRECT_TARGETS['/data-management'], search)} replace />
+}
 
-    setSubmitting(true)
-    let savedCount = 0
-    let failedMetric = null
-    try {
-      for (const metric of selectedMetrics) {
-        failedMetric = metric
-        const value = values[metric.id]
-        const payload = {
-          team_id: Number(teamId),
-          metric_id: metric.id,
-          numerator: Number(value.numerator),
-          denominator: metric.denominator_semantic ? Number(value.denominator) : null,
-        }
-        if (scope === 'iteration') payload.iteration_id = Number(iterationId)
-        else {
-          payload.start_date = periodStart
-          payload.end_date = periodEnd
-        }
-        await fetchJson('/api/facts', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        })
-        savedCount += 1
-      }
-      setMessage({ type: 'success', text: `已保存 ${selectedMetrics.length} 条补录记录。` })
-      await loadCurrentFacts()
-    } catch (error) {
-      const prefix = savedCount
-        ? `已保存 ${savedCount} 条；指标“${failedMetric?.name ?? '未知'}”提交失败：`
-        : ''
-      setMessage({ type: 'error', text: `${prefix}${error.message}` })
-      if (error.status === 401) onSessionExpired()
-    } finally {
-      setSubmitting(false)
-    }
-  }
+const DEFAULT_ROUTE_COMPONENTS = { OverviewPage, TeamDrilldownPage, MetricDetailPage, DataManagementPage, UsersSettingsPage }
 
-  if (loading) return <p style={styles.loading}>加载补录目录中…</p>
-
-  const selectedTeam = availableTeams.find((team) => String(team.id) === teamId)
-  const selectedIteration = allIterations.find((iteration) => String(iteration.id) === iterationId)
-
+export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeComponents = DEFAULT_ROUTE_COMPONENTS }) {
+  const { OverviewPage: OverviewComponent, TeamDrilldownPage: TeamDrilldownComponent, MetricDetailPage: MetricDetailComponent, DataManagementPage: DataManagementComponent, UsersSettingsPage: UsersSettingsComponent } = routeComponents
   return (
-    <main style={styles.page}>
-      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <h1>数据补录</h1>
-      <p style={styles.muted}>补录会追加事实记录；重复补录不会删除历史，当前看板取最新人工记录。</p>
-      {message && <p role="alert" style={message.type === 'error' ? styles.error : styles.success}>{message.text}</p>}
-
-      <section style={styles.card}>
-        <div style={styles.manualSelectionGrid}>
-          <label style={styles.field}>
-            团队
-            <select value={teamId} disabled={user.role === 'maintainer'} onChange={(event) => setTeamId(event.target.value)}>
-              {availableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-            </select>
-          </label>
-          <label style={styles.field}>
-            补录范围
-            <select value={scope} onChange={(event) => setScope(event.target.value)}>
-              <option value="iteration">迭代（关键研发活动）</option>
-              <option value="period">周期（通用研发能力）</option>
-            </select>
-          </label>
-          {scope === 'iteration' ? (
-            <label style={styles.field}>
-              迭代
-              <select value={iterationId} onChange={(event) => setIterationId(event.target.value)}>
-                {allIterations.map((iteration) => <option key={iteration.id} value={iteration.id}>{iteration.versionName} / {iteration.name}</option>)}
-              </select>
-            </label>
-          ) : (
-            <>
-              <label style={styles.field}>周期开始<input type="date" value={periodStart} onChange={(event) => setPeriodStart(event.target.value)} /></label>
-              <label style={styles.field}>周期结束<input type="date" value={periodEnd} onChange={(event) => setPeriodEnd(event.target.value)} /></label>
-            </>
-          )}
-        </div>
-        {scope === 'iteration' && selectedIteration && (
-          <p style={styles.muted}>迭代时间：{selectedIteration.start_date} 至 {selectedIteration.end_date}</p>
-        )}
-        {selectedTeam && <p style={styles.muted}>当前团队：{selectedTeam.name}</p>}
-      </section>
-
-      <form onSubmit={submit} style={{ ...styles.card, marginTop: '1.25rem' }}>
-        <h2>{scope === 'iteration' ? '关键研发活动指标' : '通用研发能力指标'}</h2>
-        {loadingFacts ? <p style={styles.loading}>读取已有记录中…</p> : selectedMetrics.length === 0 ? (
-          <p style={styles.muted}>当前目录没有可补录指标。</p>
-        ) : (
-          <>
-            <div style={{ overflowX: 'auto' }}>
-              <table style={styles.table}>
-                <thead><tr><th>指标</th><th>分子</th><th>分母</th><th>当前记录</th></tr></thead>
-                <tbody>
-                  {selectedMetrics.map((metric) => {
-                    const value = values[metric.id] ?? { numerator: '', denominator: '' }
-                    const fact = facts.find((item) => item.metric_id === metric.id)
-                    return (
-                      <tr key={metric.id}>
-                        <td><strong>{metric.name}</strong><br /><small>{metric.numerator_semantic}</small></td>
-                        <td><input required type="number" step="any" value={value.numerator} onChange={(event) => updateValue(metric.id, 'numerator', event.target.value)} /></td>
-                        <td>{metric.denominator_semantic ? <><input required type="number" step="any" value={value.denominator} onChange={(event) => updateValue(metric.id, 'denominator', event.target.value)} /><br /><small>{metric.denominator_semantic}</small></> : <span style={styles.muted}>不适用</span>}</td>
-                        <td>{fact ? <small>{fact.source === 'manual' ? 'manual' : 'auto'} / {fact.entered_by}<br />{new Date(fact.entered_at).toLocaleString('zh-CN')}</small> : <span style={styles.muted}>暂无</span>}</td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <button type="submit" disabled={submitting || !teamId || (scope === 'iteration' ? !iterationId : !periodStart || !periodEnd)} style={styles.primaryButton}>
-              {submitting ? '保存中…' : '保存全部指标'}
-            </button>
-          </>
-        )}
-      </form>
-    </main>
+    <Suspense fallback={<LoadingPage text="加载页面模块…" />}>
+      <Routes>
+        <Route path="login" element={<Navigate to="/" replace />} />
+        <Route element={<AppShell user={user} onLogout={onLogout} />}>
+          <Route element={<AnalyticsDataLayout onSessionExpired={onSessionExpired} />}>
+            <Route index element={<OverviewRoute Page={OverviewComponent} user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.teamAnalytics} element={<TeamAnalyticsRoute Page={TeamDrilldownComponent} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.metricAnalytics} element={<MetricAnalyticsRoute Page={MetricDetailComponent} onSessionExpired={onSessionExpired} />} />
+          </Route>
+          <Route element={<RequireRole user={user} roles={DATA_READ_ROLES} />}>
+            <Route path={ROUTE_PATHS.ir} element={<DataRoute Page={DataManagementComponent} section="ir" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.dataDomain} element={<PendingDomainRoute />} />
+            <Route path={ROUTE_PATHS.legacyData} element={<LegacyDataManagementRootRedirect />} />
+            <Route path={ROUTE_PATHS.legacyDataDomain} element={<LegacyDataManagementRoute />} />
+            <Route path={ROUTE_PATHS.legacyManualEntry} element={<Navigate to="/data/ir" replace />} />
+          </Route>
+          <Route element={<RequireRole user={user} roles={SETTINGS_READ_ROLES} />}>
+            <Route path={ROUTE_PATHS.teams} element={<DataRoute Page={DataManagementComponent} section="teams" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.products} element={<DataRoute Page={DataManagementComponent} section="products" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.metrics} element={<DataRoute Page={DataManagementComponent} section="metrics" user={user} onSessionExpired={onSessionExpired} />} />
+          </Route>
+          <Route element={<RequireRole user={user} roles={ADMIN_ROLES} />}>
+            <Route path={ROUTE_PATHS.users} element={<UsersSettingsComponent user={user} onSessionExpired={onSessionExpired} />} />
+            {/* Stage three migration complete: the legacy config entry now resolves to the split settings surface. */}
+            <Route path={ROUTE_PATHS.legacyConfig} element={<Navigate to={LEGACY_REDIRECT_TARGETS['/config']} replace />} />
+          </Route>
+          <Route path={ROUTE_PATHS.legacyTeam} element={<LegacyTeamRedirect />} />
+          <Route path={ROUTE_PATHS.legacyMetric} element={<LegacyMetricRedirect />} />
+          <Route path="*" element={<NotFoundPage />} />
+        </Route>
+      </Routes>
+    </Suspense>
   )
 }
 
-function Navigation({ user, onNavigate, onLogout }) {
-  return (
-    <nav style={styles.navigation} aria-label="主导航">
-      <button type="button" onClick={() => onNavigate('/')} style={styles.navButton}>
-        看板
-      </button>
-      {user?.role === 'admin' && (
-        <button type="button" onClick={() => onNavigate('/config')} style={styles.navButton}>
-          配置
-        </button>
-      )}
-      {(user?.role === 'admin' || user?.role === 'maintainer') && (
-        <button type="button" onClick={() => onNavigate('/manual-entry')} style={styles.navButton}>
-          补录
-        </button>
-      )}
-      <span style={styles.spacer} />
-      {user && <span style={styles.muted}>{user.username}（{user.role}）</span>}
-      {onLogout && (
-        <button type="button" onClick={onLogout} style={styles.navButton}>
-          登出
-        </button>
-      )}
-    </nav>
-  )
-}
-
-function Dashboard({ pathname, user, onNavigate, onLogout, onSessionExpired }) {
-  const [catalog, setCatalog] = useState(null)
-  const [teams, setTeams] = useState(null)
-  const [versions, setVersions] = useState(null)
-  const [filter, setFilter] = useState(INITIAL_FILTER)
-  const [error, setError] = useState(null)
-
-  useEffect(() => {
-    let active = true
-    Promise.all([
-      fetchJson('/api/catalog'),
-      fetchJson('/api/teams'),
-      fetchJson('/api/versions'),
-    ])
-      .then(([nextCatalog, nextTeams, nextVersions]) => {
-        if (!active) return
-        setCatalog(nextCatalog)
-        setTeams(nextTeams)
-        setVersions(nextVersions)
-      })
-      .catch((nextError) => {
-        if (active) setError(nextError)
-        if (active && nextError.status === 401) onSessionExpired()
-      })
-    return () => {
-      active = false
-    }
-  }, [user])
-
-  if (error) {
-    return (
-      <main style={styles.page}>
-        <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-        <p style={styles.error}>后端连接失败：{error.message}</p>
-      </main>
-    )
-  }
-  if (!catalog || !teams || !versions) {
-    return <p style={styles.loading}>加载中…</p>
-  }
-
-  const metricMatch = pathname.match(/^\/metric\/([^/]+)$/)
-  if (metricMatch) {
-    const metricEntry = findMetric(catalog, decodeURIComponent(metricMatch[1]))
-    return (
-      <>
-        <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-        <MetricDetailPage
-          activity={metricEntry?.activity}
-          metric={metricEntry?.metric}
-          teams={teams}
-          versions={versions}
-          filter={filter}
-          onFilterChange={setFilter}
-          onNavigate={onNavigate}
-          onSessionExpired={onSessionExpired}
-        />
-      </>
-    )
-  }
-
-  const teamMatch = pathname.match(/^\/team\/([^/]+)$/)
-  if (teamMatch) {
-    const team = teams.find((item) => String(item.id) === decodeURIComponent(teamMatch[1]))
-    return (
-      <>
-        <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-        <TeamDrilldownPage
-          catalog={catalog}
-          teams={teams}
-          versions={versions}
-          team={team}
-          filter={filter}
-          onFilterChange={setFilter}
-          onNavigate={onNavigate}
-          onSessionExpired={onSessionExpired}
-        />
-      </>
-    )
-  }
-
-  return (
-    <>
-      <Navigation user={user} onNavigate={onNavigate} onLogout={onLogout} />
-      <OverviewPage
-        catalog={catalog}
-        teams={teams}
-        versions={versions}
-        filter={filter}
-        onFilterChange={setFilter}
-        onNavigate={onNavigate}
-        onSessionExpired={onSessionExpired}
-      />
-    </>
-  )
-}
-
-const styles = {
-  page: { fontFamily: 'system-ui, sans-serif', margin: '2rem' },
-  centeredPage: {
-    alignItems: 'center',
-    background: '#f7f8fa',
-    display: 'flex',
-    fontFamily: 'system-ui, sans-serif',
-    justifyContent: 'center',
-    minHeight: '100vh',
-  },
-  loginCard: {
-    background: 'white',
-    border: '1px solid #e5e7eb',
-    borderRadius: 12,
-    boxShadow: '0 8px 24px rgba(15, 23, 42, 0.08)',
-    maxWidth: 360,
-    padding: '2rem',
-    width: 'calc(100% - 4rem)',
-  },
-  field: { display: 'grid', gap: 6, margin: '1rem 0' },
-  primaryButton: {
-    background: '#2563eb',
-    border: 0,
-    borderRadius: 6,
-    color: 'white',
-    cursor: 'pointer',
-    padding: '0.65rem 1rem',
-  },
-  navigation: { alignItems: 'center', display: 'flex', gap: 8, marginBottom: '2rem' },
-  navButton: { background: 'transparent', border: 0, cursor: 'pointer', padding: '0.4rem 0.6rem' },
-  spacer: { flex: 1 },
-  card: { border: '1px solid #e5e7eb', borderRadius: 12, padding: '1.5rem' },
-  configSection: { marginTop: '2.5rem' },
-  configGrid: { alignItems: 'start', display: 'grid', gap: '1.25rem', gridTemplateColumns: 'minmax(280px, 1fr) minmax(0, 2fr)' },
-  manualSelectionGrid: { alignItems: 'end', display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' },
-  listField: { border: '1px solid #cbd5e1', borderRadius: 6, display: 'grid', gap: 8, margin: '1rem 0', padding: '0.75rem' },
-  inlineField: { alignItems: 'center', display: 'flex', gap: 8 },
-  secondaryButton: { background: 'white', border: '1px solid #94a3b8', borderRadius: 6, cursor: 'pointer', padding: '0.4rem 0.6rem' },
-  dangerButton: { background: 'white', border: '1px solid #dc2626', borderRadius: 6, color: '#b91c1c', cursor: 'pointer', padding: '0.4rem 0.6rem' },
-  success: { color: '#15803d' },
-  table: { borderCollapse: 'collapse', fontSize: '0.9rem', width: '100%' },
-  actions: { display: 'flex', flexWrap: 'wrap', gap: 6 },
-  activityActions: { display: 'flex', flexWrap: 'wrap', gap: 8 },
-  muted: { color: '#64748b' },
-  error: { color: '#b91c1c' },
-  loading: { fontFamily: 'system-ui, sans-serif', margin: '2rem' },
+function PendingDomainRoute() {
+  const { domain } = useParams()
+  if (!isPendingDomain(domain)) return <NotFoundPage />
+  return <PendingDomainPage domain={domain.toUpperCase()} />
 }
 
 export default function App() {
-  const [pathname, navigate] = usePathname()
+  const location = useLocation()
+  const navigate = useNavigate()
   const [user, setUser] = useState(undefined)
   const [authError, setAuthError] = useState(null)
   const [returnPath, setReturnPath] = useState(null)
+  const authBootstrapPromise = useRef(null)
+  const authMounted = useRef(false)
+  const initialLocation = useRef(location)
+  const navigateRef = useRef(navigate)
+  navigateRef.current = navigate
 
   useEffect(() => {
-    fetchJson('/api/auth/me')
-      .then(setUser)
-      .catch((error) => {
-        if (error.status === 401) {
-          setUser(null)
-          if (pathname !== '/login') {
-            setReturnPath(pathname)
-            navigate('/login')
-          }
-        } else {
-          setAuthError(error.message)
-        }
-      })
+    authMounted.current = true
+    if (!authBootstrapPromise.current) {
+      authBootstrapPromise.current = fetchJson('/api/auth/me')
+        .then((nextUser) => { if (authMounted.current) setUser(nextUser) })
+        .catch((error) => {
+          if (!authMounted.current) return
+          if (error.status === 401) {
+            setUser(null)
+            if (initialLocation.current.pathname !== '/login') {
+              const target = initialLocation.current
+              setReturnPath(`${target.pathname}${target.search}${target.hash}`)
+              navigateRef.current('/login', { replace: true })
+            }
+          } else setAuthError(error.message)
+        })
+    }
+    return () => { authMounted.current = false }
   }, [])
 
-  async function login(credentials) {
+  const login = useCallback(async (credentials) => {
     try {
-      const loggedInUser = await fetchJson('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(credentials),
-      })
+      const loggedInUser = await fetchJson('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials) })
       setAuthError(null)
       setUser(loggedInUser)
-      const destination = pathname === '/login' ? (returnPath ?? '/') : pathname
+      const currentPath = `${location.pathname}${location.search}${location.hash}`
+      const destination = location.pathname === '/login' ? (returnPath ?? '/') : currentPath
       setReturnPath(null)
-      navigate(destination)
+      navigate(destination, { replace: true })
     } catch (error) {
       setAuthError(error.status === 401 ? '账号或密码错误。' : error.message)
       throw error
     }
-  }
+  }, [location, navigate, returnPath])
 
-  async function logout() {
+  const logout = useCallback(async () => {
     await fetchJson('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
     setUser(null)
-    navigate('/login')
-  }
+    setReturnPath(null)
+    navigate('/login', { replace: true })
+  }, [navigate])
 
-  function sessionExpired() {
+  const sessionExpired = useCallback(() => {
+    const currentPath = `${location.pathname}${location.search}${location.hash}`
     setAuthError('会话已过期，请重新登录。')
     setUser(null)
-    setReturnPath(pathname)
-    navigate('/login')
-  }
+    setReturnPath(currentPath)
+    navigate('/login', { replace: true })
+  }, [location, navigate])
 
+  let content
   if (user === undefined) {
-    if (authError) {
-      return <p style={styles.error}>认证服务不可用：{authError}</p>
-    }
-    return <p style={styles.loading}>加载中…</p>
-  }
-  if (!user) {
-    return <LoginPage onLogin={login} error={authError} />
-  }
+    content = authError ? <main className="status-page"><Result status="error" title="认证服务不可用" subTitle={authError} /></main> : <LoadingPage />
+  } else if (!user) {
+    content = location.pathname === '/login' ? <LoginPage onLogin={login} error={authError} /> : <Navigate to="/login" replace />
+  } else content = <ApplicationRoutes user={user} onLogout={logout} onSessionExpired={sessionExpired} />
 
-  if (pathname === '/config' && user.role !== 'admin') {
-    return <ForbiddenPage onNavigate={navigate} />
-  }
-  if (pathname === '/manual-entry' && !['admin', 'maintainer'].includes(user.role)) {
-    return <ForbiddenPage onNavigate={navigate} />
-  }
-  if (pathname === '/config') {
-    return <ConfigPage user={user} onNavigate={navigate} onLogout={logout} onSessionExpired={sessionExpired} />
-  }
-  if (pathname === '/manual-entry') {
-    return <ManualEntryPage user={user} onNavigate={navigate} onLogout={logout} onSessionExpired={sessionExpired} />
-  }
-  return (
-    <Dashboard
-      pathname={pathname}
-      user={user}
-      onNavigate={navigate}
-      onLogout={logout}
-      onSessionExpired={sessionExpired}
-    />
-  )
+  return <ConfigProvider theme={APP_THEME}><AntdApp>{content}</AntdApp></ConfigProvider>
 }

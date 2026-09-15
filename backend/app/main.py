@@ -11,15 +11,38 @@ from starlette.routing import Match, Mount
 from starlette.staticfiles import StaticFiles
 
 from .api import router
-from .collectors import CollectorRegistry
+from .collectors import CollectorRegistry, SourceCollectorRegistry
 from .config import SESSION_HTTPS_ONLY, SESSION_MAX_AGE, SESSION_SECRET, STATIC_DIR
+from .data_api import router as data_management_router
 from .db import Base, SessionLocal, engine
-from .migrations import ensure_auth_schema, ensure_fact_schema
-from .models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User  # noqa: F401
+from .migrations import (
+    ensure_auth_schema,
+    ensure_data_management_schema,
+    ensure_fact_schema,
+    ensure_maturity_schema,
+)
+from .models import (  # noqa: F401
+    Activity,
+    AuditLog,
+    DataMetricDefinition,
+    FactRecord,
+    IRRequirement,
+    ImportBatch,
+    ImportRow,
+    Iteration,
+    MaturityRecord,
+    Metric,
+    Product,
+    ProductVersion,
+    Team,
+    TeamMember,
+    User,
+)
 from .scheduler import create_scheduler
 
 
 collector_registry = CollectorRegistry()
+source_collector_registry = SourceCollectorRegistry()
 
 
 class FrontendStaticFiles(StaticFiles):
@@ -61,6 +84,8 @@ async def lifespan(app: FastAPI):
     Base.metadata.create_all(engine)
     ensure_fact_schema()
     ensure_auth_schema()
+    ensure_data_management_schema()
+    ensure_maturity_schema()
     with SessionLocal() as db:
         if db.scalar(select(func.count()).select_from(Activity)) == 0:
             from .seed import run_seed
@@ -69,6 +94,7 @@ async def lifespan(app: FastAPI):
     scheduler = create_scheduler(collector_registry)
     scheduler.start()
     app.state.scheduler = scheduler
+    app.state.source_collector_registry = source_collector_registry
     try:
         yield
     finally:
@@ -89,6 +115,7 @@ def create_app(
         https_only=SESSION_HTTPS_ONLY,
     )
     application.include_router(router)
+    application.include_router(data_management_router)
     frontend_dir = Path(static_dir) if static_dir is not None else STATIC_DIR
     if frontend_dir.is_dir():
         application.router.routes.append(

@@ -1,12 +1,16 @@
 {
   "name": "ai-dev-radar",
   "private": true,
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "concurrently -n be,fe -c blue,green \"npm:dev:backend\" \"npm:dev:frontend\"",
-    "dev:backend": "APP_ENV=development python -m uvicorn app.main:app --reload --app-dir backend --port 8000",
+    "dev:backend": "node scripts/run-python.mjs --env APP_ENV=development -m uvicorn app.main:app --reload --app-dir backend --port 8000",
     "dev:frontend": "npm --prefix frontend run dev",
-    "seed": "cd backend && APP_ENV=development python -m app.seed",
-    "test": "cd backend && python -m pytest tests -q"
+    "setup": "node scripts/bootstrap.mjs",
+    "seed": "node scripts/run-python.mjs --cwd backend --env APP_ENV=development -m app.seed",
+    "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"

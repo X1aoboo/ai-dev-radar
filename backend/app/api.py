@@ -2,7 +2,7 @@
 
 from datetime import date, datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path as ApiPath, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -16,12 +16,15 @@ from .auth import (
 )
 from .compute import build_series, select_current_facts
 from .db import get_db
+from .maturity import build_maturity_overview, normalise_month, record_payload, score_text
 from .models import (
     Activity,
     FactRecord,
     FactSource,
     Iteration,
+    MaturityRecord,
     Metric,
+    Product,
     ProductVersion,
     Team,
     User,
@@ -38,6 +41,11 @@ from .schemas import (
     LoginIn,
     LogoutOut,
     ManualFactIn,
+    MaturityBulkIn,
+    MaturityClearOut,
+    MaturityOverviewOut,
+    MaturityRecordOut,
+    MaturitySaveOut,
     MetricIn,
     MetricOut,
     MetricUpdateIn,
@@ -359,11 +367,36 @@ def list_versions(
     _current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return db.scalars(
+    versions = db.scalars(
         select(ProductVersion)
-        .options(selectinload(ProductVersion.iterations))
+        .options(
+            selectinload(ProductVersion.iterations),
+            joinedload(ProductVersion.product).joinedload(Product.team),
+        )
         .order_by(ProductVersion.sort_order)
-    ).all()
+    ).unique().all()
+    return [
+        {
+            "id": version.id,
+            "name": version.name,
+            "product_id": version.product_id,
+            "product_name": version.product.name if version.product else None,
+            "team_id": version.product.team_id if version.product else None,
+            "team_name": version.product.team.name if version.product else None,
+            "iterations": [
+                {
+                    "id": iteration.id,
+                    "version_id": version.id,
+                    "version_name": version.name,
+                    "name": iteration.name,
+                    "start_date": iteration.start_date,
+                    "end_date": iteration.end_date,
+                }
+                for iteration in version.iterations
+            ],
+        }
+        for version in versions
+    ]
 
 
 @router.get("/iterations", response_model=list[IterationOut])
@@ -372,10 +405,25 @@ def list_iterations(
     _current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Iteration).order_by(Iteration.sort_order)
+    stmt = (
+        select(Iteration)
+        .options(joinedload(Iteration.version))
+        .order_by(Iteration.sort_order)
+    )
     if version_id is not None:
         stmt = stmt.where(Iteration.version_id == version_id)
-    return db.scalars(stmt).all()
+    iterations = db.scalars(stmt).all()
+    return [
+        {
+            "id": iteration.id,
+            "version_id": iteration.version_id,
+            "version_name": iteration.version.name if iteration.version else None,
+            "name": iteration.name,
+            "start_date": iteration.start_date,
+            "end_date": iteration.end_date,
+        }
+        for iteration in iterations
+    ]
 
 
 @router.get("/compute", response_model=ComputeOut)
@@ -465,6 +513,194 @@ def compute_metric(
         "time_field": time_field,
         **result,
     }
+
+
+def _maturity_month_or_422(value: str):
+    try:
+        return normalise_month(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+def _maturity_records_query(db: Session, *, month, team_id: int | None = None):
+    stmt = (
+        select(MaturityRecord)
+        .options(joinedload(MaturityRecord.team), joinedload(MaturityRecord.activity))
+        .where(MaturityRecord.assessment_month == month)
+        .order_by(MaturityRecord.team_id, MaturityRecord.activity_id)
+    )
+    if team_id is not None:
+        stmt = stmt.where(MaturityRecord.team_id == team_id)
+    return stmt
+
+
+@router.get("/maturity/overview", response_model=MaturityOverviewOut)
+def maturity_overview(
+    month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    kind: str = Query(default="key", pattern="^(key|general)$"),
+    _current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """返回一个评估月和分类的完整矩阵、领域平均及等级分布。"""
+
+    assessment_month = _maturity_month_or_422(month)
+    teams = db.scalars(select(Team).order_by(Team.id)).all()
+    activities = db.scalars(select(Activity).order_by(Activity.sort_order, Activity.id)).all()
+    records = db.scalars(_maturity_records_query(db, month=assessment_month)).unique().all()
+    return build_maturity_overview(
+        teams=teams,
+        activities=activities,
+        records=records,
+        month=assessment_month,
+        kind=kind,
+    )
+
+
+@router.get("/maturity/records", response_model=list[MaturityRecordOut])
+def list_maturity_records(
+    month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    team_id: int | None = Query(default=None, ge=1),
+    kind: str | None = Query(default=None, pattern="^(key|general)$"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """查询原始月度评估，供详情和“复制上月”使用。"""
+
+    resolved_team_id = team_id
+    if current_user.role == UserRole.MAINTAINER.value:
+        if resolved_team_id is None:
+            resolved_team_id = current_user.maintainer_team_id
+        elif resolved_team_id != current_user.maintainer_team_id:
+            raise HTTPException(status_code=403, detail="team access denied")
+    if resolved_team_id is not None and db.get(Team, resolved_team_id) is None:
+        raise HTTPException(status_code=404, detail="team not found")
+
+    assessment_month = _maturity_month_or_422(month)
+    stmt = _maturity_records_query(db, month=assessment_month, team_id=resolved_team_id)
+    if kind is not None:
+        stmt = stmt.join(Activity).where(Activity.kind == kind)
+    records = db.scalars(stmt).unique().all()
+    return [record_payload(record) for record in records]
+
+
+@router.put(
+    "/maturity/teams/{team_id}/months/{month}",
+    response_model=MaturitySaveOut,
+)
+def save_maturity_month(
+    team_id: int = ApiPath(..., ge=1),
+    month: str = ApiPath(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    payload: MaturityBulkIn = ...,  # type: ignore[assignment]
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MAINTAINER)),
+    db: Session = Depends(get_db),
+):
+    """原子保存一个团队月份内提交的成熟度项；不会自动复制上月。"""
+
+    team = _get_or_404(db, Team, team_id, "team not found")
+    if (
+        current_user.role == UserRole.MAINTAINER.value
+        and current_user.maintainer_team_id != team.id
+    ):
+        raise HTTPException(status_code=403, detail="team access denied")
+    assessment_month = _maturity_month_or_422(month)
+
+    activity_ids = [entry.activity_id for entry in payload.entries]
+    if len(activity_ids) != len(set(activity_ids)):
+        raise HTTPException(status_code=422, detail="activity_id must be unique in one save")
+    activities = {
+        activity.id: activity
+        for activity in db.scalars(
+            select(Activity).where(Activity.id.in_(activity_ids))
+        ).all()
+    } if activity_ids else {}
+    if len(activities) != len(set(activity_ids)):
+        raise HTTPException(status_code=404, detail="activity not found")
+
+    existing = {
+        record.activity_id: record
+        for record in db.scalars(
+            select(MaturityRecord).where(
+                MaturityRecord.team_id == team.id,
+                MaturityRecord.assessment_month == assessment_month,
+            )
+        ).all()
+    }
+    saved_count = 0
+    cleared_count = 0
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    for entry in payload.entries:
+        record = existing.get(entry.activity_id)
+        if entry.score is None:
+            if record is not None:
+                db.delete(record)
+                cleared_count += 1
+            continue
+        if record is None:
+            record = MaturityRecord(
+                team_id=team.id,
+                activity_id=entry.activity_id,
+                assessment_month=assessment_month,
+                score_decimal=score_text(entry.score),
+                note=entry.note,
+                maintained_by=current_user.username,
+                updated_at=now,
+            )
+            db.add(record)
+            existing[entry.activity_id] = record
+        else:
+            record.score_decimal = score_text(entry.score)
+            record.note = entry.note
+            record.maintained_by = current_user.username
+            record.updated_at = now
+        saved_count += 1
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="maturity record already exists") from exc
+
+    records = db.scalars(
+        _maturity_records_query(db, month=assessment_month, team_id=team.id)
+    ).unique().all()
+    return {
+        "team_id": team.id,
+        "month": month,
+        "saved_count": saved_count,
+        "cleared_count": cleared_count,
+        "records": [record_payload(record) for record in records],
+    }
+
+
+@router.delete(
+    "/maturity/teams/{team_id}/months/{month}",
+    response_model=MaturityClearOut,
+)
+def clear_maturity_month(
+    team_id: int = ApiPath(..., ge=1),
+    month: str = ApiPath(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    current_user: User = Depends(require_roles(UserRole.ADMIN, UserRole.MAINTAINER)),
+    db: Session = Depends(get_db),
+):
+    """清空一个团队的指定评估月，删除后恢复为未评估。"""
+
+    team = _get_or_404(db, Team, team_id, "team not found")
+    if (
+        current_user.role == UserRole.MAINTAINER.value
+        and current_user.maintainer_team_id != team.id
+    ):
+        raise HTTPException(status_code=403, detail="team access denied")
+    assessment_month = _maturity_month_or_422(month)
+    records = db.scalars(
+        select(MaturityRecord).where(
+            MaturityRecord.team_id == team.id,
+            MaturityRecord.assessment_month == assessment_month,
+        )
+    ).all()
+    for record in records:
+        db.delete(record)
+    db.commit()
+    return {"team_id": team.id, "month": month, "deleted_count": len(records)}
 
 
 @router.post("/facts", response_model=FactRecordOut, status_code=201)

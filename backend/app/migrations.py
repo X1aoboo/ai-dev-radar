@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from .auth import hash_password
 from .config import SEED_PASSWORD
 from .db import SessionLocal, engine
-from .models import User
+from .models import MaturityRecord, User
 
 
 def ensure_fact_schema(db_engine: Engine = engine) -> None:
@@ -47,3 +47,27 @@ def ensure_auth_schema(
             for user in users_without_password:
                 user.password_hash = password_hash
             db.commit()
+
+
+def ensure_data_management_schema(db_engine: Engine = engine) -> None:
+    """为旧版看板数据库补齐新数据管理所需的可空版本归属列。
+
+    新表由 ``Base.metadata.create_all`` 创建；这里仅处理 ``create_all`` 不会
+    改动的既有 product_versions 表。旧事实数据不做迁移，product_id 保持可空。
+    """
+
+    inspector = inspect(db_engine)
+    if "product_versions" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("product_versions")}
+    if "product_id" not in columns:
+        with db_engine.begin() as connection:
+            connection.execute(
+                text("ALTER TABLE product_versions ADD COLUMN product_id INTEGER")
+            )
+
+
+def ensure_maturity_schema(db_engine: Engine = engine) -> None:
+    """只补齐成熟度存储，不根据旧事实或指标数据生成评估记录。"""
+
+    MaturityRecord.__table__.create(db_engine, checkfirst=True)

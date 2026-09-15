@@ -5,7 +5,7 @@ from datetime import date
 from sqlalchemy import func, select
 
 from app.db import SessionLocal
-from app.models import Activity, FactRecord, Iteration, Metric, ProductVersion, Team, User
+from app.models import Activity, FactRecord, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
 from app.seed import CATALOG, run_seed
 
 
@@ -35,6 +35,7 @@ def test_demo_dimensions():
         }
         assert db.scalar(select(func.count()).select_from(FactRecord)) > 1000
         assert db.scalar(select(func.count()).select_from(User)) == 6  # admin + 4 maintainer + viewer
+        assert db.scalar(select(func.count()).select_from(MaturityRecord)) == 0
 
 
 def test_fact_scope_dimensions():

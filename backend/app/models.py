@@ -8,7 +8,7 @@
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from sqlalchemy import JSON, Date, DateTime, Float, ForeignKey, String
+from sqlalchemy import Boolean, JSON, Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -54,6 +54,49 @@ class Team(Base):
         DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )
 
+    members: Mapped[list["TeamMember"]] = relationship(
+        back_populates="team", order_by="TeamMember.employee_id", cascade="all, delete-orphan"
+    )
+    products: Mapped[list["Product"]] = relationship(
+        back_populates="team", order_by="Product.name", cascade="all, delete-orphan"
+    )
+
+
+class TeamMember(Base):
+    """团队人员主数据；员工号允许被源数据直接引用。"""
+
+    __tablename__ = "team_members"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    employee_id: Mapped[str] = mapped_column(String(50), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    role: Mapped[str] = mapped_column(String(50))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+
+    team: Mapped[Team] = relationship(back_populates="members")
+
+
+class Product(Base):
+    """团队负责的产品；产品版本通过产品归属团队。"""
+
+    __tablename__ = "products"
+    __table_args__ = (UniqueConstraint("team_id", "name", name="uq_product_team_name"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    name: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+
+    team: Mapped[Team] = relationship(back_populates="products")
+    versions: Mapped[list["ProductVersion"]] = relationship(
+        back_populates="product", order_by="ProductVersion.sort_order", cascade="all, delete-orphan"
+    )
+
 
 class Activity(Base):
     """指标目录 - 活动条目。kind: key=关键研发活动（有版本/迭代维度），general=通用研发能力（仅时间维度）。"""
@@ -97,8 +140,12 @@ class ProductVersion(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(50), unique=True)
+    # Nullable to keep the old dashboard's seeded versions readable before the
+    # data-management seed is run; newly managed versions always require it.
+    product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     sort_order: Mapped[int] = mapped_column(default=0)
 
+    product: Mapped[Product | None] = relationship(back_populates="versions")
     iterations: Mapped[list["Iteration"]] = relationship(
         back_populates="version", order_by="Iteration.sort_order"
     )
@@ -148,3 +195,157 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     role: Mapped[str] = mapped_column(String(15))  # admin / maintainer / viewer
     maintainer_team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
+
+
+class MaturityRecord(Base):
+    """团队按月维护的活动成熟度分值。
+
+    ``score_decimal`` 使用规范化字符串而不是 Float/Numeric：SQLite 对 Numeric
+    仍可能经过二进制浮点，成熟度的整数边界必须基于原始十进制计算。
+    """
+
+    __tablename__ = "maturity_records"
+    __table_args__ = (
+        UniqueConstraint(
+            "team_id", "activity_id", "assessment_month", name="uq_maturity_team_activity_month"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    activity_id: Mapped[int] = mapped_column(ForeignKey("activities.id"))
+    assessment_month: Mapped[date] = mapped_column(Date)
+    score_decimal: Mapped[str] = mapped_column(String(8))
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    maintained_by: Mapped[str] = mapped_column(String(100))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
+    team: Mapped[Team] = relationship()
+    activity: Mapped[Activity] = relationship()
+
+
+class IRRequirement(Base):
+    """IR 源数据记录；首版按固定 SA/SE 活动字段保存工作量。"""
+
+    __tablename__ = "ir_requirements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    requirement_no: Mapped[str] = mapped_column(String(100), unique=True)
+    requirement_name: Mapped[str] = mapped_column(String(200))
+    responsible_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    parent_requirement_no: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    version_id: Mapped[int] = mapped_column(ForeignKey("product_versions.id"))
+    iteration_id: Mapped[int] = mapped_column(ForeignKey("iterations.id"))
+    completed_at: Mapped[date] = mapped_column(Date)
+    business_module: Mapped[str] = mapped_column(String(100))
+    requirement_scenario: Mapped[str] = mapped_column(String(200))
+    estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sa_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    sa_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    se_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    se_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ai_attribute_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    record_source: Mapped[str] = mapped_column(String(20), default="manual")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    updated_by: Mapped[str] = mapped_column(String(100))
+
+    product: Mapped[Product] = relationship()
+    version: Mapped[ProductVersion] = relationship()
+    iteration: Mapped[Iteration] = relationship()
+
+
+class ImportBatch(Base):
+    """一个待校验、待确认的导入或采集批次。"""
+
+    __tablename__ = "import_batches"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(20))
+    source_kind: Mapped[str] = mapped_column(String(20))
+    filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending")
+    created_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    rows: Mapped[list["ImportRow"]] = relationship(
+        back_populates="batch", order_by="ImportRow.row_number", cascade="all, delete-orphan"
+    )
+
+
+class ImportRow(Base):
+    """导入批次中的一行标准化数据、校验结果和待执行差异。"""
+
+    __tablename__ = "import_rows"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"))
+    row_number: Mapped[int] = mapped_column()
+    source_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    payload: Mapped[dict] = mapped_column(JSON, default=dict)
+    operation: Mapped[str] = mapped_column(String(20), default="insert")
+    diff: Mapped[dict] = mapped_column(JSON, default=dict)
+    errors: Mapped[list] = mapped_column(JSON, default=list)
+    warnings: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="valid")
+    target_id: Mapped[int | None] = mapped_column(nullable=True)
+
+    batch: Mapped[ImportBatch] = relationship(back_populates="rows")
+
+
+class DataMetricDefinition(Base):
+    """源数据指标规则；复杂规则仍可由计算实现扩展。"""
+
+    __tablename__ = "data_metric_definitions"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(20))
+    code: Mapped[str] = mapped_column(String(80), unique=True)
+    name: Mapped[str] = mapped_column(String(100))
+    metric_type: Mapped[str] = mapped_column(String(20))
+    activity_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    numerator_field: Mapped[str] = mapped_column(String(80))
+    denominator_field: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    filter_definition: Mapped[dict] = mapped_column(JSON, default=dict)
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
+
+class AuditLog(Base):
+    """正式源数据的字段变更记录。"""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(20))
+    record_id: Mapped[int] = mapped_column()
+    action: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(100))
+    source: Mapped[str] = mapped_column(String(20))
+    changes: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
