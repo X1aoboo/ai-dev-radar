@@ -1,5 +1,7 @@
 # ai-dev-radar
 
+项目设计入口见 [docs/index.md](docs/index.md)。开发前按入口读取相关设计，完成时同步受影响的当前文档。文档校验：`npm run check:docs`；校验器回归：`npm run test:docs`。
+
 ## 首次安装开发依赖
 
 首次下载源码后，在项目根目录执行：

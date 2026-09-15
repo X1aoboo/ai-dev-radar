@@ -13,7 +13,9 @@ import { getRouteMeta } from './routeMetadata.js'
 vi.mock('antd', () => ({
   App: ({ children }) => <>{children}</>,
   Breadcrumb: ({ items = [] }) => <nav>{items.map((item) => <span key={item.title}>{item.title}</span>)}</nav>,
-  Button: ({ children, onClick }) => <button type="button" onClick={onClick}>{children}</button>,
+  Button: ({ children, onClick, ...props }) => <button type="button" onClick={onClick} {...props}>{children}</button>,
+  Drawer: ({ children, open, onClose }) => open ? <div data-drawer><button data-close-drawer onClick={onClose}>关闭</button>{children}</div> : null,
+  Tooltip: ({ children }) => <>{children}</>,
   ConfigProvider: ({ children }) => <>{children}</>,
   Result: ({ title, subTitle, extra }) => <section><h1>{title}</h1><p>{subTitle}</p>{extra}</section>,
   Tag: ({ children }) => <span>{children}</span>,
@@ -26,11 +28,12 @@ vi.mock('@ant-design/icons', () => {
     BarChartOutlined: Icon,
     DatabaseOutlined: Icon,
     LogoutOutlined: Icon,
+    MenuFoldOutlined: Icon,
+    MenuUnfoldOutlined: Icon,
     TeamOutlined: Icon,
     UserOutlined: Icon,
   }
 })
-
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 function StubPage({ page, children = page }) {
@@ -134,6 +137,89 @@ beforeEach(() => {
 
 afterEach(() => {
   delete globalThis.fetch
+  delete globalThis.localStorage
+  delete globalThis.matchMedia
+})
+
+test('sidebar toggles reversibly without changing navigation contracts or fetching data', async () => {
+  globalThis.fetch = vi.fn(globalThis.fetch)
+  const renderer = await renderAt('/data/ir', 'viewer')
+  const links = () => renderer.root.findAllByType('a').filter(node => node.props.className?.split(' ').includes('app-nav__link'))
+  const before = links().map(node => [node.props.href, node.props['aria-label']])
+  const requests = globalThis.fetch.mock.calls.length
+  const toggle = () => renderer.root.findAllByType('button').find(node => node.props['aria-controls'] === 'app-navigation')
+  expect(toggle().props['aria-expanded']).toBe(true)
+  expect(renderer.root.findByProps({ className: 'app-sidebar__footer' }).findAllByType('button')).toHaveLength(1)
+  await act(async () => toggle().props.onClick())
+  expect(toggle().props['aria-expanded']).toBe(false)
+  expect(links().map(node => [node.props.href, node.props['aria-label']])).toEqual(before)
+  expect(links().some(node => node.props['aria-current'] === 'page')).toBe(true)
+  expect(links().some(node => node.props.href === '/settings/users')).toBe(false)
+  const pending = renderer.root.findByType('details')
+  expect(pending.props['aria-hidden']).toBe(true)
+  expect(pending.findByType('summary').props.tabIndex).toBe(-1)
+  expect(pending.findAll(node => node.props['aria-disabled'] === 'true')).toHaveLength(4)
+  expect(globalThis.fetch.mock.calls.length).toBe(requests)
+  await act(async () => toggle().props.onClick())
+  expect(toggle().props['aria-expanded']).toBe(true)
+  expect(renderer.root.findByType('details').props['aria-hidden']).toBeUndefined()
+  await act(async () => renderer.unmount())
+})
+
+test('narrow navigation opens a drawer and closes on navigation or breakpoint change', async () => {
+  let listener
+  const media = { matches: true, addEventListener: (_, fn) => { listener = fn }, removeEventListener: vi.fn() }
+  globalThis.matchMedia = () => media
+  const renderer = await renderAt('/data/ir')
+  const trigger = () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '打开导航')
+  expect(trigger().props['aria-expanded']).toBe(false)
+  await act(async () => trigger().props.onClick())
+  expect(trigger().props['aria-expanded']).toBe(true)
+  const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === 'IR')
+  await act(async () => link.props.onClick({ button: 0, preventDefault() {} }))
+  expect(trigger().props['aria-expanded']).toBe(false)
+  await act(async () => trigger().props.onClick())
+  await act(async () => { media.matches = false; listener() })
+  expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '折叠导航')).toBe(true)
+  await act(async () => renderer.unmount())
+  expect(media.removeEventListener).toHaveBeenCalled()
+})
+
+test('desktop preference persists across mounts and storage failures are harmless', async () => {
+  const values = new Map()
+  globalThis.localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }
+  let renderer = await renderAt('/data/ir')
+  await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
+  await act(async () => renderer.unmount())
+  renderer = await renderAt('/data/ir')
+  expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
+  await act(async () => renderer.unmount())
+  globalThis.localStorage = { getItem() { throw Error('unavailable') }, setItem() { throw Error('unavailable') } }
+  renderer = await renderAt('/data/ir')
+  await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
+  expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
+  await act(async () => renderer.unmount())
+})
+
+test('overview owns drilldown routes without claiming to be the exact page', async () => {
+  for (const pathname of ['/analytics/teams/42', '/analytics/metrics/99']) {
+    const renderer = await renderAt(pathname)
+    const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === '研发总览')
+    expect(link.props['data-section-active']).toBe('true')
+    expect(link.props['aria-current']).toBeUndefined()
+    await act(async () => renderer.unmount())
+  }
+})
+
+test('pending entries live in a closed disclosure without links for all roles', async () => {
+  for (const role of ['admin', 'maintainer', 'viewer']) {
+    const renderer = await renderAt('/data/ir', role)
+    const details = renderer.root.findByType('details')
+    expect(details.props.open).toBeUndefined()
+    expect(details.findAll(node => node.props['aria-disabled'] === 'true')).toHaveLength(4)
+    expect(details.findAllByType('a')).toHaveLength(0)
+    await act(async () => renderer.unmount())
+  }
 })
 
 for (const [role, pathname, page] of [

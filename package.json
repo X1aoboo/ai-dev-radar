@@ -10,7 +10,9 @@
     "dev:frontend": "npm --prefix frontend run dev",
     "setup": "node scripts/bootstrap.mjs",
     "seed": "node scripts/run-python.mjs --cwd backend --env APP_ENV=development -m app.seed",
-    "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q"
+    "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q",
+    "check:docs": "node scripts/check-design-docs.mjs",
+    "test:docs": "node --test scripts/check-design-docs.test.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.0"
