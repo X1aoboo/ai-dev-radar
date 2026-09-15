@@ -212,6 +212,10 @@ def test_time_series_uses_completion_date_and_calculates_company_average_from_te
     assert result["series"][0]["values"][0]["value"] == 1
     # 原型定义的全公司均值是各团队值的算术平均，而不是按分母加权的比例。
     assert result["company_average"][0]["value"] == 0.5
+    assert result["domain_summary"][0]["numerator"] == 1
+    assert result["domain_summary"][0]["denominator"] == 101
+    assert result["domain_summary"][0]["value"] == pytest.approx(1 / 101)
+    assert result["domain_summary"][0]["sample_count"] == 101
 
 
 def test_series_sums_efficiency_records_and_returns_null_for_empty_rates():

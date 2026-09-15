@@ -1,11 +1,4 @@
-import { formatFactSummary, formatMetricValue } from './overviewLogic.js'
-
-const COLORS = {
-  inkSecondary: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
-}
+import { DATAVIZ_COLORS, formatFactSummary, formatMetricValue } from './overviewLogic.js'
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -69,7 +62,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
   const teamSeries = (data?.series ?? []).map((series) => (
     buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars })
   ))
-  const companyColor = COLORS.muted
+  const companyColor = DATAVIZ_COLORS.companyAverage
   const companyData = (data?.company_average ?? []).map((point) => chartPoint(point, selectedPeriodId))
   const companySeries = {
     name: '全公司均值',
@@ -91,7 +84,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
       right: 0,
       itemWidth: 14,
       itemHeight: 8,
-      textStyle: { color: COLORS.inkSecondary, fontSize: 11 },
+      textStyle: { color: DATAVIZ_COLORS.inkSecondary, fontSize: 11 },
     },
     tooltip: {
       trigger: 'axis',
@@ -99,8 +92,8 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
         ? { type: 'shadow' }
         : {
             type: 'cross',
-            lineStyle: { color: COLORS.axis },
-            crossStyle: { color: COLORS.axis },
+            lineStyle: { color: DATAVIZ_COLORS.axis },
+            crossStyle: { color: DATAVIZ_COLORS.axis },
           },
       formatter: (params) => {
         const items = Array.isArray(params) ? params : [params]
@@ -120,16 +113,16 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
       type: 'category',
       data: (data?.periods ?? []).map((period) => period.label),
       boundaryGap: countMetric,
-      axisLine: { lineStyle: { color: COLORS.axis } },
+      axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
     },
     yAxis: {
       type: 'value',
       min: metric.type === 'penetration' || metric.type === 'ratio' ? 0 : undefined,
       max: metric.type === 'penetration' || metric.type === 'ratio' ? 1 : undefined,
-      splitLine: { lineStyle: { color: COLORS.grid, width: 1 } },
-      axisLabel: { color: COLORS.muted, fontSize: 11, formatter: (value) => axisValue(metric, value) },
+      splitLine: { lineStyle: { color: DATAVIZ_COLORS.grid, width: 1 } },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, formatter: (value) => axisValue(metric, value) },
     },
     series: [...teamSeries, companySeries],
   }

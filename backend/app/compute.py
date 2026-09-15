@@ -443,6 +443,7 @@ def build_series(
                 for team in output_teams
             ],
             "company_average": [],
+            "domain_summary": [],
         }
 
     values_by_team: dict[Any, list[dict[str, Any]]] = {}
@@ -483,8 +484,33 @@ def build_series(
         average = sum(team_values) / len(team_values) if team_values else None
         company_average.append({"period_id": period["id"], "value": average})
 
+    # 新总览的领域指标按全部团队的原始分子/分母合并计算；这和上面的
+    # company_average（先算团队值、再对团队值取算术平均）刻意保持两种独立语义。
+    domain_summary = []
+    company_id_set = set(company_ids)
+    for period in periods:
+        domain_facts = [
+            fact for fact in fact_list
+            if getattr(fact, "team_id", None) in company_id_set
+            and in_scope(fact, period, dimension=resolved_dimension, time_field=time_field)
+        ]
+        sums = _sum_facts(domain_facts)
+        domain_point = _point(
+            period,
+            sums,
+            calculate_metric_value(resolved_metric_type, sums),
+        )
+        domain_point["fact_count"] = len(domain_facts)
+        domain_point["sample_count"] = (
+            sums.denominator
+            if resolved_metric_type in {"penetration", "ratio"}
+            else len(domain_facts)
+        )
+        domain_summary.append(domain_point)
+
     return {
         "periods": periods,
         "series": series,
         "company_average": company_average,
+        "domain_summary": domain_summary,
     }

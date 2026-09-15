@@ -1,11 +1,4 @@
-import { formatFactSummary, formatMetricValue } from '../overview/overviewLogic.js'
-
-const COLORS = {
-  inkSecondary: '#52514e',
-  muted: '#898781',
-  grid: '#e1e0d9',
-  axis: '#c3c2b7',
-}
+import { DATAVIZ_COLORS, formatFactSummary, formatMetricValue } from '../overview/overviewLogic.js'
 
 function escapeHtml(value) {
   return String(value).replace(/[&<>"']/g, (character) => ({
@@ -51,8 +44,8 @@ function yAxis(metric) {
     type: 'value',
     min: metric.type === 'penetration' || metric.type === 'ratio' ? 0 : undefined,
     max: metric.type === 'penetration' || metric.type === 'ratio' ? 1 : undefined,
-    splitLine: { lineStyle: { color: COLORS.grid, width: 1 } },
-    axisLabel: { color: COLORS.muted, fontSize: 11, formatter: (value) => axisValue(metric, value) },
+    splitLine: { lineStyle: { color: DATAVIZ_COLORS.grid, width: 1 } },
+    axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, formatter: (value) => axisValue(metric, value) },
   }
 }
 
@@ -69,20 +62,20 @@ export function buildTeamTrendOption({ data, metric, teamId, selectedPeriodId, a
       right: 0,
       itemWidth: 14,
       itemHeight: 8,
-      textStyle: { color: COLORS.inkSecondary, fontSize: 11 },
+      textStyle: { color: DATAVIZ_COLORS.inkSecondary, fontSize: 11 },
     },
     tooltip: {
       trigger: 'axis',
-      axisPointer: { type: 'cross', lineStyle: { color: COLORS.axis }, crossStyle: { color: COLORS.axis } },
+      axisPointer: { type: 'cross', lineStyle: { color: DATAVIZ_COLORS.axis }, crossStyle: { color: DATAVIZ_COLORS.axis } },
       formatter: (params) => tooltipFormatter(metric, params),
     },
     xAxis: {
       type: 'category',
       data: (data?.periods ?? []).map((period) => period.label),
       boundaryGap: false,
-      axisLine: { lineStyle: { color: COLORS.axis } },
+      axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
     },
     yAxis: yAxis(metric),
     series: [
@@ -101,9 +94,9 @@ export function buildTeamTrendOption({ data, metric, teamId, selectedPeriodId, a
         name: '全公司均值',
         type: 'line',
         data: companyPoints.map((point) => chartPoint(point, selectedPeriodId)),
-        color: COLORS.muted,
+        color: DATAVIZ_COLORS.companyAverage,
         lineStyle: { width: 2, type: 'dashed', cap: 'round' },
-        itemStyle: { color: COLORS.muted },
+        itemStyle: { color: DATAVIZ_COLORS.companyAverage },
         symbol: 'circle',
         showSymbol: selectedPeriodId !== 'all',
         emphasis: { focus: 'series', showSymbol: true },
@@ -126,7 +119,7 @@ export function buildIterationCompareOption({ data, metric, teamId, accent }) {
       right: 0,
       itemWidth: 14,
       itemHeight: 8,
-      textStyle: { color: COLORS.inkSecondary, fontSize: 11 },
+      textStyle: { color: DATAVIZ_COLORS.inkSecondary, fontSize: 11 },
     },
     tooltip: {
       trigger: 'axis',
@@ -136,9 +129,9 @@ export function buildIterationCompareOption({ data, metric, teamId, accent }) {
     xAxis: {
       type: 'category',
       data: (data?.periods ?? []).map((period) => period.label),
-      axisLine: { lineStyle: { color: COLORS.axis } },
+      axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
     },
     yAxis: yAxis(metric),
     series: [
@@ -154,7 +147,7 @@ export function buildIterationCompareOption({ data, metric, teamId, accent }) {
         type: 'bar',
         data: companyPoints.map(pointValue),
         barWidth: 18,
-        itemStyle: { color: COLORS.muted, borderRadius: [4, 4, 0, 0] },
+        itemStyle: { color: DATAVIZ_COLORS.companyAverage, borderRadius: [4, 4, 0, 0] },
         barGap: '25%',
       },
     ],

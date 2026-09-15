@@ -6,6 +6,7 @@ import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
 import {
   formatMetricValue,
+  DATAVIZ_COLORS,
   INITIAL_FILTER,
   isGeneralIterationFallback,
   iterationPeriods,
@@ -25,7 +26,7 @@ import {
 import './drilldown.css'
 
 const TEAM_COLOR_STORAGE_KEY = 'ai-dev-radar.team-color-slots'
-const TEAM_ACCENT_FALLBACK = '#2a78d6'
+const TEAM_ACCENT_FALLBACK = DATAVIZ_COLORS.team[0]
 
 function useTeamFacts(teamId, onSessionExpired) {
   const [state, setState] = useState({ loading: Boolean(teamId), facts: [], error: null })
@@ -509,7 +510,7 @@ function TeamDrilldownContent({
   ]
 
   return (
-    <main
+    <div
       className="overview-shell drilldown-shell"
       style={{ '--drilldown-accent': accent }}
     >
@@ -530,7 +531,6 @@ function TeamDrilldownContent({
         versions={versions}
         periods={timePeriods}
         loading={computed.loading}
-        showMetricSlot={false}
       />
 
       <div className="drilldown-kpi-row">
@@ -596,20 +596,20 @@ function TeamDrilldownContent({
           ))}
         </div>
       </div>
-    </main>
+    </div>
   )
 }
 
 export default function TeamDrilldownPage({ team, ...props }) {
   if (!team) {
     return (
-      <main className="overview-shell drilldown-shell">
+      <div className="overview-shell drilldown-shell">
         <button type="button" className="drilldown-back-button" onClick={() => props.onNavigate('/')}>
           ← 返回总览
         </button>
         <h1>团队不存在</h1>
         <p className="drilldown-muted">找不到请求的团队。</p>
-      </main>
+      </div>
     )
   }
 

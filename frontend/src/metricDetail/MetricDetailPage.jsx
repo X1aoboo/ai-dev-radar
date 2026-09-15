@@ -24,11 +24,11 @@ function currentFilterDescription(filter, versions, periods, fallback) {
 
 function MetricNotFound({ onNavigate }) {
   return (
-    <main className="overview-shell">
+    <div className="overview-shell">
       <button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>← 返回总览</button>
       <h1>指标不存在</h1>
       <p className="drilldown-muted">找不到请求的指标，可能已从指标目录中移除。</p>
-    </main>
+    </div>
   )
 }
 
@@ -98,7 +98,7 @@ function MetricDetailContent({
     [data, metric.type, teams],
   )
   return (
-    <main className="overview-shell">
+    <div className="overview-shell">
       <div className="overview-page-head">
         <div>
           <button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>← 返回总览</button>
@@ -117,7 +117,6 @@ function MetricDetailContent({
         versions={versions}
         periods={timePeriods}
         loading={computed.loading}
-        showMetricSlot={false}
       />
 
       <TrendCard
@@ -137,7 +136,7 @@ function MetricDetailContent({
         booleanRows={booleanRows}
         countAsBars
       />
-    </main>
+    </div>
   )
 }
 

@@ -21,7 +21,7 @@ function SegmentedControl({ label, options, value, onChange }) {
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading, showMetricSlot = true }) {
+export default function FilterBar({ filter, onChange, versions, periods, loading }) {
   const isIteration = filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
@@ -44,11 +44,11 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
     if (dimension === 'iteration') {
       next.periodId = latestPeriodId(iterationPeriods(versions, next.versionId))
     }
-    onChange(next)
+    onChange(next, { history: 'push' })
   }
 
   function changeGranularity(granularity) {
-    onChange({ ...filter, granularity, periodId: null })
+    onChange({ ...filter, granularity, periodId: null }, { history: 'push' })
   }
 
   function changeVersion(versionId) {
@@ -56,7 +56,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
       ...filter,
       versionId,
       periodId: latestPeriodId(iterationPeriods(versions, versionId)),
-    })
+    }, { history: 'push' })
   }
 
   return (
@@ -104,7 +104,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
           className="overview-select overview-period-select"
           aria-label="周期"
           value={periodValue}
-          onChange={(event) => onChange({ ...filter, periodId: event.target.value })}
+          onChange={(event) => onChange({ ...filter, periodId: event.target.value }, { history: 'push' })}
           disabled={filter.periodId === null || (loading && availablePeriods.length === 0)}
         >
           {filter.periodId === null && <option value="__latest__" disabled>正在选择最新周期…</option>}
@@ -115,17 +115,6 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         </select>
       </label>
 
-      {showMetricSlot && (
-        <SegmentedControl
-          label="展示指标"
-          options={[
-            { value: 0, label: '第一指标' },
-            { value: 1, label: '第二指标' },
-          ]}
-          value={filter.metricSlot}
-          onChange={(metricSlot) => onChange({ ...filter, metricSlot })}
-        />
-      )}
     </div>
   )
 }

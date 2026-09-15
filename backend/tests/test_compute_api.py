@@ -27,6 +27,8 @@ def test_compute_endpoint_returns_time_series_and_company_average(authenticated_
     assert len(body["series"]) == 4
     assert len(body["series"][0]["values"]) == 8
     assert len(body["company_average"]) == 8
+    assert len(body["domain_summary"]) == 8
+    assert body["domain_summary"][0]["fact_count"] > 0
     assert all(point["value"] is not None for point in body["company_average"])
 
 

@@ -1,5 +1,5 @@
 .drilldown-shell {
-  --drilldown-accent: #2a78d6;
+  --drilldown-accent: var(--viz-team-1);
 }
 
 .drilldown-page-head {
@@ -54,7 +54,7 @@
 }
 
 .drilldown-kpi-value.is-negative {
-  color: #d03b3b;
+  color: var(--viz-negative);
 }
 
 .drilldown-kpi-footer {
@@ -69,12 +69,12 @@
 
 .drilldown-kpi-delta.is-positive,
 .drilldown-kpi-status.is-positive {
-  color: #006300;
+  color: var(--viz-positive);
 }
 
 .drilldown-kpi-delta.is-negative,
 .drilldown-kpi-status.is-negative {
-  color: #d03b3b;
+  color: var(--viz-negative);
 }
 
 .drilldown-sparkline {
@@ -100,7 +100,7 @@
   border: 1px solid var(--overview-border);
   border-radius: 0.65rem;
   position: sticky;
-  top: 1rem;
+  top: calc(var(--app-topbar-height, 72px) + 16px);
 }
 
 .drilldown-directory section + section {
@@ -180,7 +180,7 @@
   border-radius: 0.65rem;
   min-width: 0;
   padding: 0.75rem 0.85rem 0.8rem;
-  scroll-margin-top: 1rem;
+  scroll-margin-top: calc(var(--app-topbar-height, 72px) + 16px);
 }
 
 .drilldown-activity-header {
@@ -278,14 +278,14 @@
 }
 
 .drilldown-boolean-status {
-  color: #006300;
+  color: var(--viz-positive);
   font-size: 1rem;
   font-weight: 600;
   padding: 1.2rem 0 1rem;
 }
 
 .drilldown-boolean-status.is-negative {
-  color: #d03b3b;
+  color: var(--viz-negative);
 }
 
 .drilldown-fact-note {
@@ -360,7 +360,7 @@
 }
 
 .drilldown-source.is-auto {
-  color: #006300;
+  color: var(--viz-positive);
 }
 
 .drilldown-muted {
