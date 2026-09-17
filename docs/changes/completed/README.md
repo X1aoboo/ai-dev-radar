@@ -6,5 +6,6 @@
 
 - [Sidebar UI and UX](sidebar-ui-ux.md)：浅色导航、桌面偏好与窄屏抽屉。
 - [Dark Sidebar, Motion, and Radar Brand](sidebar-dark-motion-brand.md)：深色导航、稳定折叠动效与共享雷达品牌资产。
+- [Data Source Navigation](data-source-navigation.md)：数据管理按业务来源分类，需求内聚 IR/AR/SR，并采用品牌区折叠控制。
 
 生命周期见 [Protocol](../README.md)。

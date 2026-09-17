@@ -1,7 +1,10 @@
 import {
   AppstoreOutlined,
   BarChartOutlined,
-  DatabaseOutlined,
+  BugOutlined,
+  CodeOutlined,
+  FileTextOutlined,
+  PullRequestOutlined,
   TeamOutlined,
   UserOutlined,
 } from '@ant-design/icons'
@@ -14,7 +17,8 @@ export const ROUTE_PATHS = Object.freeze({
   overview: '/',
   teamAnalytics: 'analytics/teams/:teamId',
   metricAnalytics: 'analytics/metrics/:metricId',
-  ir: 'data/ir',
+  requirements: 'data/requirements',
+  requirementType: 'data/requirements/:requirementType',
   dataDomain: 'data/:domain',
   teams: 'settings/teams',
   products: 'settings/products',
@@ -29,13 +33,17 @@ export const ROUTE_PATHS = Object.freeze({
 })
 
 export const LEGACY_REDIRECT_TARGETS = Object.freeze({
-  '/data-management': '/data/ir',
-  '/data-management/ir': '/data/ir',
+  '/data-management': '/data/requirements/ir',
+  '/data-management/ir': '/data/requirements/ir',
+  '/data-management/ar': '/data/requirements/ar',
+  '/data-management/sr': '/data/requirements/sr',
+  '/data-management/dts': '/data/issues',
+  '/data-management/mr': '/data/mr',
   '/data-management/teams': '/settings/teams',
   '/data-management/products': '/settings/products',
   '/data-management/metrics': '/settings/metrics',
   '/config': '/settings/teams',
-  '/manual-entry': '/data/ir',
+  '/manual-entry': '/data/requirements/ir',
 })
 
 export const SIDEBAR_GROUPS = [
@@ -48,11 +56,10 @@ export const SIDEBAR_GROUPS = [
   {
     label: '数据管理',
     items: [
-      { key: 'ir', label: 'IR', to: `/${ROUTE_PATHS.ir}`, icon: DatabaseOutlined, roles: DATA_READ_ROLES },
-      { key: 'ar', label: 'AR', icon: DatabaseOutlined, disabled: true },
-      { key: 'sr', label: 'SR', icon: DatabaseOutlined, disabled: true },
-      { key: 'dts', label: 'DTS', icon: DatabaseOutlined, disabled: true },
-      { key: 'mr', label: 'MR', icon: DatabaseOutlined, disabled: true },
+      { key: 'requirements', label: '需求', to: '/data/requirements/ir', activePrefix: '/data/requirements/', icon: FileTextOutlined, roles: DATA_READ_ROLES },
+      { key: 'issues', label: '问题单', to: '/data/issues', icon: BugOutlined, roles: DATA_READ_ROLES },
+      { key: 'mr', label: 'MR', to: '/data/mr', icon: PullRequestOutlined, roles: DATA_READ_ROLES },
+      { key: 'code-review', label: '代码检视', to: '/data/code-review', icon: CodeOutlined, roles: DATA_READ_ROLES },
     ],
   },
   {
@@ -75,9 +82,11 @@ export function getRouteMeta(pathname) {
   if (/^\/analytics\/metrics\//.test(normalizedPathname)) {
     return { title: '指标详情', items: [{ title: '洞察' }, { title: '研发总览' }, { title: '指标详情' }] }
   }
-  if (normalizedPathname === '/data/ir') return { title: 'IR 数据', items: [{ title: '数据管理' }, { title: 'IR' }] }
-  if (/^\/data\/(ar|sr|dts|mr)$/i.test(normalizedPathname)) {
-    return { title: '领域规格待定义', items: [{ title: '数据管理' }, { title: normalizedPathname.split('/').pop().toUpperCase() }] }
+  const requirementMatch = normalizedPathname.match(/^\/data\/requirements\/(ir|ar|sr)$/i)
+  if (requirementMatch) return { title: `${requirementMatch[1].toUpperCase()} 需求`, items: [{ title: '数据管理' }, { title: '需求' }, { title: requirementMatch[1].toUpperCase() }] }
+  const sourceLabel = { '/data/issues': '问题单', '/data/mr': 'MR', '/data/code-review': '代码检视' }[normalizedPathname]
+  if (sourceLabel) {
+    return { title: `${sourceLabel}数据`, items: [{ title: '数据管理' }, { title: sourceLabel }] }
   }
   const settingsMeta = {
     '/settings/teams': ['团队与人员', '团队与人员'],

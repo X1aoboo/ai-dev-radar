@@ -1,4 +1,5 @@
 export function sectionFromPath(pathname = '') {
+  if (/^\/data\/requirements(?:\/(?:ir|ar|sr))?\/?$/i.test(pathname)) return 'requirements'
   const match = pathname.match(/^\/(?:data|data-management)(?:\/([^/]+))?$/)
   if (match) return match[1] || 'ir'
   const settingsMatch = pathname.match(/^\/settings\/([^/]+)$/)

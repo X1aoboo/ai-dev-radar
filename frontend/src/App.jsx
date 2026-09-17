@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Result, Tag, Tooltip } from 'antd'
-import { LogoutOutlined, MenuFoldOutlined, MenuUnfoldOutlined, UserOutlined } from '@ant-design/icons'
+import { LogoutOutlined, MenuFoldOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
 import {
   Navigate,
   NavLink,
@@ -112,7 +112,7 @@ function NotFoundPage() {
 
 function PendingDomainPage({ domain }) {
   const navigate = useNavigate()
-  return <div className="status-page"><Result status="info" title={`${domain} 领域规格待定义`} subTitle="当前阶段尚未定义该数据域的字段、校验规则和指标口径，暂不提供表单。" extra={<Button type="primary" onClick={() => navigate('/data/ir')}>查看 IR 数据</Button>} /></div>
+  return <div className="status-page"><Result status="info" title={`${domain}数据源规格待定义`} subTitle="当前阶段尚未定义该数据源的字段、校验规则和指标口径，暂不提供表单。" extra={<Button type="primary" onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} /></div>
 }
 
 function appendSearch(pathname, search) {
@@ -209,28 +209,21 @@ function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
 
   return (
     <aside className="app-sidebar" aria-label="主导航">
-      <div className="app-sidebar__header"><div className="app-brand"><img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" /><span className="app-brand__copy"><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div></div>
+      <div className="app-sidebar__header"><div className="app-brand"><img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" /><span className="app-brand__copy"><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>{onToggle && <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right"><Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} /></Tooltip>}</div>
       <nav id="app-navigation" className="app-nav">
         {groups.map((group) => (
           <section key={group.label} className="app-nav__group">
             <h2 className="app-nav__label">{group.label}</h2>
-            {group.items.filter((item) => !item.disabled).map((item) => {
+            {group.items.map((item) => {
               const Icon = item.icon
               const content = <><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span></>
               return <Tooltip key={item.key} title={collapsed ? item.label : undefined} placement="right">
-                <NavLink onClick={onNavigate} aria-label={item.label} data-section-active={item.key === 'overview' && (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/')) ? 'true' : undefined} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link">{content}</NavLink>
+                <NavLink onClick={onNavigate} aria-label={item.label} data-section-active={(item.key === 'overview' && (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/'))) || (item.activePrefix && pathname.startsWith(item.activePrefix)) ? 'true' : undefined} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link">{content}</NavLink>
               </Tooltip>
             })}
-            {group.items.some((item) => item.disabled) && <details className="app-nav__pending" aria-hidden={collapsed || undefined}>
-              <summary tabIndex={collapsed ? -1 : undefined}>未开放</summary>
-              {group.items.filter((item) => item.disabled).map((item) => <span key={item.key} className="app-nav__disabled" aria-disabled="true" aria-label={`${item.label} · 待定义`}><span className="app-nav__text">{item.label}</span><span className="app-nav__status">待定义</span></span>)}
-            </details>}
           </section>
         ))}
       </nav>
-      {onToggle && <div className="app-sidebar__footer"><Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right">
-        <Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuUnfoldOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} />
-      </Tooltip></div>}
     </aside>
   )
 }
@@ -263,7 +256,7 @@ function AppShell({ user, onLogout }) {
         <AppSidebar user={user} onNavigate={() => setDrawerOpen(false)} />
       </Drawer>}
       <div className="app-shell__body">
-        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuUnfoldOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
         <div id="main-content" className="app-shell__content" role="main" tabIndex={-1}><Outlet /></div>
       </div>
     </div>
@@ -313,7 +306,10 @@ function MetricAnalyticsRoute({ Page, onSessionExpired }) {
 }
 
 function DataRoute({ Page, section, user, onSessionExpired }) {
-  return <Page section={section} user={user} onSessionExpired={onSessionExpired} />
+  const { requirementType } = useParams()
+  const navigate = useNavigate()
+  if (section === 'requirements' && !['ir', 'ar', 'sr'].includes(requirementType)) return <Navigate to="/data/requirements/ir" replace />
+  return <Page section={section} requirementType={requirementType} onRequirementTypeChange={(type) => navigate(`/data/requirements/${type}`)} user={user} onSessionExpired={onSessionExpired} />
 }
 
 function RequireRole({ user, roles }) {
@@ -363,11 +359,16 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
             <Route path={ROUTE_PATHS.metricAnalytics} element={<MetricAnalyticsRoute Page={MetricDetailComponent} onSessionExpired={onSessionExpired} />} />
           </Route>
           <Route element={<RequireRole user={user} roles={DATA_READ_ROLES} />}>
-            <Route path={ROUTE_PATHS.ir} element={<DataRoute Page={DataManagementComponent} section="ir" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.requirements} element={<Navigate to="/data/requirements/ir" replace />} />
+            <Route path={ROUTE_PATHS.requirementType} element={<DataRoute Page={DataManagementComponent} section="requirements" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path="data/ir" element={<Navigate to="/data/requirements/ir" replace />} />
+            <Route path="data/ar" element={<Navigate to="/data/requirements/ar" replace />} />
+            <Route path="data/sr" element={<Navigate to="/data/requirements/sr" replace />} />
+            <Route path="data/dts" element={<Navigate to="/data/issues" replace />} />
             <Route path={ROUTE_PATHS.dataDomain} element={<PendingDomainRoute />} />
             <Route path={ROUTE_PATHS.legacyData} element={<LegacyDataManagementRootRedirect />} />
             <Route path={ROUTE_PATHS.legacyDataDomain} element={<LegacyDataManagementRoute />} />
-            <Route path={ROUTE_PATHS.legacyManualEntry} element={<Navigate to="/data/ir" replace />} />
+            <Route path={ROUTE_PATHS.legacyManualEntry} element={<Navigate to="/data/requirements/ir" replace />} />
           </Route>
           <Route element={<RequireRole user={user} roles={SETTINGS_READ_ROLES} />}>
             <Route path={ROUTE_PATHS.teams} element={<DataRoute Page={DataManagementComponent} section="teams" user={user} onSessionExpired={onSessionExpired} />} />
@@ -391,7 +392,8 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
 function PendingDomainRoute() {
   const { domain } = useParams()
   if (!isPendingDomain(domain)) return <NotFoundPage />
-  return <PendingDomainPage domain={domain.toUpperCase()} />
+  const label = { issues: '问题单', mr: 'MR', 'code-review': '代码检视' }[domain.toLowerCase()]
+  return <PendingDomainPage domain={label} />
 }
 
 export default function App() {
