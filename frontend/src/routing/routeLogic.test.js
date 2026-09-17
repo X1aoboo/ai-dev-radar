@@ -20,7 +20,7 @@ test('role access matches the application route contract', () => {
 })
 
 test('only supported pending domains render a pending state', () => {
-  assert.equal(isPendingDomain('AR'), true)
+  assert.equal(isPendingDomain('issues'), true)
   assert.equal(isPendingDomain('MR'), true)
   assert.equal(isPendingDomain('custom'), false)
 })

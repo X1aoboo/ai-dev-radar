@@ -26,7 +26,10 @@ vi.mock('@ant-design/icons', () => {
   return {
     AppstoreOutlined: Icon,
     BarChartOutlined: Icon,
-    DatabaseOutlined: Icon,
+    BugOutlined: Icon,
+    CodeOutlined: Icon,
+    FileTextOutlined: Icon,
+    PullRequestOutlined: Icon,
     LogoutOutlined: Icon,
     MenuFoldOutlined: Icon,
     MenuUnfoldOutlined: Icon,
@@ -122,7 +125,7 @@ function hasText(renderer, text) {
 }
 
 test('route metadata treats one or more trailing slashes like the canonical path', () => {
-  for (const pathname of ['/data/ir', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users']) {
+  for (const pathname of ['/data/requirements/ir', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users']) {
     expect(getRouteMeta(`${pathname}/`)).toEqual(getRouteMeta(pathname))
   }
   expect(getRouteMeta('/')).toEqual(getRouteMeta('////'))
@@ -143,26 +146,22 @@ afterEach(() => {
 
 test('sidebar toggles reversibly without changing navigation contracts or fetching data', async () => {
   globalThis.fetch = vi.fn(globalThis.fetch)
-  const renderer = await renderAt('/data/ir', 'viewer')
+  const renderer = await renderAt('/data/requirements/ir', 'viewer')
   const links = () => renderer.root.findAllByType('a').filter(node => node.props.className?.split(' ').includes('app-nav__link'))
   const before = links().map(node => [node.props.href, node.props['aria-label']])
   const requests = globalThis.fetch.mock.calls.length
   const toggle = () => renderer.root.findAllByType('button').find(node => node.props['aria-controls'] === 'app-navigation')
   expect(toggle().props['aria-expanded']).toBe(true)
-  expect(renderer.root.findByProps({ className: 'app-sidebar__footer' }).findAllByType('button')).toHaveLength(1)
+  expect(renderer.root.findByProps({ className: 'app-sidebar__header' }).findAllByType('button')).toHaveLength(1)
   await act(async () => toggle().props.onClick())
   expect(toggle().props['aria-expanded']).toBe(false)
   expect(links().map(node => [node.props.href, node.props['aria-label']])).toEqual(before)
   expect(links().some(node => node.props['aria-current'] === 'page')).toBe(true)
   expect(links().some(node => node.props.href === '/settings/users')).toBe(false)
-  const pending = renderer.root.findByType('details')
-  expect(pending.props['aria-hidden']).toBe(true)
-  expect(pending.findByType('summary').props.tabIndex).toBe(-1)
-  expect(pending.findAll(node => node.props['aria-disabled'] === 'true')).toHaveLength(4)
+  expect(links().filter(node => ['需求', '问题单', 'MR', '代码检视'].includes(node.props['aria-label']))).toHaveLength(4)
   expect(globalThis.fetch.mock.calls.length).toBe(requests)
   await act(async () => toggle().props.onClick())
   expect(toggle().props['aria-expanded']).toBe(true)
-  expect(renderer.root.findByType('details').props['aria-hidden']).toBeUndefined()
   await act(async () => renderer.unmount())
 })
 
@@ -170,12 +169,12 @@ test('narrow navigation opens a drawer and closes on navigation or breakpoint ch
   let listener
   const media = { matches: true, addEventListener: (_, fn) => { listener = fn }, removeEventListener: vi.fn() }
   globalThis.matchMedia = () => media
-  const renderer = await renderAt('/data/ir')
+  const renderer = await renderAt('/data/requirements/ir')
   const trigger = () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '打开导航')
   expect(trigger().props['aria-expanded']).toBe(false)
   await act(async () => trigger().props.onClick())
   expect(trigger().props['aria-expanded']).toBe(true)
-  const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === 'IR')
+  const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === '需求')
   await act(async () => link.props.onClick({ button: 0, preventDefault() {} }))
   expect(trigger().props['aria-expanded']).toBe(false)
   await act(async () => trigger().props.onClick())
@@ -188,14 +187,14 @@ test('narrow navigation opens a drawer and closes on navigation or breakpoint ch
 test('desktop preference persists across mounts and storage failures are harmless', async () => {
   const values = new Map()
   globalThis.localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }
-  let renderer = await renderAt('/data/ir')
+  let renderer = await renderAt('/data/requirements/ir')
   await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
   await act(async () => renderer.unmount())
-  renderer = await renderAt('/data/ir')
+  renderer = await renderAt('/data/requirements/ir')
   expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
   await act(async () => renderer.unmount())
   globalThis.localStorage = { getItem() { throw Error('unavailable') }, setItem() { throw Error('unavailable') } }
-  renderer = await renderAt('/data/ir')
+  renderer = await renderAt('/data/requirements/ir')
   await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
   expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
   await act(async () => renderer.unmount())
@@ -211,13 +210,11 @@ test('overview owns drilldown routes without claiming to be the exact page', asy
   }
 })
 
-test('pending entries live in a closed disclosure without links for all roles', async () => {
+test('data sources are direct navigation entries for all roles', async () => {
   for (const role of ['admin', 'maintainer', 'viewer']) {
-    const renderer = await renderAt('/data/ir', role)
-    const details = renderer.root.findByType('details')
-    expect(details.props.open).toBeUndefined()
-    expect(details.findAll(node => node.props['aria-disabled'] === 'true')).toHaveLength(4)
-    expect(details.findAllByType('a')).toHaveLength(0)
+    const renderer = await renderAt('/data/requirements/ir', role)
+    const labels = renderer.root.findAllByType('a').map(node => node.props['aria-label'])
+    expect(labels).toEqual(expect.arrayContaining(['需求', '问题单', 'MR', '代码检视']))
     await act(async () => renderer.unmount())
   }
 })
@@ -227,9 +224,9 @@ for (const [role, pathname, page] of [
   ['admin', '/settings/teams', 'data-teams'],
   ['maintainer', '/settings/teams', 'data-teams'],
   ['viewer', '/settings/teams', 'data-teams'],
-  ['admin', '/data/ir', 'data-ir'],
-  ['maintainer', '/data/ir', 'data-ir'],
-  ['viewer', '/data/ir', 'data-ir'],
+  ['admin', '/data/requirements/ir', 'data-requirements'],
+  ['maintainer', '/data/requirements/ir', 'data-requirements'],
+  ['viewer', '/data/requirements/ir', 'data-requirements'],
 ]) {
   test(`${role} can render ${pathname}`, async () => {
     const renderer = await renderAt(pathname, role)
@@ -253,12 +250,16 @@ for (const [role, pathname] of [
 for (const [from, to] of [
   ['/team/42', '/analytics/teams/42'],
   ['/metric/99', '/analytics/metrics/99'],
-  ['/data-management', '/data/ir'],
-  ['/data-management/ir', '/data/ir'],
+  ['/data-management', '/data/requirements/ir'],
+  ['/data-management/ir', '/data/requirements/ir'],
+  ['/data-management/ar', '/data/requirements/ar'],
+  ['/data-management/sr', '/data/requirements/sr'],
+  ['/data-management/dts', '/data/issues'],
+  ['/data-management/mr', '/data/mr'],
   ['/data-management/teams', '/settings/teams'],
   ['/data-management/products', '/settings/products'],
   ['/data-management/metrics', '/settings/metrics'],
-  ['/manual-entry', '/data/ir'],
+  ['/manual-entry', '/data/requirements/ir'],
 ]) {
   test(`redirects ${from} to ${to}`, async () => {
     const renderer = await renderAt(from, 'admin')
@@ -281,13 +282,20 @@ test('returns 403 for non-admin access to the migrated /config entry', async () 
 })
 
 test('only supported pending domains render the pending state', async () => {
-  const pending = await renderAt('/data/ar', 'admin')
-  expect(hasText(pending, 'AR 领域规格待定义')).toBe(true)
+  const pending = await renderAt('/data/issues', 'admin')
+  expect(hasText(pending, '问题单数据源规格待定义')).toBe(true)
   pending.unmount()
 
   const unknownDomain = await renderAt('/data/foo', 'admin')
   expect(hasText(unknownDomain, '页面未找到')).toBe(true)
   unknownDomain.unmount()
+})
+
+test('unknown requirement types fall back to IR', async () => {
+  const renderer = await renderAt('/data/requirements/custom', 'admin')
+  expect(currentPath(renderer)).toBe('/data/requirements/ir')
+  expect(hasPage(renderer, 'data-requirements')).toBe(true)
+  renderer.unmount()
 })
 
 test('unknown paths render the unified 404 state', async () => {
@@ -367,7 +375,7 @@ test('bootstraps authentication once across SPA navigation', async () => {
     renderer = create(
       <MemoryRouter initialEntries={['/']}>
         <App />
-        <NavigateOnce to="/data/ar" />
+        <NavigateOnce to="/data/issues" />
       </MemoryRouter>,
     )
   })

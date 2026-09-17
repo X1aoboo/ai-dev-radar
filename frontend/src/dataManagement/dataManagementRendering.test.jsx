@@ -60,7 +60,7 @@ function MockUpload({ children, beforeUpload }) { return <div data-upload data-b
 function MockTag({ children }) { return <span>{children}</span> }
 function MockPopconfirm({ children, onConfirm, title, description }) { return <span data-popconfirm data-on-confirm={onConfirm} data-title={title} data-description={description}>{children}</span> }
 function MockCollapse({ items = [] }) { return <div>{items.map((item) => <section key={item.key}><button type="button">{item.label}</button>{item.children}</section>)}</div> }
-function MockTabs({ items = [] }) { return <div data-tabs>{items.map((item) => <section key={item.key}><h3>{item.label}</h3>{item.children}</section>)}</div> }
+function MockTabs({ items = [], activeKey, onChange }) { return <div data-tabs data-active-key={activeKey}>{items.map((item) => <section key={item.key}><h3>{item.label}</h3><button type="button" aria-label={`切换到 ${item.label}`} onClick={() => onChange?.(item.key)}>切换</button>{item.children}</section>)}</div> }
 function MockDescriptions({ items = [] }) { return <dl>{items.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.children}</dd></div>)}</dl> }
 function MockDivider({ children }) { return <hr data-divider aria-label={children} /> }
 function MockSteps({ items = [] }) { return <ol>{items.map((item) => <li key={item.title}>{item.title}</li>)}</ol> }
@@ -85,6 +85,7 @@ vi.mock('antd', () => ({
   Space: Object.assign(MockSpace, { Compact: MockSpace }),
   Spin: MockSpin,
   Steps: MockSteps,
+  Result: ({ title, subTitle }) => <section><h2>{title}</h2><p>{subTitle}</p></section>,
   Table: MockTable,
   Tabs: MockTabs,
   Tag: MockTag,
@@ -145,6 +146,19 @@ describe('data management workbench rendering', () => {
 
     await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('新增 IR')).props.onClick() })
     expect(renderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toBe('新增 IR 需求')
+    renderer.unmount()
+  })
+
+  test('requirements group IR, AR, and SR as page tabs', async () => {
+    const onRequirementTypeChange = vi.fn()
+    fetchJson.mockImplementation(async (url) => responseFor(String(url)))
+    let renderer
+    await act(async () => { renderer = create(<DataManagementPage section="requirements" requirementType="ar" onRequirementTypeChange={onRequirementTypeChange} user={{ id: 1, username: 'admin', role: 'admin' }} onSessionExpired={() => undefined} />) })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(renderer.root.findByProps({ 'data-active-key': 'ar' })).toBeDefined()
+    expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toEqual(expect.arrayContaining(['IR', 'AR', 'SR']))
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 SR' }).props.onClick() })
+    expect(onRequirementTypeChange).toHaveBeenCalledWith('sr')
     renderer.unmount()
   })
 

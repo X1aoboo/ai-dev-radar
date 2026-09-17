@@ -12,6 +12,7 @@ import {
   Input,
   InputNumber,
   Popconfirm,
+  Result,
   Select,
   Space,
   Spin,
@@ -518,6 +519,16 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
   )
 }
 
+function RequirementManagement({ requirementType, onRequirementTypeChange, ...props }) {
+  const activeType = ['ir', 'ar', 'sr'].includes(requirementType) ? requirementType : 'ir'
+  const pending = (type) => <Result status="info" title={`${type} 需求规格待定义`} subTitle="当前只有 IR 需求具备字段、校验、导入和指标口径。" />
+  return <Tabs activeKey={activeType} onChange={onRequirementTypeChange} items={[
+    { key: 'ir', label: 'IR', children: <IRManagement {...props} /> },
+    { key: 'ar', label: 'AR', children: pending('AR') },
+    { key: 'sr', label: 'SR', children: pending('SR') },
+  ]} />
+}
+
 function ActivityEditorDrawer({ editor, onClose, onSubmit, submitting }) {
   const [form] = Form.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
@@ -613,7 +624,7 @@ function MetricManagement({ user, refs, onSessionExpired }) {
   return <div className="workbench-page"><PageIntro eyebrow="系统管理 / 指标定义" title="指标定义" description="分别管理看板指标目录和 IR 源数据指标规则，避免混淆两套计算入口。" /><ReferenceError error={catalogError} />{user.role !== 'admin' && <ReadOnlyHint />}<Tabs items={[{ key: 'catalog', label: '看板指标目录', children: <DashboardCatalogTab user={user} catalog={catalog} loading={loading} onReload={loadCatalog} onSessionExpired={onSessionExpired} /> }, { key: 'source', label: '源数据指标规则 / 结果查询', children: <DataMetricTab user={user} refs={refs} onSessionExpired={onSessionExpired} /> }]} /></div>
 }
 
-export default function DataManagementPage({ pathname, section: requestedSection, user, onSessionExpired }) {
+export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', onRequirementTypeChange, user, onSessionExpired }) {
   const section = requestedSection ?? sectionFromPath(pathname)
   const refs = useReferenceData(onSessionExpired, user)
   if (refs.loading) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
@@ -621,6 +632,7 @@ export default function DataManagementPage({ pathname, section: requestedSection
   if (section === 'teams') content = <TeamManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'products') content = <ProductManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'ir') content = <IRManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
+  else if (section === 'requirements') content = <RequirementManagement requirementType={requirementType} onRequirementTypeChange={onRequirementTypeChange} user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'metrics') content = <MetricManagement user={user} refs={refs} onSessionExpired={onSessionExpired} />
   else content = <EmptyState>该数据域尚未定义。</EmptyState>
   return <div className="data-management-content"><ReferenceError error={refs.error} />{content}</div>

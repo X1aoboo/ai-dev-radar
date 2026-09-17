@@ -2,7 +2,7 @@
 
 ## 目标和范围
 
-维护可追溯的研发源数据与 AI 属性，按定义实时计算指标。当前完整实现 IR；AR/SR/DTS/MR 入口不可操作，真实平台采集仅预留接口。系统管理包含团队/人员、产品/版本/迭代、指标定义及用户权限。
+维护可追溯的研发源数据与 AI 属性，按定义实时计算指标。数据管理按需求、问题单、MR、代码检视四类业务数据源组织；IR、AR、SR 是需求内部分类。当前仅完整实现 IR，AR/SR 及其他数据源显示待定义，真实平台采集仅预留接口。系统管理包含团队/人员、产品/版本/迭代、指标定义及用户权限。
 
 ## 组织和角色
 
@@ -12,7 +12,7 @@ admin 管理全局配置和全部数据；maintainer 维护绑定团队数据；
 
 ## 手工维护场景
 
-IR 支持筛选、分页、新增和编辑；保存时校验业务字段、层级及权限。页面编辑可显式覆盖已有字段，正式数据变更写入 AuditLog，AI 属性另记字段级来源、维护人及时间。当前没有 IR 删除接口。
+需求工作台通过 IR、AR、SR 页签分类；页签路径可直接访问，未知分类回退 IR。IR 支持筛选、分页、新增和编辑；保存时校验业务字段、层级及权限。页面编辑可显式覆盖已有字段，正式数据变更写入 AuditLog，AI 属性另记字段级来源、维护人及时间。当前没有 IR 删除接口，AR/SR 没有数据表单。
 
 ## 文件导入流程
 
@@ -36,6 +36,6 @@ flowchart LR
 
 ## 实现与相关决策
 
-HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
+HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
 
-相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。
+相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。

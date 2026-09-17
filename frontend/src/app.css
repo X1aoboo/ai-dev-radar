@@ -95,7 +95,7 @@ textarea:focus-visible {
   top: 0;
 }
 
-/* The header and footer stay fixed while only the navigation scrolls. */
+/* The header stays fixed while only the navigation scrolls. */
 .app-sidebar {
   background: var(--app-sidebar);
   border-right: 1px solid rgba(255, 255, 255, .08);
@@ -113,7 +113,10 @@ textarea:focus-visible {
 }
 
 .app-sidebar__header {
+  align-items: center;
+  display: flex;
   flex-shrink: 0;
+  justify-content: space-between;
   margin-bottom: 24px;
 }
 
@@ -188,8 +191,7 @@ textarea:focus-visible {
   margin: 0 12px 8px;
 }
 
-.app-nav__link,
-.app-nav__disabled {
+.app-nav__link {
   align-items: center;
   background: transparent;
   border: 0;
@@ -214,8 +216,7 @@ textarea:focus-visible {
   cursor: pointer;
 }
 
-.app-nav__link:hover,
-.app-nav__pending summary:hover {
+.app-nav__link:hover {
   background: var(--app-sidebar-hover);
   color: #fff;
 }
@@ -229,7 +230,6 @@ textarea:focus-visible {
 }
 
 .app-nav__link:focus-visible,
-.app-nav__pending summary:focus-visible,
 .app-sidebar__toggle:focus-visible {
   outline: 2px solid var(--app-sidebar-marker);
   outline-offset: -2px;
@@ -245,38 +245,6 @@ textarea:focus-visible {
 
 .app-nav__text {
   flex: 1 1 auto;
-}
-
-.app-nav__status {
-  color: var(--app-sidebar-muted);
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.app-nav__disabled {
-  color: var(--app-sidebar-muted);
-  cursor: not-allowed;
-}
-
-.app-nav__pending {
-  min-width: 0;
-  overflow: hidden;
-}
-
-.app-nav__pending summary {
-  align-items: center;
-  border-radius: 6px;
-  color: var(--app-sidebar-muted);
-  cursor: pointer;
-  display: flex;
-  font-size: 12px;
-  min-height: 40px;
-  padding: 0 12px;
-}
-
-.app-sidebar__footer {
-  flex-shrink: 0;
-  padding-top: 16px;
 }
 
 .app-sidebar__toggle.ant-btn {
@@ -313,9 +281,9 @@ textarea:focus-visible {
   justify-self: center;
 }
 
-.app-shell--collapsed .app-nav__pending {
-  pointer-events: none;
-  visibility: hidden;
+.app-shell--collapsed .app-sidebar__header {
+  flex-direction: column;
+  gap: 12px;
 }
 
 .app-topbar__heading { display: flex; align-items: center; gap: 8px; min-width: 0; }

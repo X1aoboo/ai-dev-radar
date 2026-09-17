@@ -4,6 +4,8 @@
 
 `data_api.py` 负责组织层级、正式 IR、临时导入批次、审计查询和源数据指标的 HTTP 编排；`data_management.py` 提供规范化、CSV/XLSX 标准库解析、差异、空字段合并、有效记录筛选和计算。`schemas.py` 定义 DTO，`models.py` 定义存储；本模块复用 `auth.py` 与 `db.py`。
 
+前端按需求、问题单、MR、代码检视组织数据源入口。`DataManagementPage` 在需求工作台组合 IR、AR、SR 页签；当前只有 IR 页签连接本模块 API，其他来源使用明确的待定义页面。旧 IR/AR/SR/DTS/MR 页面路径由路由层兼容映射，不改变后端接口。
+
 主要接口为 `/api/data/ir`、`/api/data/ir/imports/preview`、`/api/data/ir/imports/{batch_id}/confirm`、`/api/data/ir/{record_id}/audit-logs`、`/api/data-metrics` 及 `/api/data-metrics/compute`。方法和参数以路由、DTO 与运行时 OpenAPI 为准。
 
 ## 临时态与事务
