@@ -82,6 +82,7 @@ const ACTIVITY_KINDS = [
 const RECORD_SOURCE_LABELS = {
   manual: '页面编辑',
   import: '导入',
+  collector: '平台采集',
   auto: '自动采集',
 }
 
@@ -432,15 +433,17 @@ function IRRecordDrawer({ editor, refs, onClose, onSubmit, submitting }) {
   )
 }
 
-function ImportPreviewDrawer({ batch, onClose, onConfirm, submitting }) {
+function ImportPreviewDrawer({ batch, teamName, onClose, onConfirm, submitting }) {
+  const collectorBatch = batch.source_kind === 'collector'
   const columns = [
     { title: '行', dataIndex: 'row_number', width: 60 },
     { title: '记录 ID', dataIndex: 'source_id', render: (value) => <Text code>{value ?? '—'}</Text> },
+    { title: '来源系统', dataIndex: 'source_system', render: (value) => value ?? '—' },
     { title: '动作', dataIndex: 'operation', render: (value) => <Tag color={value === 'insert' ? 'gold' : value === 'fill' ? 'green' : 'default'}>{value === 'insert' ? '新增' : value === 'fill' ? '补充空值' : '无变化'}</Tag> },
     { title: '差异', dataIndex: 'diff', render: (diff = {}) => <Space orientation="vertical" size={0}>{Object.entries(diff).filter(([, value]) => value.action !== 'unchanged').slice(0, 5).map(([field, value]) => <Text key={field} type={value.action === 'keep' ? 'secondary' : undefined}>{field}：{value.action === 'keep' ? '保留正式值' : `→ ${String(value.to)}`}</Text>)}</Space> },
     { title: '校验', key: 'validation', render: (_, row) => <Space orientation="vertical" size={0}>{row.errors?.map((error) => <Text key={error} type="danger">{error}</Text>)}{row.warnings?.map((warning) => <Text key={warning} type="warning">{warning}</Text>)}{!row.errors?.length && !row.warnings?.length && <Tag color="green">通过</Tag>}</Space> },
   ]
-  return <Drawer title={`导入预览 · ${batch.filename ?? '数据文件'}`} open size={1080} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" disabled={batch.invalid_rows > 0} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : '确认写入正式数据'}</Button></Space>}><Steps current={1} size="small" items={[{ title: '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} /><div className="workbench-import-summary"><Tag>总行数 {batch.total_rows}</Tag><Tag color="green">可确认 {batch.valid_rows}</Tag><Tag color={batch.invalid_rows ? 'red' : 'default'}>错误行 {batch.invalid_rows}</Tag></div>{batch.invalid_rows ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。" /> : <Alert type="success" showIcon message="全部行校验通过；导入和采集只补正式数据中的空字段。" />}<Table className="workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={batch.rows} pagination={false} scroll={{ x: 900, y: 420 }} /></Drawer>
+  return <Drawer title={collectorBatch ? `采集批次预览 · ${teamName ?? `团队 #${batch.team_id}`}` : `导入预览 · ${batch.filename ?? '数据文件'}`} open size={1080} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" disabled={batch.invalid_rows > 0 || batch.status !== 'pending'} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : batch.status !== 'pending' ? '批次已确认' : collectorBatch ? '确认采集批次' : '确认写入正式数据'}</Button></Space>}><Steps current={1} size="small" items={[{ title: collectorBatch ? '采集' : '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} /><div className="workbench-import-summary"><Tag>总行数 {batch.total_rows}</Tag><Tag color="green">可确认 {batch.valid_rows}</Tag><Tag color={batch.invalid_rows ? 'red' : 'default'}>错误行 {batch.invalid_rows}</Tag></div>{batch.invalid_rows ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。" /> : <Alert type="success" showIcon message="全部行校验通过；正式数据中的已有非空字段会保留。" />}<Table className="workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={batch.rows} pagination={false} scroll={{ x: 900, y: 420 }} /></Drawer>
 }
 
 function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
@@ -452,6 +455,8 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
   const [notice, setNotice] = useState(null)
   const [editor, setEditor] = useState(null)
   const [importBatch, setImportBatch] = useState(null)
+  const [collectorBatches, setCollectorBatches] = useState([])
+  const [collectorBatchesLoading, setCollectorBatchesLoading] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const availableProducts = useMemo(() => refs.products.filter((product) => !filters.team_id || product.team_id === Number(filters.team_id)), [refs.products, filters.team_id])
@@ -465,6 +470,20 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
     try { setData(await fetchJson(`/api/data/ir?${buildIrQuery(filters).toString()}`)); if (clearNotice) setNotice(null) } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setLoading(false) }
   }, [filters, onSessionExpired])
   useEffect(() => { load() }, [load])
+
+  const loadCollectorBatches = useCallback(async () => {
+    if (!canEdit) return
+    setCollectorBatchesLoading(true)
+    try {
+      setCollectorBatches(await fetchJson('/api/data/ir/imports?source_kind=collector&status=pending'))
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message })
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setCollectorBatchesLoading(false)
+    }
+  }, [canEdit, onSessionExpired])
+  useEffect(() => { loadCollectorBatches() }, [loadCollectorBatches])
 
   function updateFilter(field, value) {
     setFilters((current) => ({ ...current, [field]: value, ...(field === 'team_id' ? { product_id: '', version_id: '', iteration_id: '' } : {}), ...(field === 'product_id' ? { version_id: '', iteration_id: '' } : {}), ...(field === 'version_id' ? { iteration_id: '' } : {}), page: 1 }))
@@ -487,8 +506,19 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
 
   async function confirmImport() {
     if (!importBatch) return
+    const wasCollectorBatch = importBatch.source_kind === 'collector'
     setBusy(true)
-    try { const result = await fetchJson(`/api/data/ir/imports/${importBatch.id}/confirm`, { method: 'POST' }); setImportBatch(null); setNotice({ type: 'success', text: `导入已确认：新增 ${result.created} 条，补充 ${result.updated} 条，未变化 ${result.unchanged} 条。` }); await load({ clearNotice: false }) } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
+    try { const result = await fetchJson(`/api/data/ir/imports/${importBatch.id}/confirm`, { method: 'POST' }); setImportBatch(null); setNotice({ type: 'success', text: `${wasCollectorBatch ? '采集' : '导入'}批次已确认：新增 ${result.created} 条，补充 ${result.updated} 条，未变化 ${result.unchanged} 条。` }); await load({ clearNotice: false }); if (wasCollectorBatch) await loadCollectorBatches() } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
+  }
+
+  async function openCollectorBatch(summary) {
+    setBusy(true)
+    try {
+      setImportBatch(await fetchJson(`/api/data/ir/imports/${summary.id}`))
+    } catch (error) {
+      setNotice({ type: 'error', text: error.message })
+      if (error.status === 401) onSessionExpired()
+    } finally { setBusy(false) }
   }
 
   const columns = [
@@ -502,6 +532,12 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
     { title: '来源', key: 'source', width: 100, render: (_, record) => <Space orientation="vertical" size={0}><Tag>{RECORD_SOURCE_LABELS[record.record_source] ?? record.record_source}</Tag><Text type="secondary">{record.updated_by}</Text></Space> },
     { title: '操作', key: 'action', fixed: 'right', width: 80, render: (_, record) => canEdit && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ record, form: irFormFromRecord(record) })}>编辑</Button> },
   ]
+  const collectorBatchColumns = [
+    { title: '团队', dataIndex: 'team_id', render: (teamId) => refs.teams.find((team) => team.id === teamId)?.name ?? `团队 #${teamId}` },
+    { title: '生成时间', dataIndex: 'created_at' },
+    { title: '行数', render: (_, batch) => `${batch.valid_rows} / ${batch.total_rows} 可确认${batch.invalid_rows ? `，${batch.invalid_rows} 行错误` : ''}` },
+    { title: '操作', key: 'action', render: (_, batch) => <Button type="link" size="small" loading={busy} onClick={() => openCollectorBatch(batch)}>查看批次</Button> },
+  ]
 
   return (
     <div className="workbench-page">
@@ -512,9 +548,10 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
         <div className="workbench-filter-row"><SelectField label="团队" value={filters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => updateFilter('team_id', value)} options={refs.teams.map((team) => [team.id, team.name])} /><SelectField label="产品" value={filters.product_id} onChange={(value) => updateFilter('product_id', value)} options={availableProducts.map((product) => [product.id, product.name])} /><SelectField label="版本" value={filters.version_id} onChange={(value) => updateFilter('version_id', value)} options={availableVersions.map((version) => [version.id, version.name])} /><SelectField label="迭代" value={filters.iteration_id} onChange={(value) => updateFilter('iteration_id', value)} options={availableIterations.map((iteration) => [iteration.id, iteration.name])} /><InputField label="需求编号" value={filters.requirement_no} onChange={(value) => updateFilter('requirement_no', value)} /></div>
         <Collapse ghost items={[{ key: 'advanced', label: '高级筛选', children: <div className="workbench-filter-row"><InputField label="责任人工号" value={filters.responsible_employee_id} onChange={(value) => updateFilter('responsible_employee_id', value)} /><InputField label="业务模块" value={filters.business_module} onChange={(value) => updateFilter('business_module', value)} /><InputField label="需求场景" value={filters.requirement_scenario} onChange={(value) => updateFilter('requirement_scenario', value)} /><InputField label="完成时间起" type="date" value={filters.completed_from} onChange={(value) => updateFilter('completed_from', value)} /><InputField label="完成时间止" type="date" value={filters.completed_to} onChange={(value) => updateFilter('completed_to', value)} /><SelectField label="AI 辅助" value={filters.ai_assisted} onChange={(value) => updateFilter('ai_assisted', value)} options={[['true', '是'], ['false', '否']]} /></div> }]} />
       </Card>
+      {canEdit && <Card className="workbench-section-gap" title="待确认采集批次"><Table rowKey="id" size="small" columns={collectorBatchColumns} dataSource={collectorBatches} loading={collectorBatchesLoading} pagination={false} locale={{ emptyText: <EmptyState>暂无待确认的 IR 采集批次。</EmptyState> }} /></Card>}
       <Card className="workbench-table-card" title={<Space><Text strong>IR 正式数据</Text><Text type="secondary">{data.total} 条记录</Text></Space>}><Table rowKey="id" size="small" columns={columns} dataSource={data.items} loading={loading} scroll={{ x: 1500 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 条`, onChange: (page) => setFilters((current) => ({ ...current, page })) }} locale={{ emptyText: <EmptyState>当前筛选条件下没有 IR 正式数据。</EmptyState> }} /></Card>
       <IRRecordDrawer editor={editor} refs={refs} onClose={() => setEditor(null)} onSubmit={saveRecord} submitting={busy} />
-      {importBatch && <ImportPreviewDrawer batch={importBatch} onClose={() => setImportBatch(null)} onConfirm={confirmImport} submitting={busy} />}
+      {importBatch && <ImportPreviewDrawer batch={importBatch} teamName={refs.teams.find((team) => team.id === importBatch.team_id)?.name} onClose={() => setImportBatch(null)} onConfirm={confirmImport} submitting={busy} />}
     </div>
   )
 }

@@ -11,6 +11,7 @@ from starlette.routing import Match, Mount
 from starlette.staticfiles import StaticFiles
 
 from .api import router
+from .collection_api import router as collection_router
 from .collectors import CollectorRegistry, SourceCollectorRegistry
 from .config import SESSION_HTTPS_ONLY, SESSION_MAX_AGE, SESSION_SECRET, STATIC_DIR
 from .data_api import router as data_management_router
@@ -39,6 +40,8 @@ from .models import (  # noqa: F401
     User,
 )
 from .scheduler import create_scheduler
+from .scheduler import load_source_collection_schedules
+from .source_collection import ensure_ir_collection_schedule
 
 
 collector_registry = CollectorRegistry()
@@ -91,7 +94,9 @@ async def lifespan(app: FastAPI):
             from .seed import run_seed
             run_seed(db)
 
+    ensure_ir_collection_schedule()
     scheduler = create_scheduler(collector_registry)
+    load_source_collection_schedules(scheduler)
     scheduler.start()
     app.state.scheduler = scheduler
     app.state.source_collector_registry = source_collector_registry
@@ -116,6 +121,7 @@ def create_app(
     )
     application.include_router(router)
     application.include_router(data_management_router)
+    application.include_router(collection_router)
     frontend_dir = Path(static_dir) if static_dir is not None else STATIC_DIR
     if frontend_dir.is_dir():
         application.router.routes.append(

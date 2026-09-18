@@ -14,7 +14,8 @@ from sqlalchemy.orm import Session, joinedload
 from .collectors import CollectedFact, CollectionWindow, CollectorRegistry
 from .config import COLLECTION_CRON
 from .db import SessionLocal
-from .models import ActivityKind, CollectMethod, FactRecord, FactSource, Metric, Team
+from .models import ActivityKind, CollectMethod, CollectionSchedule, FactRecord, FactSource, Metric, Team
+from .source_collection import run_scheduled_source_collection
 
 
 LOGGER = logging.getLogger(__name__)
@@ -266,3 +267,51 @@ def create_scheduler(
         misfire_grace_time=3600,
     )
     return scheduler
+
+
+def apply_source_collection_schedule(
+    scheduler: BackgroundScheduler,
+    schedule: CollectionSchedule,
+    session_factory: SessionFactory = SessionLocal,
+) -> None:
+    """Replace or remove the APScheduler job for one saved source schedule."""
+
+    job_id = f"source-collection-{schedule.domain}"
+    if not schedule.enabled:
+        if scheduler.get_job(job_id) is not None:
+            scheduler.remove_job(job_id)
+        return
+
+    fields: dict[str, int] = {"minute": schedule.minute}
+    if schedule.cadence != "hourly":
+        fields["hour"] = schedule.hour
+    if schedule.cadence == "weekly":
+        fields["day_of_week"] = schedule.day_of_week
+    elif schedule.cadence == "monthly":
+        fields["day"] = schedule.day_of_month
+    scheduler.add_job(
+        run_scheduled_source_collection,
+        trigger=CronTrigger(timezone=COLLECTION_TIMEZONE, **fields),
+        timezone=COLLECTION_TIMEZONE,
+        args=[schedule.domain, session_factory],
+        id=job_id,
+        name=f"{schedule.domain.upper()} source collection",
+        replace_existing=True,
+        coalesce=True,
+        max_instances=1,
+        misfire_grace_time=3600,
+    )
+
+
+def load_source_collection_schedules(
+    scheduler: BackgroundScheduler,
+    session_factory: SessionFactory = SessionLocal,
+) -> None:
+    """Load enabled per-domain jobs at service startup."""
+
+    with session_factory() as db:
+        schedules = db.scalars(
+            select(CollectionSchedule).where(CollectionSchedule.enabled.is_(True))
+        ).all()
+        for schedule in schedules:
+            apply_source_collection_schedule(scheduler, schedule, session_factory)

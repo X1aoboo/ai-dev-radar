@@ -50,21 +50,35 @@ def ensure_auth_schema(
 
 
 def ensure_data_management_schema(db_engine: Engine = engine) -> None:
-    """为旧版看板数据库补齐新数据管理所需的可空版本归属列。
+    """为旧版数据库补齐源数据管理所需的可空兼容列。
 
     新表由 ``Base.metadata.create_all`` 创建；这里仅处理 ``create_all`` 不会
-    改动的既有 product_versions 表。旧事实数据不做迁移，product_id 保持可空。
+    改动的既有表。旧事实数据不做迁移，product_id 和 ImportBatch.team_id 保持可空。
     """
 
     inspector = inspect(db_engine)
-    if "product_versions" not in inspector.get_table_names():
-        return
-    columns = {column["name"] for column in inspector.get_columns("product_versions")}
-    if "product_id" not in columns:
-        with db_engine.begin() as connection:
-            connection.execute(
-                text("ALTER TABLE product_versions ADD COLUMN product_id INTEGER")
-            )
+    tables = set(inspector.get_table_names())
+    if "product_versions" in tables:
+        columns = {column["name"] for column in inspector.get_columns("product_versions")}
+        if "product_id" not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE product_versions ADD COLUMN product_id INTEGER")
+                )
+    if "import_batches" in tables:
+        columns = {column["name"] for column in inspector.get_columns("import_batches")}
+        if "team_id" not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE import_batches ADD COLUMN team_id INTEGER REFERENCES teams(id)")
+                )
+    if "import_rows" in tables:
+        columns = {column["name"] for column in inspector.get_columns("import_rows")}
+        if "source_system" not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE import_rows ADD COLUMN source_system VARCHAR(100)")
+                )
 
 
 def ensure_maturity_schema(db_engine: Engine = engine) -> None:

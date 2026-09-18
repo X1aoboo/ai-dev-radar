@@ -3,6 +3,7 @@ import {
   BarChartOutlined,
   BugOutlined,
   CodeOutlined,
+  DatabaseOutlined,
   FileTextOutlined,
   PullRequestOutlined,
   TeamOutlined,
@@ -24,6 +25,7 @@ export const ROUTE_PATHS = Object.freeze({
   products: 'settings/products',
   metrics: 'settings/metrics',
   users: 'settings/users',
+  collections: 'settings/collections',
   legacyTeam: 'team/:id',
   legacyMetric: 'metric/:id',
   legacyData: 'data-management',
@@ -68,6 +70,7 @@ export const SIDEBAR_GROUPS = [
       { key: 'teams', label: '团队与人员', to: `/${ROUTE_PATHS.teams}`, icon: TeamOutlined, roles: SETTINGS_READ_ROLES },
       { key: 'products', label: '产品与版本', to: `/${ROUTE_PATHS.products}`, icon: AppstoreOutlined, roles: SETTINGS_READ_ROLES },
       { key: 'metrics', label: '指标定义', to: `/${ROUTE_PATHS.metrics}`, icon: BarChartOutlined, roles: SETTINGS_READ_ROLES },
+      { key: 'collections', label: '数据采集', to: `/${ROUTE_PATHS.collections}`, icon: DatabaseOutlined, roles: ADMIN_ROLES },
       { key: 'users', label: '用户与权限', to: `/${ROUTE_PATHS.users}`, icon: UserOutlined, roles: ADMIN_ROLES },
     ],
   },
@@ -93,6 +96,7 @@ export function getRouteMeta(pathname) {
     '/settings/products': ['产品与版本', '产品与版本'],
     '/settings/metrics': ['指标定义', '指标定义'],
     '/settings/users': ['用户与权限', '用户与权限'],
+    '/settings/collections': ['数据采集', '数据采集'],
   }[normalizedPathname]
   if (settingsMeta) return { title: settingsMeta[0], items: [{ title: '系统管理' }, { title: settingsMeta[1] }] }
   return { title: '页面未找到', items: [{ title: '系统' }, { title: '页面未找到' }] }

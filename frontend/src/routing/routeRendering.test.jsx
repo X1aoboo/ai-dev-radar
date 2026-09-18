@@ -32,6 +32,7 @@ vi.mock('@ant-design/icons', () => {
     BarChartOutlined: Icon,
     BugOutlined: Icon,
     CodeOutlined: Icon,
+    DatabaseOutlined: Icon,
     FileTextOutlined: Icon,
     PullRequestOutlined: Icon,
     LogoutOutlined: Icon,
@@ -58,6 +59,7 @@ const routeComponents = {
   MetricDetailPage: () => <StubPage page="metric-analytics">指标详情</StubPage>,
   DataManagementPage: ({ section }) => <StubPage page={`data-${section}`}>{section}</StubPage>,
   UsersSettingsPage: () => <StubPage page="settings-users">用户与权限</StubPage>,
+  CollectionsSettingsPage: () => <StubPage page="settings-collections">数据采集</StubPage>,
 }
 
 function LocationProbe() {
@@ -129,7 +131,7 @@ function hasText(renderer, text) {
 }
 
 test('route metadata treats one or more trailing slashes like the canonical path', () => {
-  for (const pathname of ['/data/requirements/ir', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users']) {
+  for (const pathname of ['/data/requirements/ir', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections']) {
     expect(getRouteMeta(`${pathname}/`)).toEqual(getRouteMeta(pathname))
   }
   expect(getRouteMeta('/')).toEqual(getRouteMeta('////'))
@@ -166,6 +168,7 @@ test('sidebar toggles reversibly without changing navigation contracts or fetchi
   expect(links().map(node => [node.props.href, node.props['aria-label']])).toEqual(before)
   expect(links().some(node => node.props['aria-current'] === 'page')).toBe(true)
   expect(links().some(node => node.props.href === '/settings/users')).toBe(false)
+  expect(links().some(node => node.props.href === '/settings/collections')).toBe(false)
   expect(links().filter(node => ['需求', '问题单', 'MR', '代码检视'].includes(node.props['aria-label']))).toHaveLength(4)
   expect(globalThis.fetch.mock.calls.length).toBe(requests)
   await act(async () => toggle().props.onClick())
@@ -231,6 +234,7 @@ test('data sources are direct navigation entries for all roles', async () => {
 
 for (const [role, pathname, page] of [
   ['admin', '/settings/users', 'settings-users'],
+  ['admin', '/settings/collections', 'settings-collections'],
   ['admin', '/settings/teams', 'data-teams'],
   ['maintainer', '/settings/teams', 'data-teams'],
   ['viewer', '/settings/teams', 'data-teams'],
@@ -249,6 +253,8 @@ for (const [role, pathname, page] of [
 for (const [role, pathname] of [
   ['maintainer', '/settings/users'],
   ['viewer', '/settings/users'],
+  ['maintainer', '/settings/collections'],
+  ['viewer', '/settings/collections'],
 ]) {
   test(`${role} receives 403 for ${pathname}`, async () => {
     const renderer = await renderAt(pathname, role)

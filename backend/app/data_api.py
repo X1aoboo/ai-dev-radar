@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from copy import deepcopy
 from datetime import date, datetime, timezone
-from typing import Any
+from typing import Any, Literal
 import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import func, select
+from pydantic import ValidationError
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -23,12 +24,18 @@ from .data_management import (
     field_diff,
     json_changes,
     merge_empty_fields,
-    normalize_ir_row,
     parse_import_file,
     record_is_valid,
     serializable_payload,
 )
 from .db import get_db
+from .ir_imports import (
+    IRImportRowInput,
+    check_ir_write_access as _check_ir_write_access,
+    create_ir_import_batch,
+    employee_for_team as _employee_for_team,
+    validate_ir_record_refs as _validate_ir_record_refs,
+)
 from .models import (
     AuditLog,
     DataMetricDefinition,
@@ -53,6 +60,7 @@ from .schemas import (
     IRRequirementOut,
     IRRequirementUpdateIn,
     ImportBatchOut,
+    ImportBatchSummaryOut,
     ImportConfirmOut,
     ImportPreviewIn,
     ImportRowOut,
@@ -440,17 +448,6 @@ def delete_team_member(
     db.commit()
 
 
-def _employee_for_team(db: Session, team_id: int, employee_id: str | None) -> TeamMember | None:
-    if not employee_id:
-        return None
-    return db.scalar(
-        select(TeamMember).where(
-            TeamMember.team_id == team_id,
-            TeamMember.employee_id == employee_id,
-        )
-    )
-
-
 def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
     product = record.product
     version = record.version
@@ -504,23 +501,6 @@ def _ir_record_query(db: Session):
         .join(ProductVersion, IRRequirement.version_id == ProductVersion.id)
         .join(Iteration, IRRequirement.iteration_id == Iteration.id)
         .order_by(IRRequirement.completed_at.desc(), IRRequirement.id.desc())
-    )
-
-
-def _check_ir_write_access(current_user: User, team_id: int) -> None:
-    if current_user.role == UserRole.ADMIN.value:
-        return
-    if current_user.role == UserRole.MAINTAINER.value and current_user.maintainer_team_id == team_id:
-        return
-    raise HTTPException(status_code=403, detail="team access denied")
-
-
-def _validate_ir_record_refs(db: Session, payload: dict[str, Any]) -> Product:
-    return _validate_hierarchy(
-        db,
-        int(payload["product_id"]),
-        int(payload["version_id"]),
-        int(payload["iteration_id"]),
     )
 
 
@@ -704,6 +684,7 @@ def _batch_out(batch: ImportBatch) -> ImportBatchOut:
         id=batch.id,
         domain=batch.domain,
         source_kind=batch.source_kind,
+        team_id=batch.team_id,
         filename=batch.filename,
         status=batch.status,
         created_by=batch.created_by,
@@ -717,6 +698,7 @@ def _batch_out(batch: ImportBatch) -> ImportBatchOut:
                 id=row.id,
                 row_number=row.row_number,
                 source_id=row.source_id,
+                source_system=row.source_system,
                 operation=row.operation,
                 diff=row.diff or {},
                 errors=row.errors or [],
@@ -730,62 +712,45 @@ def _batch_out(batch: ImportBatch) -> ImportBatchOut:
     )
 
 
-def _validate_import_row(
-    db: Session,
-    current_user: User,
-    raw_row: dict[str, Any],
-    row_number: int,
-) -> ImportRow:
-    normalized, errors = normalize_ir_row(raw_row)
-    normalized = serializable_payload(normalized)
-    warnings: list[str] = []
-    existing = None
-    if not errors and normalized.get("requirement_no"):
-        try:
-            product = _validate_ir_record_refs(db, normalized)
-            _check_ir_write_access(current_user, product.team_id)
-            if normalized.get("responsible_employee_id") and _employee_for_team(
-                db, product.team_id, normalized["responsible_employee_id"]
-            ) is None:
-                warnings.append("责任人工号暂未在该团队人员中匹配")
-            existing = db.scalar(
-                select(IRRequirement).where(
-                    IRRequirement.requirement_no == normalized["requirement_no"]
-                )
-            )
-        except HTTPException as exc:
-            errors.append(str(exc.detail))
-
-    if not errors:
-        try:
-            IRRequirementIn.model_validate(normalized)
-        except Exception as exc:
-            errors.append(str(exc).split(" [type=", 1)[0])
-
-    diff = field_diff(existing, normalized)
-    if existing is None:
-        operation = "insert"
-    elif any(item["action"] == "fill" for item in diff.values()):
-        operation = "fill"
-    else:
-        operation = "unchanged"
-    return ImportRow(
-        row_number=row_number,
-        source_id=normalized.get("requirement_no"),
-        payload=normalized,
-        operation=operation,
-        diff=diff,
-        errors=errors,
-        warnings=warnings,
-        status="invalid" if errors else "valid",
-        target_id=existing.id if existing is not None else None,
+def _batch_summary(batch: ImportBatch) -> ImportBatchSummaryOut:
+    rows = list(batch.rows)
+    return ImportBatchSummaryOut(
+        id=batch.id,
+        domain=batch.domain,
+        source_kind=batch.source_kind,
+        team_id=batch.team_id,
+        filename=batch.filename,
+        status=batch.status,
+        created_by=batch.created_by,
+        created_at=batch.created_at,
+        confirmed_at=batch.confirmed_at,
+        total_rows=len(rows),
+        valid_rows=sum(row.status in {"valid", "applied"} for row in rows),
+        invalid_rows=sum(row.status == "invalid" for row in rows),
     )
+
+
+def _check_batch_access(current_user: User, batch: ImportBatch) -> None:
+    if current_user.role == UserRole.ADMIN.value:
+        return
+    if current_user.role == UserRole.MAINTAINER.value:
+        if batch.source_kind == "collector" and batch.team_id == current_user.maintainer_team_id:
+            return
+        if batch.source_kind == "import" and batch.created_by == current_user.username:
+            return
+    raise HTTPException(status_code=403, detail="import batch access denied")
 
 
 async def _import_preview_payload(request: Request) -> ImportPreviewIn:
     content_type = request.headers.get("content-type", "")
     if content_type.startswith("application/json"):
-        return ImportPreviewIn.model_validate(await request.json())
+        try:
+            return ImportPreviewIn.model_validate(await request.json())
+        except ValidationError as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"message": "invalid import preview", "errors": exc.errors(include_input=False)},
+            ) from exc
     content = await request.body()
     filename = request.headers.get("x-filename") or request.query_params.get("filename")
     if not filename:
@@ -804,24 +769,59 @@ async def preview_ir_import(
     db: Session = Depends(get_db),
 ):
     payload = await _import_preview_payload(request)
-    batch = ImportBatch(
-        domain="ir",
-        source_kind=payload.source_kind,
+    batch = create_ir_import_batch(
+        db,
+        [IRImportRowInput(raw=row) for row in payload.rows],
+        source_kind="import",
         filename=payload.filename,
-        status="pending",
         created_by=current_user.username,
+        current_user=current_user,
     )
-    db.add(batch)
-    db.flush()
-    for row_number, raw_row in enumerate(payload.rows, start=2):
-        if not isinstance(raw_row, dict):
-            raw_row = {}
-        row = _validate_import_row(db, current_user, raw_row, row_number)
-        row.batch_id = batch.id
-        db.add(row)
     db.commit()
     db.refresh(batch)
     return _batch_out(batch)
+
+
+@router.get("/data/ir/imports", response_model=list[ImportBatchSummaryOut])
+def list_ir_imports(
+    source_kind: Literal["import", "collector"] | None = Query(default=None),
+    status: Literal["pending", "confirmed"] | None = Query(default=None),
+    team_id: int | None = Query(default=None, ge=1),
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    conditions = [ImportBatch.domain == "ir"]
+    if source_kind is not None:
+        conditions.append(ImportBatch.source_kind == source_kind)
+    if status is not None:
+        conditions.append(ImportBatch.status == status)
+    if current_user.role != UserRole.ADMIN.value:
+        if team_id is not None and team_id != current_user.maintainer_team_id:
+            raise HTTPException(status_code=403, detail="team access denied")
+        if source_kind == "import":
+            conditions.append(ImportBatch.created_by == current_user.username)
+        elif source_kind == "collector":
+            conditions.append(ImportBatch.team_id == current_user.maintainer_team_id)
+        else:
+            conditions.append(or_(
+                and_(
+                    ImportBatch.source_kind == "collector",
+                    ImportBatch.team_id == current_user.maintainer_team_id,
+                ),
+                and_(
+                    ImportBatch.source_kind == "import",
+                    ImportBatch.created_by == current_user.username,
+                ),
+            ))
+    if team_id is not None:
+        conditions.append(ImportBatch.team_id == team_id)
+    batches = db.scalars(
+        select(ImportBatch)
+        .options(selectinload(ImportBatch.rows))
+        .where(*conditions)
+        .order_by(ImportBatch.created_at.desc(), ImportBatch.id.desc())
+    ).all()
+    return [_batch_summary(batch) for batch in batches]
 
 
 @router.get("/data/ir/imports/{batch_id}", response_model=ImportBatchOut)
@@ -837,8 +837,7 @@ def get_ir_import(
     )
     if batch is None:
         raise HTTPException(status_code=404, detail="import batch not found")
-    if current_user.role != UserRole.ADMIN.value and batch.created_by != current_user.username:
-        raise HTTPException(status_code=403, detail="import batch access denied")
+    _check_batch_access(current_user, batch)
     return _batch_out(batch)
 
 
@@ -863,8 +862,7 @@ def confirm_ir_import(
     )
     if batch is None:
         raise HTTPException(status_code=404, detail="import batch not found")
-    if current_user.role != UserRole.ADMIN.value and batch.created_by != current_user.username:
-        raise HTTPException(status_code=403, detail="import batch access denied")
+    _check_batch_access(current_user, batch)
     if batch.status != "pending":
         raise HTTPException(status_code=409, detail="import batch is not pending")
     invalid_rows = [row.row_number for row in batch.rows if row.status == "invalid"]
@@ -907,7 +905,7 @@ def confirm_ir_import(
                 db.add(AuditLog(
                     domain="ir",
                     record_id=existing.id,
-                    action="import_confirm",
+                    action="collector_confirm" if batch.source_kind == "collector" else "import_confirm",
                     actor=current_user.username,
                     source=batch.source_kind,
                     changes=_import_audit_changes(payload),
@@ -930,7 +928,7 @@ def confirm_ir_import(
                     db.add(AuditLog(
                         domain="ir",
                         record_id=existing.id,
-                        action="import_confirm",
+                        action="collector_confirm" if batch.source_kind == "collector" else "import_confirm",
                         actor=current_user.username,
                         source=batch.source_kind,
                         changes=json_changes(changes),

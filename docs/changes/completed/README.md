@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [IR 采集 Gateway 防腐层 v1](ir-collector-gateway.md)：为 IR 增加严格同步 Gateway 契约、团队级采集暂存、可配置调度和人工确认。
 - [Design Knowledge Bootstrap](design-knowledge-bootstrap.md)：基线与维护机制 Task 1–9。
 - [Collapsible Sidebar](collapsible-sidebar.md)：真实开发验证 Task 10。
 - [统一项目设计资产维护机制](unify-design-maintenance.md)：旧项目协议退役，统一新机制入口。

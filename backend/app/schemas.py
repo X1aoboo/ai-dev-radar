@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .models import ActivityKind, CollectMethod, FactSource, MetricType, UserRole
 
@@ -312,13 +312,13 @@ class ImportPreviewIn(BaseModel):
 
     filename: str | None = Field(default=None, max_length=255)
     rows: list[dict[str, Any]] = Field(min_length=1, max_length=10000)
-    source_kind: Literal["import", "collector"] = "import"
 
 
 class ImportRowOut(BaseModel):
     id: int
     row_number: int
     source_id: str | None
+    source_system: str | None = None
     operation: str
     diff: dict[str, Any]
     errors: list[str]
@@ -332,6 +332,7 @@ class ImportBatchOut(BaseModel):
     id: int
     domain: str
     source_kind: str
+    team_id: int | None = None
     filename: str | None
     status: str
     created_by: str
@@ -343,12 +344,133 @@ class ImportBatchOut(BaseModel):
     rows: list[ImportRowOut]
 
 
+class ImportBatchSummaryOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    domain: str
+    source_kind: str
+    team_id: int | None
+    filename: str | None
+    status: str
+    created_by: str
+    created_at: datetime
+    confirmed_at: datetime | None
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+
+
 class ImportConfirmOut(BaseModel):
     batch_id: int
     status: str
     created: int
     updated: int
     unchanged: int
+
+
+class CollectionScheduleUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    enabled: bool
+    cadence: Literal["hourly", "daily", "weekly", "monthly"]
+    minute: int = Field(ge=0, le=59)
+    hour: int | None = Field(default=None, ge=0, le=23)
+    day_of_week: int | None = Field(default=None, ge=0, le=6)
+    day_of_month: int | None = Field(default=None, ge=1, le=28)
+
+    @model_validator(mode="after")
+    def validate_cadence_fields(self):
+        required = {
+            "hourly": set(),
+            "daily": {"hour"},
+            "weekly": {"hour", "day_of_week"},
+            "monthly": {"hour", "day_of_month"},
+        }[self.cadence]
+        values = {
+            "hour": self.hour,
+            "day_of_week": self.day_of_week,
+            "day_of_month": self.day_of_month,
+        }
+        for name, value in values.items():
+            if name in required and value is None:
+                raise ValueError(f"{name} is required for {self.cadence} cadence")
+            if name not in required and value is not None:
+                raise ValueError(f"{name} is not used for {self.cadence} cadence")
+        return self
+
+
+class CollectionScheduleOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    domain: Literal["ir"]
+    enabled: bool
+    cadence: Literal["hourly", "daily", "weekly", "monthly"]
+    minute: int
+    hour: int | None
+    day_of_week: int | None
+    day_of_month: int | None
+    timezone: Literal["Asia/Shanghai"]
+    updated_by: str
+    updated_at: datetime
+
+
+class CollectionRunIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    start_at: datetime | None = None
+    end_at: datetime | None = None
+
+    @field_validator("start_at", "end_at")
+    @classmethod
+    def require_timezone(cls, value):
+        if value is not None and (value.tzinfo is None or value.utcoffset() is None):
+            raise ValueError("datetime must include a timezone")
+        return value
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        if (self.start_at is None) != (self.end_at is None):
+            raise ValueError("start_at and end_at must be supplied together")
+        if self.start_at is not None and self.start_at >= self.end_at:
+            raise ValueError("start_at must be earlier than end_at")
+        return self
+
+
+class CollectionTeamResultOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    team_id: int
+    team_name: str
+    status: Literal["succeeded", "failed", "skipped"]
+    request_id: str | None = None
+    batch_id: int | None = None
+    record_count: int = 0
+    code: str | None = None
+    message: str | None = None
+    retryable: bool = False
+
+
+class CollectionRunOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    domain: Literal["ir"]
+    trigger_type: Literal["manual", "scheduled"]
+    status: Literal["running", "succeeded", "partial", "failed"]
+    started_by: str
+    window_start_at: str
+    window_end_at: str
+    team_results: list[CollectionTeamResultOut]
+    started_at: datetime
+    completed_at: datetime | None
+
+
+class CollectionScheduleListOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    schedules: list[CollectionScheduleOut]
+    recent_runs: list[CollectionRunOut]
 
 
 class DataMetricDefinitionIn(BaseModel):

@@ -8,7 +8,7 @@
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, JSON, Date, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -276,6 +276,7 @@ class ImportBatch(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     domain: Mapped[str] = mapped_column(String(20))
     source_kind: Mapped[str] = mapped_column(String(20))
+    team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_by: Mapped[str] = mapped_column(String(100))
@@ -298,6 +299,7 @@ class ImportRow(Base):
     batch_id: Mapped[int] = mapped_column(ForeignKey("import_batches.id"))
     row_number: Mapped[int] = mapped_column()
     source_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    source_system: Mapped[str | None] = mapped_column(String(100), nullable=True)
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     operation: Mapped[str] = mapped_column(String(20), default="insert")
     diff: Mapped[dict] = mapped_column(JSON, default=dict)
@@ -307,6 +309,48 @@ class ImportRow(Base):
     target_id: Mapped[int | None] = mapped_column(nullable=True)
 
     batch: Mapped[ImportBatch] = relationship(back_populates="rows")
+
+
+class CollectionSchedule(Base):
+    """Per-domain source collection schedule; only IR is configured initially."""
+
+    __tablename__ = "collection_schedules"
+    __table_args__ = (UniqueConstraint("domain", name="uq_collection_schedule_domain"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(20))
+    enabled: Mapped[bool] = mapped_column(Boolean, default=False)
+    cadence: Mapped[str] = mapped_column(String(10), default="daily")
+    minute: Mapped[int] = mapped_column(Integer, default=0)
+    hour: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day_of_week: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    day_of_month: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    timezone: Mapped[str] = mapped_column(String(50), default="Asia/Shanghai")
+    updated_by: Mapped[str] = mapped_column(String(100), default="system")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
+
+class CollectionRun(Base):
+    """A single source collection attempt and its isolated team outcomes."""
+
+    __tablename__ = "collection_runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    domain: Mapped[str] = mapped_column(String(20))
+    trigger_type: Mapped[str] = mapped_column(String(20))
+    status: Mapped[str] = mapped_column(String(20), default="running")
+    started_by: Mapped[str] = mapped_column(String(100))
+    window_start_at: Mapped[str] = mapped_column(String(50))
+    window_end_at: Mapped[str] = mapped_column(String(50))
+    team_results: Mapped[list] = mapped_column(JSON, default=list)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class DataMetricDefinition(Base):

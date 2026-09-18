@@ -112,6 +112,8 @@ const member = { id: 40, team_id: 1, employee_id: 'A001', name: '成员一', rol
 const irRecord = { id: 50, requirement_no: 'IR-001', requirement_name: '需求一', team_id: 1, team_name: '团队A', product_id: 10, product_name: '产品A', version_id: 20, version_name: '版本A', iteration_id: 30, iteration_name: '迭代一', completed_at: '2026-08-20', business_module: 'CNAE', requirement_scenario: '场景一', ai_assisted: false, estimated_workload: 2, actual_workload: 1, sa_estimated_workload: 1, sa_actual_workload: 1, se_estimated_workload: 1, se_actual_workload: 0, responsible_employee_id: 'A001', responsible_employee_pending: false, record_source: 'manual', updated_by: 'admin', valid: true }
 const catalog = [{ id: 1, code: 'sa', name: 'SA设计', kind: 'key', metrics: [{ id: 100, activity_id: 1, code: 'sa-pen', name: 'IR需求渗透率', type: 'penetration', numerator_semantic: 'AI数', denominator_semantic: '总数', collect_method: 'manual_only' }] }]
 const dataMetric = { id: 200, domain: 'ir', code: 'ir-ai-penetration', name: 'IR AI渗透率', metric_type: 'penetration', activity_code: 'sa', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: {}, active: true }
+const collectorBatchSummary = { id: 301, domain: 'ir', source_kind: 'collector', team_id: 1, status: 'pending', created_by: 'scheduled-collector', created_at: '2026-09-18T01:00:00', total_rows: 1, valid_rows: 1, invalid_rows: 0 }
+const collectorBatchDetails = { ...collectorBatchSummary, filename: null, confirmed_at: null, rows: [{ id: 1, row_number: 1, source_id: 'IR-COLLECTED', source_system: 'internal-ir', operation: 'insert', diff: {}, errors: [], warnings: [], status: 'valid', target_id: null, payload: { requirement_no: 'IR-COLLECTED' } }] }
 
 function responseFor(url) {
   if (url.startsWith('/api/teams')) return [team, teamB]
@@ -122,7 +124,10 @@ function responseFor(url) {
   if (url.startsWith('/api/data/ir?')) return { items: [irRecord], total: 101 }
   if (url === '/api/data-metrics?domain=ir') return [dataMetric]
   if (url.startsWith('/api/data-metrics/compute')) return { metric_code: dataMetric.code, metric_name: dataMetric.name, numerator: 1, denominator: 2, value: 0.5, record_count: 2 }
-  if (url.includes('/imports/preview')) return { id: 300, filename: 'ir.csv', total_rows: 1, valid_rows: 1, invalid_rows: 0, rows: [{ row_number: 2, source_id: 'IR-NEW', operation: 'insert', diff: {}, errors: [], warnings: [] }] }
+  if (url.includes('/imports/preview')) return { id: 300, domain: 'ir', source_kind: 'import', status: 'pending', team_id: null, filename: 'ir.csv', total_rows: 1, valid_rows: 1, invalid_rows: 0, rows: [{ row_number: 2, source_id: 'IR-NEW', operation: 'insert', diff: {}, errors: [], warnings: [] }] }
+  if (url === '/api/data/ir/imports?source_kind=collector&status=pending') return [collectorBatchSummary]
+  if (url === '/api/data/ir/imports/301') return collectorBatchDetails
+  if (url === '/api/data/ir/imports/301/confirm') return { created: 1, updated: 0, unchanged: 0 }
   if (url.includes('/imports/300/confirm')) return { created: 1, updated: 0, unchanged: 0 }
   return {}
 }
@@ -189,6 +194,31 @@ describe('data management workbench rendering', () => {
     await act(async () => { confirmButton.props.onClick() })
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
     expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/imports/300/confirm'))).toBe(true)
+    renderer.unmount()
+  })
+
+  test('collector batches open in the shared preview and invalid rows block confirmation', async () => {
+    const renderer = await render('ir')
+    expect(renderText(renderer.toJSON())).toContain('待确认采集批次')
+    fetchJson.mockImplementation(async (url) => url === '/api/data/ir/imports/301'
+      ? { ...collectorBatchDetails, valid_rows: 0, invalid_rows: 1, rows: [{ ...collectorBatchDetails.rows[0], status: 'invalid', errors: ['迭代名称缺失或不属于该版本'] }] }
+      : responseFor(String(url)))
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('查看批次')).props.onClick())
+    expect(renderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toContain('采集批次预览')
+    expect(renderText(renderer.toJSON())).toContain('迭代名称缺失或不属于该版本')
+    const confirmButton = renderer.root.findAllByType('button').find((button) => button.children.includes('存在错误，不能确认'))
+    expect(confirmButton.props.disabled).toBe(true)
+    renderer.unmount()
+  })
+
+  test('collector confirmation refreshes formal IR and pending batch lists', async () => {
+    const renderer = await render('ir')
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('查看批次')).props.onClick())
+    const confirmButton = renderer.root.findAllByType('button').find((button) => button.children.includes('确认采集批次'))
+    await act(async () => confirmButton.props.onClick())
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(fetchJson.mock.calls.some(([url, options]) => url === '/api/data/ir/imports/301/confirm' && options?.method === 'POST')).toBe(true)
+    expect(fetchJson.mock.calls.filter(([url]) => url === '/api/data/ir/imports?source_kind=collector&status=pending')).toHaveLength(2)
     renderer.unmount()
   })
 

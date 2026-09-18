@@ -191,6 +191,64 @@
   padding-bottom: 80px;
 }
 
+.collection-form {
+  display: grid;
+  gap: var(--app-space-4);
+  max-width: 760px;
+}
+
+.collection-form > label {
+  display: grid;
+  gap: var(--app-space-1);
+  max-width: 320px;
+}
+
+.collection-form input:not([type="checkbox"]),
+.collection-form select {
+  min-height: 32px;
+  padding: 4px 8px;
+}
+
+.collection-toggle {
+  align-items: center;
+  display: flex;
+  gap: var(--app-space-2);
+}
+
+.collection-window-fields {
+  display: grid;
+  gap: var(--app-space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.collection-run {
+  border-bottom: 1px solid var(--app-border, #e0e3e7);
+  display: grid;
+  gap: var(--app-space-2);
+  padding: var(--app-space-3) 0;
+}
+
+.collection-run:first-child {
+  padding-top: 0;
+}
+
+.collection-run:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.collection-run__heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--app-space-2) var(--app-space-4);
+  justify-content: space-between;
+}
+
+.collection-run ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
 @media (max-width: 1100px) {
   .workbench-master-detail,
   .workbench-two-column {
@@ -217,7 +275,8 @@
   .workbench-filter-row,
   .workbench-form-grid,
   .workbench-form-grid.two,
-  .workbench-form-grid.three {
+  .workbench-form-grid.three,
+  .collection-window-fields {
     grid-template-columns: 1fr;
   }
 }

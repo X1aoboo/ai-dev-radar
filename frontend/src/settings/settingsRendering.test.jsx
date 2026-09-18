@@ -32,6 +32,7 @@ vi.mock('@ant-design/icons', () => {
 })
 
 import UsersSettingsPage from './UsersSettingsPage.jsx'
+import CollectionsSettingsPage from './CollectionsSettingsPage.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -64,5 +65,44 @@ test('renders localized role labels in the user table and opens a Drawer for new
   await act(async () => { newUserButton.props.onClick() })
   expect(renderer.root.findByProps({ role: 'dialog' }).props['aria-label']).toBe('新增用户')
   expect(renderer.root.findAllByProps({ 'data-popconfirm': true })).toHaveLength(2)
+  renderer.unmount()
+})
+
+test('admin can save a weekly IR schedule and manually trigger an explicit Shanghai window', async () => {
+  let schedule = { domain: 'ir', enabled: false, cadence: 'daily', minute: 0, hour: 2, day_of_week: null, day_of_month: null, timezone: 'Asia/Shanghai', updated_by: 'admin', updated_at: '2026-09-18T00:00:00' }
+  let runCompleted = false
+  const runResult = { id: 9, domain: 'ir', trigger_type: 'manual', status: 'failed', started_by: 'admin', window_start_at: '2026-09-17T00:00:00+08:00', window_end_at: '2026-09-18T00:00:00+08:00', team_results: [{ team_id: 1, team_name: '团队A', status: 'failed', code: 'gateway_not_configured', message: 'Collector Gateway is not configured.', retryable: false }], started_at: '2026-09-18T00:00:00', completed_at: '2026-09-18T00:00:01' }
+  fetchJson.mockImplementation(async (url, options) => {
+    if (url === '/api/collection-schedules/ir' && options?.method === 'PUT') {
+      schedule = { ...schedule, ...JSON.parse(options.body), updated_by: 'admin' }
+      return schedule
+    }
+    if (url === '/api/collection-schedules/ir/run') {
+      runCompleted = true
+      return runResult
+    }
+    return { schedules: [schedule], recent_runs: runCompleted ? [runResult] : [] }
+  })
+  let renderer
+  await act(async () => { renderer = create(<CollectionsSettingsPage onSessionExpired={() => undefined} />) })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+
+  await act(async () => renderer.root.findByProps({ 'aria-label': '采集周期' }).props.onChange({ target: { value: 'weekly' } }))
+  await act(async () => renderer.root.findByProps({ 'aria-label': '星期' }).props.onChange({ target: { value: '2' } }))
+  const scheduleForm = renderer.root.findByProps({ 'aria-label': 'IR 定时计划' })
+  await act(async () => scheduleForm.props.onSubmit({ preventDefault: vi.fn() }))
+  const saveCall = fetchJson.mock.calls.find(([url, options]) => url === '/api/collection-schedules/ir' && options?.method === 'PUT')
+  expect(JSON.parse(saveCall[1].body)).toMatchObject({ cadence: 'weekly', day_of_week: 2 })
+  expect(JSON.parse(saveCall[1].body)).not.toHaveProperty('timezone')
+  expect(renderText(renderer.toJSON())).toContain('已保存并立即生效')
+
+  await act(async () => renderer.root.findByProps({ 'aria-label': '开始时间' }).props.onChange({ target: { value: '2026-09-17T01:30' } }))
+  await act(async () => renderer.root.findByProps({ 'aria-label': '结束时间' }).props.onChange({ target: { value: '2026-09-17T02:30' } }))
+  const runForm = renderer.root.findByProps({ 'aria-label': '手动触发 IR 采集' })
+  await act(async () => runForm.props.onSubmit({ preventDefault: vi.fn() }))
+  const runCall = fetchJson.mock.calls.find(([url, options]) => url === '/api/collection-schedules/ir/run' && options?.method === 'POST')
+  expect(JSON.parse(runCall[1].body)).toEqual({ start_at: '2026-09-17T01:30:00+08:00', end_at: '2026-09-17T02:30:00+08:00' })
+  expect(renderText(renderer.toJSON())).toContain('gateway_not_configured')
+  expect(fetchJson.mock.calls.some(([url]) => String(url).includes('GATEWAY_TOKEN') || String(url).includes('GATEWAY_URL'))).toBe(false)
   renderer.unmount()
 })
