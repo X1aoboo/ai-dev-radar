@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [AI 研发数据网关版本化能力协议](ai-dev-data-gateway-contract.md)：建立版本化协议，并在首发前完成产品版本联合标识和空业务模块规范化。
 - [IR 采集 Gateway 防腐层 v1](ir-collector-gateway.md)：为 IR 增加严格同步 Gateway 契约、团队级采集暂存、可配置调度和人工确认。
 - [Design Knowledge Bootstrap](design-knowledge-bootstrap.md)：基线与维护机制 Task 1–9。
 - [Collapsible Sidebar](collapsible-sidebar.md)：真实开发验证 Task 10。

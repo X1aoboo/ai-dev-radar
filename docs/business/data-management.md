@@ -2,7 +2,7 @@
 
 ## 目标和范围
 
-维护可追溯的研发源数据与 AI 属性，按定义实时计算指标。数据管理按需求、问题单、MR、代码检视四类业务数据源组织；IR、AR、SR 是需求内部分类。当前仅完整实现 IR，支持页面维护、文件导入及经私有 Collector Gateway 暂存的采集；AR/SR 及其他数据源仍待定义。真实内部平台/Gateway 联调需部署环境另行验证。
+维护可追溯的研发源数据与 AI 属性，按定义实时计算指标。数据管理按需求、问题单、MR、代码检视四类业务数据源组织；IR、AR、SR 是需求内部分类。当前仅完整实现 IR，支持页面维护、文件导入及经 AI 研发数据网关暂存的采集；AR/SR 及其他数据源仍待定义。真实内部平台/Gateway 联调需部署环境另行验证。
 
 ## 组织和角色
 
@@ -32,13 +32,13 @@ flowchart LR
 
 ## IR Gateway 采集
 
-IR 采集由 Radar 按团队独立调用公司私有 Collector Gateway。Radar 拥有 `collector-ir-v1` 契约、调度、字段/层级校验、暂存、人工确认和审计；Gateway 负责内部平台认证、查询和字段翻译。每个团队有独立运行结果和暂存批次，团队失败不会阻断其他团队；版本映射为空时跳过，Gateway 返回空结果时不创建空批次。
+IR 采集由 Radar 按团队独立编排 AI 研发数据网关调用，但线协议不发送团队名称。Radar 根据团队版本配置与本地产品层级生成产品名称和版本名称组合；版本化能力协议是双方共同消费的实现中立事实源。Radar 负责调度、字段/层级校验、暂存、人工确认和审计，Gateway 负责内部平台认证、按产品版本组合查询和字段翻译。每个团队有独立运行结果和暂存批次，团队失败不会阻断其他团队；版本映射为空时跳过，Gateway 返回空结果时不创建空批次。
 
-Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start_at, end_at)`。首版不分页、不异步轮询或自动重试；超限时管理员缩短窗口，失败按返回的 retryable 信息手动重跑。Radar 按版本名核对版本对应产品归属当前团队，再按该版本解析迭代名。任何无效行都阻止该团队批次整批确认。采集确认沿用导入的事务、只补空字段和 AI 字段来源记录，审计动作记为 `collector_confirm`。
+Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start_at, end_at)`。首版不分页、不异步轮询或自动重试；超限时管理员缩短窗口，失败按返回的 retryable 信息手动重跑。Radar 按产品名与版本名联合核对归属当前团队，再按该版本解析迭代名；响应超出请求产品版本范围时该行无效。Gateway 的 `business_module` 为 `null`、空字符串或纯空白时，Radar 在暂存前统一转换为 `通用模块`。任何无效行都阻止该团队批次整批确认。采集确认沿用导入的事务、只补空字段和 AI 字段来源记录，审计动作记为 `collector_confirm`。
 
 调度按 `Asia/Shanghai` 配置为每小时、每日、每周或每月；IR 默认禁用。每小时、每日、每周和每月分别使用上一个完整小时、自然日、自然周和自然月。管理员可以不传窗口使用上一个完整配置周期，也可以手动指定带时区的合法窗口。
 
-内部调用契约快照见 [collector-ir-v1 JSON Schema](../contracts/collector-ir-v1.schema.json)。Gateway 地址、Bearer Token 和超时只来自服务端环境变量，不进入数据库或前端；生产地址必须使用 HTTPS。
+完整能力语义与线协议见 [AI 研发数据网关能力协议](../contracts/ai-dev-data-gateway/README.md)。Gateway 地址、Bearer Token 和超时只来自服务端环境变量，不进入数据库或前端；生产地址必须使用 HTTPS。
 
 ## 指标与数据边界
 
@@ -50,4 +50,4 @@ Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start
 
 HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
 
-相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。
+相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)、[ADR-0009](../adr/0009-versioned-ai-engineering-data-gateway-protocol.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。

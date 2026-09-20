@@ -1,0 +1,605 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AI Engineering Data Gateway",
+    "version": "1.0.0",
+    "description": "Implementation-neutral wire contract for AI Engineering Data Gateway capabilities.",
+    "x-release-status": "unreleased"
+  },
+  "x-service-id": "ai-dev-data-gateway",
+  "x-capabilities": [
+    {
+      "id": "requirements.ir.collection",
+      "status": "available"
+    },
+    {
+      "id": "requirements.ar.collection",
+      "status": "planned"
+    },
+    {
+      "id": "requirements.sr.collection",
+      "status": "planned"
+    },
+    {
+      "id": "issues.collection",
+      "status": "planned"
+    },
+    {
+      "id": "merge-requests.collection",
+      "status": "planned"
+    },
+    {
+      "id": "code-reviews.collection",
+      "status": "planned"
+    }
+  ],
+  "paths": {
+    "/v1/collections/ir": {
+      "post": {
+        "operationId": "collectIrRecords",
+        "summary": "Collect IR source records",
+        "description": "Synchronously returns IR source records for explicit product and version pairs in a timezone-aware half-open window [start_at, end_at). request_id is for correlation only and does not provide idempotency.",
+        "tags": [
+          "requirements"
+        ],
+        "x-capability-id": "requirements.ir.collection",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CollectorIRRequest"
+              },
+              "example": {
+                "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8",
+                "product_versions": [
+                  {
+                    "product_name": "Product A",
+                    "version_name": "27.1.RC1"
+                  }
+                ],
+                "start_at": "2026-09-17T00:00:00+08:00",
+                "end_at": "2026-09-18T00:00:00+08:00"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Collection succeeded. An empty records array is a successful empty result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CollectorIRResponse"
+                },
+                "example": {
+                  "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8",
+                  "records": [
+                    {
+                      "source_id": "IR-2026-001",
+                      "source_system": "requirements-platform",
+                      "product_name": "Product A",
+                      "version_name": "27.1.RC1",
+                      "iteration_name": "Iteration 1",
+                      "requirement_name": "Example requirement",
+                      "responsible_employee_id": "E10001",
+                      "parent_requirement_no": null,
+                      "completed_at": "2026-09-17",
+                      "business_module": null,
+                      "requirement_scenario": "Delivery",
+                      "estimated_workload": 8,
+                      "actual_workload": 5,
+                      "sa_estimated_workload": 2,
+                      "sa_actual_workload": 1.5,
+                      "se_estimated_workload": 2,
+                      "se_actual_workload": 1,
+                      "ai_assisted": true
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableRequest"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimited"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalError"
+          },
+          "502": {
+            "$ref": "#/components/responses/BadGateway"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          },
+          "504": {
+            "$ref": "#/components/responses/UpstreamTimeout"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Deployment-provided Gateway bearer token. Production transport must use HTTPS."
+      }
+    },
+    "schemas": {
+      "ProductVersionRef": {
+        "title": "ProductVersionRef",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "product_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "version_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "product_name",
+          "version_name"
+        ]
+      },
+      "CollectorIRRequest": {
+        "title": "CollectorIRRequest",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "product_versions": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 100,
+            "uniqueItems": true,
+            "description": "Distinct product and version pairs. Duplicate pairs are invalid.",
+            "items": {
+              "$ref": "#/components/schemas/ProductVersionRef"
+            }
+          },
+          "start_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Inclusive window start with an explicit timezone offset."
+          },
+          "end_at": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "(?:Z|[+-][0-9]{2}:[0-9]{2})$",
+            "description": "Exclusive window end with an explicit timezone offset and later than start_at."
+          }
+        },
+        "required": [
+          "request_id",
+          "product_versions",
+          "start_at",
+          "end_at"
+        ]
+      },
+      "CollectorIRRecord": {
+        "title": "CollectorIRRecord",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "source_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Stable requirement identifier in the source platform. Radar uses it as the requirement number."
+          },
+          "source_system": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Stable identifier of the source system."
+          },
+          "product_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "Product business name. Together with version_name, it must match one pair in the request."
+          },
+          "version_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "description": "Product version business name. Together with product_name, it must match one pair in the request."
+          },
+          "iteration_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 60,
+            "description": "Iteration business name under the identified product version."
+          },
+          "requirement_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "IR requirement title or business name."
+          },
+          "responsible_employee_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 50
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Stable employee identifier of the responsible person; null or omitted when unavailable."
+          },
+          "parent_requirement_no": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Parent requirement number; null or omitted for a top-level IR or when unavailable."
+          },
+          "completed_at": {
+            "type": "string",
+            "format": "date",
+            "description": "Business completion date of the requirement."
+          },
+          "business_module": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 100
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Source business module. Radar normalizes null, empty, or whitespace-only values to 通用模块 before staging."
+          },
+          "requirement_scenario": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "Business scenario classification of the requirement, not its free-form description."
+          },
+          "estimated_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Overall estimated workload in person-days."
+          },
+          "actual_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Overall actual workload in person-days."
+          },
+          "sa_estimated_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Estimated SA design workload in person-days."
+          },
+          "sa_actual_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Actual SA design workload in person-days."
+          },
+          "se_estimated_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Estimated SE design workload in person-days."
+          },
+          "se_actual_workload": {
+            "anyOf": [
+              {
+                "type": "number",
+                "minimum": 0
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Actual SE design workload in person-days."
+          },
+          "ai_assisted": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Whether AI assisted the requirement. Null or omission means unknown, not false."
+          }
+        },
+        "required": [
+          "source_id",
+          "source_system",
+          "product_name",
+          "version_name",
+          "iteration_name",
+          "requirement_name",
+          "completed_at",
+          "business_module",
+          "requirement_scenario"
+        ]
+      },
+      "CollectorIRResponse": {
+        "title": "CollectorIRResponse",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "records": {
+            "type": "array",
+            "maxItems": 10000,
+            "items": {
+              "$ref": "#/components/schemas/CollectorIRRecord"
+            }
+          }
+        },
+        "required": [
+          "request_id",
+          "records"
+        ]
+      },
+      "GatewayError": {
+        "title": "GatewayError",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "Sanitized message without credentials, upstream URLs, stack traces, or raw upstream errors."
+          },
+          "retryable": {
+            "type": "boolean"
+          },
+          "request_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable",
+          "request_id"
+        ]
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Malformed JSON or invalid basic request structure. retryable is false.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "invalid_request",
+              "message": "The request is invalid.",
+              "retryable": false,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid Gateway credentials. retryable is false.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "invalid_credentials",
+              "message": "Authentication failed.",
+              "retryable": false,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "Forbidden": {
+        "description": "The caller cannot access the capability or requested target. retryable is false.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "forbidden",
+              "message": "Access is denied.",
+              "retryable": false,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "UnprocessableRequest": {
+        "description": "The request is understood but violates window, mapping, capacity, or business constraints. retryable is false.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "result_limit_exceeded",
+              "message": "The result exceeds the 10000 record limit; use a smaller window.",
+              "retryable": false,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "RateLimited": {
+        "description": "The Gateway or upstream platform is rate limited. retryable is true.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "rate_limited",
+              "message": "The request was rate limited.",
+              "retryable": true,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "InternalError": {
+        "description": "The Gateway encountered an unexpected internal error. retryable is true.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "gateway_internal_error",
+              "message": "The Gateway encountered an internal error.",
+              "retryable": true,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "BadGateway": {
+        "description": "The upstream platform returned an invalid response. retryable is true.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "invalid_upstream_response",
+              "message": "The upstream platform returned an invalid response.",
+              "retryable": true,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The Gateway or upstream platform is temporarily unavailable. retryable is true.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "upstream_unavailable",
+              "message": "The upstream platform is unavailable.",
+              "retryable": true,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      },
+      "UpstreamTimeout": {
+        "description": "The upstream platform timed out. retryable is true.",
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/GatewayError"
+            },
+            "example": {
+              "code": "upstream_timeout",
+              "message": "The upstream platform timed out.",
+              "retryable": true,
+              "request_id": "44d7b51d-8217-4cb5-bcb8-4dd2b7da38e8"
+            }
+          }
+        }
+      }
+    }
+  }
+}

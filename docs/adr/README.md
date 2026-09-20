@@ -11,7 +11,8 @@
 | [0005](0005-team-owned-product-hierarchy.md) | 团队产品层级 | 未显式记录 |
 | [0006](0006-monthly-maturity-assessment.md) | 月度成熟度 | Accepted，原文记录 2026-09-15 |
 | [0007](0007-business-source-navigation.md) | 数据管理按业务数据源分类 | Accepted |
-| [0008](0008-ir-collector-gateway.md) | IR 通过私有 Gateway 采集并先暂存确认 | Accepted |
+| [0008](0008-ir-collector-gateway.md) | IR 通过私有 Gateway 采集并先暂存确认 | Superseded by 0009 |
+| [0009](0009-versioned-ai-engineering-data-gateway-protocol.md) | AI 研发数据网关采用实现中立的版本化能力协议 | Accepted |
 
 历史简版正文保留，0006 的中文标题视为模板等价章节。缺失状态和历史原因保持未知，不补造接受记录。校验器只为既有简版文件保留兼容，新文件使用以下格式。
 

@@ -32,6 +32,12 @@ ai-dev-radar 管理和展示团队级 AI 研发效能。React 客户端调用单
 | 测试 | [Testing](standards/testing.md) |
 | 设计维护流程 | [Design Maintenance](agents/design-maintenance.md) |
 
+## Integration Contracts
+
+| Contract | Document | Description |
+|---|---|---|
+| AI 研发数据网关 | [Capability Protocol](contracts/ai-dev-data-gateway/README.md) | 最新全量基线、OpenAPI 与逐版本变更 |
+
 ## Architecture Decisions
 
 See [ADR Index and Protocol](adr/README.md)。

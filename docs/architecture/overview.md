@@ -2,7 +2,7 @@
 
 ## 边界与技术栈
 
-一个 React 19 客户端和一个 FastAPI 服务；Ant Design 提供 UI，ECharts 提供图表，React Router 管理页面。SQLAlchemy 2 管理默认 SQLite 存储，Pydantic 校验 HTTP DTO，APScheduler 3 在服务进程内调度。Radar 通过同步 HTTPX 客户端调用公司内部的私有 Collector Gateway；Gateway 源码不在本仓库，当前实现仅覆盖 IR。
+一个 React 19 客户端和一个 FastAPI 服务；Ant Design 提供 UI，ECharts 提供图表，React Router 管理页面。SQLAlchemy 2 管理默认 SQLite 存储，Pydantic 校验 HTTP DTO，APScheduler 3 在服务进程内调度。Radar 通过同步 HTTPX 客户端调用 AI 研发数据网关；Gateway 源码不在本仓库，当前实现仅覆盖 IR。双方共同依赖版本化能力协议，Radar Pydantic 模型只是消费端实现。
 
 ```mermaid
 flowchart LR
@@ -15,13 +15,15 @@ flowchart LR
     Scheduler[进程内 APScheduler] --> Registry[旧事实采集注册表]
     Registry --> ORM
     Scheduler --> SourceCollection[IR 源数据采集与暂存]
-    SourceCollection -->|Bearer HTTPS| Gateway[私有 Collector Gateway]
+    Contract[版本化能力协议基线] --> SourceCollection
+    Contract --> Gateway[AI 研发数据网关]
+    SourceCollection -->|Bearer HTTPS| Gateway
     Gateway --> SourceCollection
     SourceCollection --> ORM
     Static[Vite dist 静态托管] --> Browser
 ```
 
-路由查询数据库后交给计算函数，不由图表决定统计口径。源数据 API 编排校验、权限和事务。旧事实采集仍走 FactRecord 注册表；IR 源采集由 `source_collection.py` 经私有 Gateway 单独执行并写入暂存批次，不触碰正式 IR 或旧事实链路。图中的 Gateway 关系代表 Radar 侧实现，不代表真实内部平台联调已通过。
+路由查询数据库后交给计算函数，不由图表决定统计口径。源数据 API 编排校验、权限和事务。旧事实采集仍走 FactRecord 注册表；IR 源采集由 `source_collection.py` 经 AI 研发数据网关单独执行并写入暂存批次，不触碰正式 IR 或旧事实链路。协议工作区保存最新完整基线和逐版本变化，消费者固定发布 tag 或 commit。图中的 Gateway 关系代表 Radar 侧实现，不代表真实内部平台联调已通过。
 
 ## 核心模块与依赖方向
 
@@ -32,7 +34,7 @@ flowchart LR
 | `api.py` | 认证、目录、事实、成熟度 | 调用纯计算和 ORM |
 | `data_api.py` | 组织、IR、批次、源数据指标 | 复用 data_management 规则 |
 | `source_collection.py` / `collector_gateway.py` | IR 周期窗口、按团队运行、Gateway HTTPS 调用及暂存 | 同步调用；凭据只读环境变量；不自动重试 |
-| `collector_contracts.py` | Gateway v1 严格 Pydantic 契约 | JSON Schema 快照由测试校验 |
+| `collector_contracts.py` | Gateway v1 严格 Pydantic 消费端模型 | 与版本化 OpenAPI 基线做一致性测试 |
 | `ir_imports.py` | 文件导入与采集共用 IR 行校验及批次创建 | 采集批次必须绑定团队 |
 | `compute.py` / `maturity.py` | 事实和评估计算 | 不依赖 HTTP 或数据库查询 |
 | `data_management.py` | IR 规范化、解析、差异、合并和指标 | 不承担 HTTP 编排 |

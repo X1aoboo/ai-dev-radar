@@ -41,7 +41,7 @@ npm run dev
 | `SESSION_MAX_AGE` | `28800` | session 有效期，单位秒。 |
 | `SESSION_HTTPS_ONLY` | `0` | 本地 HTTP 保持 `0`；HTTPS 反向代理部署应设为 `1`。 |
 | `COLLECTION_CRON` | `0 2 * * *` | 五字段 cron 表达式，调度旧 FactRecord 采集任务；数据域采集计划在“系统管理 / 数据采集”配置。 |
-| `COLLECTOR_GATEWAY_URL` | 空 | 私有 Collector Gateway 的 base URL。生产环境必须使用 HTTPS；仅在启用 IR 采集时配置。 |
+| `COLLECTOR_GATEWAY_URL` | 空 | AI 研发数据网关的 base URL。生产环境必须使用 HTTPS；仅在启用 IR 采集时配置。 |
 | `COLLECTOR_GATEWAY_TOKEN` | 空 | Gateway Bearer Token，仅从运行环境读取，不写入数据库或前端。 |
 | `COLLECTOR_GATEWAY_TIMEOUT_SECONDS` | `30` | 同步 Gateway 请求超时秒数，必须大于零。 |
 | `APP_PORT` | `8000` | 宿主机映射端口，容器内端口固定为 `8000`。 |

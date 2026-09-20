@@ -1,7 +1,9 @@
 # ADR-0008: IR Collection Through a Private Gateway
 
 ## Status
-Accepted
+Superseded
+
+Superseded by ADR-0009: [Versioned AI Engineering Data Gateway Protocol](0009-versioned-ai-engineering-data-gateway-protocol.md).
 
 ## Context
 

@@ -82,6 +82,25 @@ _Avoid_: 平均线、基准值
 
 ### 数据采集
 
+**AI 研发数据网关（AI Engineering Data Gateway）**:
+Radar 与公司内部研发平台之间的防腐服务，对外提供版本化的标准源数据能力；服务标识为 `ai-dev-data-gateway`。
+_Avoid_: Collector Gateway、IR Gateway、平台代理
+
+**能力协议（Capability Protocol）**:
+Radar 与 AI 研发数据网关共同遵守的实现中立约定，由业务能力语义和 HTTP 线协议共同构成；双方代码都是协议消费者。
+_Avoid_: Radar 接口定义、Pydantic 契约
+
+**协议基线（Protocol Baseline）**:
+当前最新发布版本的完整能力协议；历史完整状态通过对应发布标签获取。
+_Avoid_: 初始协议、历史版本集合
+
+**协议版本变更（Protocol Version Change）**:
+一个发布版本相对前一版本的增量说明，不是可独立消费的完整协议。
+_Avoid_: 全量版本协议
+
+**能力状态（Capability Status）**:
+能力目录中的承诺状态；available 表示已定义并可由消费者依赖，planned 只表示方向且不构成接口承诺。
+
 **采集器（Collector）**:
 对接一个内部系统平台并产出标准化源数据记录的适配器。获取方式可以是 CLI、MCP 或 API；当前无联调环境，仅预留接口设计。
 
