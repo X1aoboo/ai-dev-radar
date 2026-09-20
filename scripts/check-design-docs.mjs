@@ -14,7 +14,14 @@ const required = [
   'standards/engineering.md', 'standards/api.md', 'standards/data.md', 'standards/testing.md',
   'adr/README.md', 'changes/README.md', 'changes/active/README.md',
   'changes/completed/README.md', 'glossary.md', 'agents/design-maintenance.md',
+  'contracts/ai-dev-data-gateway/README.md',
+  'contracts/ai-dev-data-gateway/baseline/capability-protocol.md',
+  'contracts/ai-dev-data-gateway/baseline/openapi.json',
+  'contracts/ai-dev-data-gateway/changes/README.md',
 ]
+
+const semverPattern = /^\d+\.\d+\.\d+$/
+const httpMethods = new Set(['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'])
 
 function exists(path) {
   try { return statSync(path) } catch { return null }
@@ -44,12 +51,129 @@ function section(text, name) {
   return text.match(new RegExp(`^##\\s+${name}\\s*\\n([^#]*)(?=^##|$)`, 'mi'))?.[1].trim()
 }
 
+function resolveJsonPointer(root, ref) {
+  if (!ref.startsWith('#/')) return undefined
+  return ref.slice(2).split('/').reduce((value, part) => {
+    const key = part.replaceAll('~1', '/').replaceAll('~0', '~')
+    return value && typeof value === 'object' ? value[key] : undefined
+  }, root)
+}
+
+function inspectGatewayContract(docs, errors) {
+  const root = resolve(docs, 'contracts/ai-dev-data-gateway')
+  const openapiPath = resolve(root, 'baseline/openapi.json')
+  const capabilityBaselinePath = resolve(root, 'baseline/capability-protocol.md')
+  const changesIndexPath = resolve(root, 'changes/README.md')
+  if (!exists(openapiPath)?.isFile() || !exists(changesIndexPath)?.isFile()) return
+
+  let contract
+  try {
+    contract = JSON.parse(readFileSync(openapiPath, 'utf8'))
+  } catch (error) {
+    errors.push(`${openapiPath}: invalid JSON: ${error.message}`)
+    return
+  }
+  if (!/^3\.1\.\d+$/.test(contract.openapi ?? '')) {
+    errors.push(`${openapiPath}: expected OpenAPI 3.1.x`)
+  }
+
+  const indexText = readFileSync(changesIndexPath, 'utf8')
+  const latest = indexText.match(/最新版本：`([^`]+)`/)?.[1]
+  const openapiVersion = contract.info?.version
+  if (!latest || !semverPattern.test(latest)) {
+    errors.push(`${changesIndexPath}: missing valid latest SemVer`)
+  }
+  if (openapiVersion !== latest) {
+    errors.push(`${openapiPath}: info.version ${openapiVersion ?? 'missing'} does not match latest ${latest ?? 'missing'}`)
+  }
+  if (exists(capabilityBaselinePath)?.isFile()) {
+    const baselineVersion = readFileSync(capabilityBaselinePath, 'utf8').match(/当前版本：`([^`]+)`/)?.[1]
+    if (baselineVersion !== latest) {
+      errors.push(`${capabilityBaselinePath}: current version ${baselineVersion ?? 'missing'} does not match latest ${latest ?? 'missing'}`)
+    }
+  }
+
+  const changesDir = resolve(root, 'changes')
+  const versionFiles = exists(changesDir)?.isDirectory()
+    ? readdirSync(changesDir).filter(name => name.endsWith('.md') && name !== 'README.md')
+    : []
+  const versions = versionFiles.map(name => name.slice(0, -3))
+  for (const version of versions) {
+    if (!semverPattern.test(version)) errors.push(`${changesDir}/${version}.md: filename is not SemVer`)
+    const text = readFileSync(resolve(changesDir, `${version}.md`), 'utf8')
+    const declared = text.match(/版本：`([^`]+)`/)?.[1]
+    if (declared !== version) errors.push(`${changesDir}/${version}.md: declared version does not match filename`)
+  }
+  const indexedVersions = [...indexText.matchAll(/\|\s*`(\d+\.\d+\.\d+)`\s*\|/g)].map(match => match[1])
+  if (new Set(indexedVersions).size !== indexedVersions.length) {
+    errors.push(`${changesIndexPath}: duplicate version in index`)
+  }
+  if (versions.some(version => !indexedVersions.includes(version)) || indexedVersions.some(version => !versions.includes(version))) {
+    errors.push(`${changesIndexPath}: index and version documents differ`)
+  }
+  const descending = [...indexedVersions].sort((left, right) => {
+    const a = left.split('.').map(Number)
+    const b = right.split('.').map(Number)
+    return b[0] - a[0] || b[1] - a[1] || b[2] - a[2]
+  })
+  if (indexedVersions.join(',') !== descending.join(',')) {
+    errors.push(`${changesIndexPath}: versions are not ordered newest first`)
+  }
+  if (latest && indexedVersions[0] !== latest) {
+    errors.push(`${changesIndexPath}: latest version is not the first indexed version`)
+  }
+
+  const refs = []
+  const visit = value => {
+    if (Array.isArray(value)) return value.forEach(visit)
+    if (!value || typeof value !== 'object') return
+    if (typeof value.$ref === 'string') refs.push(value.$ref)
+    Object.values(value).forEach(visit)
+  }
+  visit(contract)
+  for (const ref of refs) {
+    if (!ref.startsWith('#/') || resolveJsonPointer(contract, ref) === undefined) {
+      errors.push(`${openapiPath}: unresolved or non-local $ref ${ref}`)
+    }
+  }
+
+  const capabilities = Array.isArray(contract['x-capabilities']) ? contract['x-capabilities'] : []
+  const capabilityIds = capabilities.map(item => item?.id)
+  if (capabilityIds.some(id => typeof id !== 'string') || new Set(capabilityIds).size !== capabilityIds.length) {
+    errors.push(`${openapiPath}: capability ids must be unique strings`)
+  }
+  const capabilityStatus = new Map(capabilities.map(item => [item?.id, item?.status]))
+  for (const [path, pathItem] of Object.entries(contract.paths ?? {})) {
+    for (const [method, operation] of Object.entries(pathItem ?? {})) {
+      if (!httpMethods.has(method)) continue
+      const capabilityId = operation?.['x-capability-id']
+      if (capabilityStatus.get(capabilityId) !== 'available') {
+        errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} must reference an available capability`)
+      }
+      const requestMedia = operation?.requestBody?.content?.['application/json']
+      if (!requestMedia?.example) {
+        errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} is missing a request example`)
+      }
+      for (const [status, unresolvedResponse] of Object.entries(operation?.responses ?? {})) {
+        const response = unresolvedResponse?.$ref
+          ? resolveJsonPointer(contract, unresolvedResponse.$ref)
+          : unresolvedResponse
+        const media = response?.content?.['application/json']
+        if (media && !media.example) {
+          errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} response ${status} is missing an example`)
+        }
+      }
+    }
+  }
+}
+
 export function checkDesignDocs(root) {
   const docs = resolve(root, 'docs')
   const errors = []
   for (const item of required) {
     const found = exists(resolve(docs, item))
-    if (!found || (item.endsWith('.md') ? !found.isFile() : !found.isDirectory())) {
+    const expectsFile = /\.[a-z\d]+$/i.test(item)
+    if (!found || (expectsFile ? !found.isFile() : !found.isDirectory())) {
       errors.push(`Missing required design path: docs/${item}`)
     }
   }
@@ -104,6 +228,7 @@ export function checkDesignDocs(root) {
       }
     }
   }
+  inspectGatewayContract(docs, errors)
   return errors
 }
 
