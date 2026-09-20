@@ -6,6 +6,10 @@ vi.mock('../components/EChart', () => ({
   default: ({ ariaLabel }) => <div role="img" aria-label={ariaLabel} />,
 }))
 
+vi.mock('antd', () => ({
+  Drawer: ({ open, children }) => open ? <div>{children}</div> : null,
+}))
+
 vi.mock('./metricData', () => ({
   hasNumericValues: (data) => (data?.series ?? []).some((series) => (
     (series.values ?? []).some((point) => typeof point.value === 'number')
@@ -14,12 +18,12 @@ vi.mock('./metricData', () => ({
     loading: false,
     errors: {},
     data: Object.fromEntries(catalog.flatMap((activity) => activity.metrics.map((metric) => [metric.id, {
-      periods: [{ id: 'p1', label: '2026-01' }],
-      series: [
-        { team_id: 1, team_name: '团队A', values: [{ period_id: 'p1', value: metric.id === 'm1' ? 0 : 0.4, numerator: 0, denominator: 10 }] },
-        { team_id: 2, team_name: '团队B', values: [] },
-      ],
-      company_average: [{ period_id: 'p1', value: 0 }],
+       periods: [{ id: '2026-01', label: '2026-01' }],
+       series: [
+         { team_id: 1, team_name: '团队A', values: [{ period_id: '2026-01', value: metric.id === 'm1' ? 0 : 0.4, numerator: 0, denominator: 10 }] },
+         { team_id: 2, team_name: '团队B', values: [] },
+       ],
+       company_average: [{ period_id: '2026-01', value: 0 }],
     }]))),
   }),
 }))
@@ -194,5 +198,104 @@ test('keeps the maturity maintenance action out of a viewer overview', async () 
   })
 
   expect(renderer.root.findAllByProps({ children: '维护成熟度' })).toHaveLength(0)
+  renderer.unmount()
+})
+
+test('keeps the executive order and matrix collapsed by default', async () => {
+  let renderer
+  await act(async () => {
+    renderer = create(
+      <OverviewPage
+        catalog={catalog}
+        teams={teams}
+        versions={versions}
+        user={{ role: 'admin' }}
+        maturityState={{ month: '2026-01', category: 'key', view: 'domain', compareTeamIds: [], showBaseline: true, sort: 'order' }}
+        filter={filter}
+        onFilterChange={() => undefined}
+        onNavigate={() => undefined}
+        onSessionExpired={() => undefined}
+      />,
+    )
+  })
+
+  const text = renderText(renderer.toJSON())
+  expect(text.indexOf('领域成熟度雷达')).toBeGreaterThanOrEqual(0)
+  expect(text.indexOf('需关注项')).toBeGreaterThan(text.indexOf('领域成熟度雷达'))
+  expect(text.indexOf('指标集中比较')).toBeGreaterThan(text.indexOf('需关注项'))
+  const disclosure = renderer.root.findByProps({ className: 'maturity-matrix-disclosure' })
+  expect(disclosure.props.open).toBe(false)
+  renderer.unmount()
+})
+
+test('switches the current category and keeps month controls keyboard-semantic', async () => {
+  let renderer
+  await act(async () => {
+    renderer = create(
+      <OverviewPage
+        catalog={catalog}
+        teams={teams}
+        versions={versions}
+        user={{ role: 'maintainer', maintainer_team_id: 1 }}
+        filter={filter}
+        onFilterChange={() => undefined}
+        onNavigate={() => undefined}
+        onSessionExpired={() => undefined}
+      />,
+    )
+  })
+
+  const categoryButton = renderer.root.findAllByType('button').find((node) => renderText(node.props.children) === '通用研发能力')
+  expect(categoryButton.props['aria-pressed']).toBe(false)
+  expect(renderer.root.findAllByProps({ children: '维护成熟度' })).toHaveLength(1)
+  expect(renderer.root.findAllByType('input').some((node) => node.props.type === 'month')).toBe(true)
+  await act(async () => categoryButton.props.onClick())
+  expect(renderer.root.findAllByType('button').find((node) => renderText(node.props.children) === '通用研发能力').props['aria-pressed']).toBe(true)
+  expect(renderer.root.findAllByProps({ role: 'img' }).some((node) => node.props['aria-label'] === '领域平均成熟度雷达图')).toBe(true)
+  renderer.unmount()
+})
+
+test('shows selected-month fact absence without falling back to another month', async () => {
+  let renderer
+  await act(async () => {
+    renderer = create(
+      <OverviewPage
+        catalog={catalog}
+        teams={teams}
+        versions={versions}
+        maturityState={{ month: '2026-02', category: 'key', view: 'domain', compareTeamIds: [], showBaseline: true, sort: 'order' }}
+        filter={filter}
+        onFilterChange={() => undefined}
+        onNavigate={() => undefined}
+        onSessionExpired={() => undefined}
+      />,
+    )
+  })
+
+  expect(renderText(renderer.toJSON())).toContain('分析月份暂无AI 渗透率事实，不回退到其他月份。')
+  renderer.unmount()
+})
+
+test('opens the matrix with a domain-average row and keeps its disclosure operable', async () => {
+  let renderer
+  await act(async () => {
+    renderer = create(
+      <OverviewPage
+        catalog={catalog}
+        teams={teams}
+        versions={versions}
+        maturityState={{ month: '2026-01', category: 'key', view: 'domain', compareTeamIds: [], showBaseline: true, sort: 'order' }}
+        filter={filter}
+        onFilterChange={() => undefined}
+        onNavigate={() => undefined}
+        onSessionExpired={() => undefined}
+      />,
+    )
+  })
+
+  const disclosure = renderer.root.findByProps({ className: 'maturity-matrix-disclosure' })
+  await act(async () => disclosure.props.onToggle({ currentTarget: { open: true } }))
+  expect(renderer.root.findByProps({ className: 'maturity-average-row' })).toBeTruthy()
+  expect(renderer.root.findAllByType('summary').length).toBeGreaterThan(0)
   renderer.unmount()
 })

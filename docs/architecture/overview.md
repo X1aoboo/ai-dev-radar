@@ -47,9 +47,11 @@ AppShell 分别持有桌面折叠选择、matchMedia 窄屏状态与抽屉开关
 
 AppSidebar 的品牌区放共享的 frontend/public/favicon.svg 雷达 Logo 和折叠按钮：展开时水平分列，折叠后垂直居中；展开态使用 MenuFoldOutlined 收起侧栏，折叠态使用 MenuOutlined，按钮保留 Tooltip、ARIA 标签及键盘焦点反馈。按钮为 40×40px，hover 缩放 1.06、active 缩放 0.94，颜色/背景/缩放过渡 160ms；prefers-reduced-motion: reduce 时关闭按钮过渡和缩放。共享 SVG 为蓝色圆形雷达环、实色青色扫描线和三个数据点，供侧栏、抽屉、登录页和 favicon 使用。中间 app-nav 独立滚动，文字使用透明度与最大宽度裁切保持单行。窄屏使用现有 Ant Design Drawer，抽屉和侧栏共用 #F8FAFD 浅色表面，不保留折叠图标栏，关闭后焦点返回顶栏打开按钮。AppSidebar 复用角色过滤与路由元数据，数据管理直接提供四类来源链接，需求子路由共享所属入口样式；总览及其下钻同样使用所属入口样式，精确匹配才使用 aria-current=page。折叠切换不发业务请求、不改变权限。
 
+`OverviewPage` 以 `month` URL 参数为单一分析月份：父页面一次持有目录指标的 `time/month` 计算结果，主体事实比较和深入分析在可复用同一月数据；深入分析切换到周或迭代时才请求对应切片。主体从每个指标的团队序列和 `company_average` 派生有效团队数、事实完整度、横向比较和关注项，不使用 `domain_summary` 作为事实基线。成熟度仍由 `/api/maturity/overview` 返回后端领域平均；矩阵用原生 `details/summary` 折叠并在表格中固定团队列。布尔指标在保留跨月 `snapshot` 的同时使用已有 `series.values` 返回按月状态，保证月度选择不回退。
+
 ## 数据流和模型
 
-事实链路：FactRecord → 当前有效事实选择 → 周/月或迭代切片 → 团队序列、全公司均值和领域合并值。IR 链路：页面/文件或 Gateway → 共享行校验 → 带团队的临时批次 → 人工确认事务与审计 → 正式 IR → `/api/data-metrics/compute`。成熟度链路：团队月度维护 → MaturityRecord → Decimal 领域聚合。三者独立，IR 不自动替换看板事实。
+事实链路：FactRecord → 当前有效事实选择 → 周/月或迭代切片 → 团队序列、全公司均值和领域合并值。总览按月复用团队序列与 `company_average`，不把 `domain_summary` 当作展示基线。IR 链路：页面/文件或 Gateway → 共享行校验 → 带团队的临时批次 → 人工确认事务与审计 → 正式 IR → `/api/data-metrics/compute`。成熟度链路：团队月度维护 → MaturityRecord → Decimal 领域聚合。三者独立，IR 不自动替换看板事实。
 
 团队产品层级支持源数据归属；人员关联责任工号。旧 ProductVersion 可无 product_id 是兼容形态，新管理版本必须绑定产品。更多模块细节见 [源数据模块](modules/data-management.md)。
 

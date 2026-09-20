@@ -5,11 +5,16 @@ import {
   assignTeamColorSlots,
   currentSnapshot,
   currentMetricValues,
+  buildAttentionItems,
+  buildMetricRows,
+  factCompleteness,
   filterFromSearchParams,
   filterToSearchParams,
   filtersEqual,
   formatMetricValue,
   latestPeriodId,
+  maturityAverageScore,
+  metricPointForMonth,
   maturityStateFromSearchParams,
   maturityStateToSearchParams,
   normalizeMaturityState,
@@ -214,6 +219,57 @@ test('maturity URL state keeps the current month, selection limit, and baseline 
     maturityStateFromSearchParams(new URLSearchParams('view=team&category=broken&month=bad&teams=1,2,3,4&baseline=0'), { teams: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] }),
     { view: 'team', category: 'key', month: expectCurrentMonth(), compareTeamIds: ['1', '2', '3'], showBaseline: false, sort: 'order' },
   )
+})
+
+test('matches the selected month, keeps zero, and counts only valid teams', () => {
+  const data = {
+    periods: [{ id: '2026-01' }, { id: '2026-02' }],
+    series: [
+      { team_id: 1, team_name: '团队A', values: [{ period_id: '2026-01', value: 0 }, { period_id: '2026-02', value: 0.8 }] },
+      { team_id: 2, team_name: '团队B', values: [{ period_id: '2026-01', value: null }] },
+    ],
+    company_average: [{ period_id: '2026-01', value: 0 }, { period_id: '2026-02', value: 0.8 }],
+    domain_summary: [{ period_id: '2026-01', value: 0.99 }],
+  }
+
+  const january = metricPointForMonth(data, '2026-01', 2)
+  assert.equal(january.company.value, 0)
+  assert.equal(january.validTeamCount, 1)
+  assert.equal(january.totalTeamCount, 2)
+  assert.equal(january.hasData, true)
+  assert.equal(metricPointForMonth(data, '2026-03', 2).hasData, false)
+  assert.equal(january.company.value, data.company_average[0].value)
+})
+
+test('excludes missing maturity values and classifies negative and relatively-behind facts', () => {
+  const activities = [{
+    id: 1,
+    name: '编码开发',
+    kind: 'key',
+    metrics: [{ id: 11, name: '编码效率', type: 'efficiency' }],
+  }]
+  const data = {
+    periods: [{ id: '2026-01' }],
+    series: [
+      { team_id: 1, team_name: '团队A', values: [{ period_id: '2026-01', value: -0.2, estimated: 8, actual: 10 }] },
+      { team_id: 2, team_name: '团队B', values: [{ period_id: '2026-01', value: 0.5, estimated: 15, actual: 10 }] },
+    ],
+    company_average: [{ period_id: '2026-01', value: 0.1 }],
+  }
+  const rows = buildMetricRows({ activities, dataByMetric: { 11: data }, month: '2026-01', teams: [{ id: 1 }, { id: 2 }] })
+  const items = buildAttentionItems({
+    activities,
+    dataByMetric: { 11: data },
+    maturityData: { activities: [{ activity_id: 1, activity_name: '编码开发', score: null }] },
+    month: '2026-01',
+    teams: [{ id: 1 }, { id: 2 }],
+  })
+
+  assert.deepEqual(factCompleteness(rows), { available: 1, total: 1, rate: 1 })
+  assert.equal(items.some((item) => item.type === 'negative-efficiency' && item.teamName === '团队A'), true)
+  assert.equal(items.some((item) => item.type === 'relative-behind' && item.teamName === '团队A'), true)
+  assert.equal(items.some((item) => item.type === 'maturity-missing'), true)
+  assert.equal(maturityAverageScore({ activities: [{ score: 0 }, { score: null }, { score: 2 }] }), 1)
 })
 
 function expectCurrentMonth() {

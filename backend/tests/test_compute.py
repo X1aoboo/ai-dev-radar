@@ -271,6 +271,7 @@ def test_boolean_value_uses_latest_fact_as_a_snapshot():
     )
 
     assert [period["id"] for period in result["periods"]] == ["2026-01", "2026-02"]
+    assert [point["value"] for point in result["series"][0]["values"]] == [True, False]
     assert result["series"][0]["snapshot"] is False
     assert result["company_average"] == []
 

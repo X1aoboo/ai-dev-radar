@@ -1,13 +1,13 @@
 :root {
-  --app-primary: #2563eb;
-  --app-primary-hover: #1d4ed8;
-  --app-page: #f5f7fa;
+  --app-primary: #3b68a8;
+  --app-primary-hover: #31598f;
+  --app-page: #f4f6f8;
   --app-surface: #ffffff;
-  --app-text: #172033;
-  --app-text-secondary: #667085;
-  --app-text-tertiary: #98a2b3;
-  --app-border: #e4e7ec;
-  --app-border-strong: #d0d5dd;
+  --app-text: #28313d;
+  --app-text-secondary: #637083;
+  --app-text-tertiary: #8995a5;
+  --app-border: #dfe4eb;
+  --app-border-strong: #cbd3df;
   --app-sidebar: #f8fafd;
   --app-sidebar-text: #3c4043;
   --app-sidebar-muted: #5f6368;
@@ -37,7 +37,7 @@
   --app-sidebar-width: 248px;
   color: var(--app-text);
   background: var(--app-page);
-  font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -375,6 +375,8 @@ textarea:focus-visible {
 .app-shell__content {
   margin: 0 auto;
   max-width: 1600px;
+  min-width: 0;
+  overflow-x: hidden;
   padding: var(--app-space-6);
 }
 

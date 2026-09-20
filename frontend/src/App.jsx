@@ -54,7 +54,7 @@ const APP_THEME = {
     padding: 16,
     paddingLG: 24,
     paddingXL: 32,
-    fontFamily: 'Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+    fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
   },
   components: {
     Button: { borderRadius: 6, controlHeight: 32 },

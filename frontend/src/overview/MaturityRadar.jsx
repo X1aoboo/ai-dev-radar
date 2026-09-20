@@ -104,6 +104,15 @@ export default function MaturityRadar({ activities = [], series = [], ariaLabel 
           </span>
         ))}
       </div>
+      <details className="maturity-radar__data">
+        <summary>查看雷达数据表</summary>
+        <div className="maturity-table-wrap">
+          <table className="maturity-table">
+            <thead><tr><th scope="col">能力点</th>{series.map((entry) => <th scope="col" key={entry.id ?? entry.name}>{entry.name}</th>)}</tr></thead>
+            <tbody>{activities.map((activity, index) => <tr key={activity.activity_id}><th scope="row">{activity.activity_name}</th>{series.map((entry) => <td key={entry.id ?? entry.name}>{numeric(entry.values[index]) ? entry.values[index].toFixed(2) : '—'}</td>)}</tr>)}</tbody>
+          </table>
+        </div>
+      </details>
       <p className="maturity-radar__note">未评估轴只显示已评估点，不补零、不形成完整多边形。</p>
     </div>
   )

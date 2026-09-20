@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [管理者优先的研发总览重设计](executive-dashboard-redesign.md)：统一分析月份、管理者首屏事实比较、关注项和可折叠团队矩阵。
 - [AI 研发数据网关版本化能力协议](ai-dev-data-gateway-contract.md)：建立版本化协议，并在首发前完成产品版本联合标识和空业务模块规范化。
 - [IR 采集 Gateway 防腐层 v1](ir-collector-gateway.md)：为 IR 增加严格同步 Gateway 契约、团队级采集暂存、可配置调度和人工确认。
 - [Design Knowledge Bootstrap](design-knowledge-bootstrap.md)：基线与维护机制 Task 1–9。

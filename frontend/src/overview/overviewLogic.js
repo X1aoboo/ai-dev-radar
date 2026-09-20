@@ -342,6 +342,147 @@ export function currentSnapshot(data, periodId) {
   }
 }
 
+export function hasFactValue(value) {
+  return (typeof value === 'number' && Number.isFinite(value)) || typeof value === 'boolean'
+}
+
+export function metricPointForMonth(data, month, totalTeamCount = data?.series?.length ?? 0) {
+  const period = (data?.periods ?? []).find((item) => idKey(item.id) === idKey(month)) ?? null
+  const company = period
+    ? (data?.company_average ?? []).find((item) => idKey(item.period_id) === idKey(month)) ?? null
+    : null
+  const teams = (data?.series ?? []).map((series) => ({
+    teamId: series.team_id,
+    teamName: series.team_name,
+    point: period ? (series.values ?? []).find((item) => idKey(item.period_id) === idKey(month)) ?? null : null,
+  }))
+  const validTeamCount = teams.filter((team) => hasFactValue(team.point?.value)).length
+
+  return {
+    period,
+    company,
+    teams,
+    validTeamCount,
+    totalTeamCount,
+    hasData: validTeamCount > 0 || hasFactValue(company?.value),
+  }
+}
+
+export function buildMetricRows({ activities = [], dataByMetric = {}, errors = {}, month, teams = [] } = {}) {
+  return activities.flatMap((activity, activityIndex) => activity.metrics.map((metric, metricIndex) => {
+    const snapshot = metricPointForMonth(dataByMetric[metric.id], month, teams.length)
+    const booleanTeams = snapshot.teams.filter((team) => typeof team.point?.value === 'boolean')
+    return {
+      activity,
+      metric,
+      activityIndex,
+      metricIndex,
+      ...snapshot,
+      error: errors[metric.id] ?? null,
+      booleanTrueCount: booleanTeams.filter((team) => team.point.value).length,
+      hasData: Boolean(errors[metric.id]) ? false : snapshot.hasData,
+    }
+  }))
+}
+
+export function factCompleteness(rows = []) {
+  const available = rows.filter((row) => row.hasData).length
+  return {
+    available,
+    total: rows.length,
+    rate: rows.length ? available / rows.length : null,
+  }
+}
+
+export function maturityAverageScore(data) {
+  const scores = (data?.activities ?? [])
+    .map((activity) => activity.score)
+    .filter((score) => typeof score === 'number' && Number.isFinite(score))
+  return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null
+}
+
+export function buildAttentionItems({ activities = [], dataByMetric = {}, errors = {}, maturityData, month, teams = [] } = {}) {
+  const rows = buildMetricRows({ activities, dataByMetric, errors, month, teams })
+  const items = new Map()
+
+  function add(item) {
+    const key = `${item.type}:${item.metricId ?? item.activityId}:${item.teamId ?? 'domain'}`
+    const current = items.get(key)
+    if (!current || item.priority < current.priority) items.set(key, item)
+  }
+
+  ;(maturityData?.activities ?? []).forEach((activity) => {
+    if (!hasFactValue(activity.score)) {
+      add({
+        type: 'maturity-missing',
+        priority: 1,
+        activityId: activity.activity_id,
+        activityName: activity.activity_name,
+        reason: '缺失成熟度评估',
+      })
+    }
+  })
+
+  rows.forEach((row) => {
+    if (!row.hasData) {
+      add({
+        type: 'fact-missing',
+        priority: 2,
+        activityId: row.activity.id,
+        activityName: row.activity.name,
+        metricId: row.metric.id,
+        metricName: row.metric.name,
+        metricType: row.metric.type,
+        reason: row.error ? '事实加载失败' : '缺失事实',
+      })
+      return
+    }
+
+    const negativeTeams = row.teams.filter((team) => typeof team.point?.value === 'number' && row.metric.type === 'efficiency' && team.point.value < 0)
+    negativeTeams.forEach((team) => add({
+      type: 'negative-efficiency',
+      priority: 0,
+      activityId: row.activity.id,
+      activityName: row.activity.name,
+      metricId: row.metric.id,
+      metricName: row.metric.name,
+      metricType: row.metric.type,
+      teamId: team.teamId,
+      teamName: team.teamName,
+      value: team.point.value,
+      reason: '负提效',
+    }))
+
+    const domainValue = row.company?.value
+    if (typeof domainValue === 'number' && Number.isFinite(domainValue)) {
+      row.teams.forEach((team) => {
+        if (typeof team.point?.value === 'number' && team.point.value < domainValue) {
+          add({
+            type: 'relative-behind',
+            priority: 3,
+            activityId: row.activity.id,
+            activityName: row.activity.name,
+            metricId: row.metric.id,
+            metricName: row.metric.name,
+            metricType: row.metric.type,
+            teamId: team.teamId,
+            teamName: team.teamName,
+            value: team.point.value,
+            domainValue,
+            reason: '相对靠后',
+          })
+        }
+      })
+    }
+  })
+
+  return [...items.values()].sort((left, right) => (
+    left.priority - right.priority
+    || (left.activityId ?? 0) - (right.activityId ?? 0)
+    || String(left.teamName ?? '').localeCompare(String(right.teamName ?? ''))
+  ))
+}
+
 export function iterationPeriods(versions = [], versionId = 'all') {
   return versions
     .filter((version) => versionId === 'all' || String(version.id) === String(versionId))

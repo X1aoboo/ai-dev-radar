@@ -7,7 +7,7 @@ import { booleanStatusRows } from '../metricDetail/metricDetailLogic'
 import FilterBar from './FilterBar'
 import MaturityRadar from './MaturityRadar'
 import { buildTrendOption } from './chartOption'
-import { buildMaturityBarOption, maturityLevelColor, sortMaturityActivities } from './maturityChartOption'
+import { maturityLevelColor, sortMaturityActivities } from './maturityChartOption'
 import {
   maturitySavePayload,
   useMaturityOverview,
@@ -19,16 +19,22 @@ import {
   currentMetricValues,
   formatFactSummary,
   formatMetricValue,
+  buildAttentionItems,
+  buildMetricRows,
+  factCompleteness,
   INITIAL_FILTER,
   isGeneralIterationFallback,
   iterationPeriods,
   latestPeriodId,
+  maturityAverageScore,
+  metricPointForMonth,
   normalizeMaturityState,
   TEAM_COLOR_STORAGE_KEY,
 } from './overviewLogic'
 import './overview.css'
 
 const EMPTY_METRIC_CATALOG = []
+const MONTHLY_FILTER = { ...INITIAL_FILTER, dimension: 'time', granularity: 'month', periodId: null }
 
 function ErrorState({ error }) {
   return (
@@ -225,7 +231,7 @@ function MaturityLevel({ cell, summary }) {
   )
 }
 
-function MaturityToolbar({
+function OverviewControls({
   state,
   teams,
   user,
@@ -240,63 +246,49 @@ function MaturityToolbar({
   const change = (patch, options) => onChange({ ...state, ...patch }, options)
 
   return (
-    <div className="maturity-toolbar" aria-label="成熟度筛选">
-      <div className="maturity-toolbar__group">
-        <span className="maturity-toolbar__label">视角</span>
-        <div className="overview-segmented" role="group" aria-label="成熟度视角">
-          {[['domain', '领域'], ['team', '团队']].map(([value, label]) => (
-            <button key={value} type="button" className={state.view === value ? 'is-active' : ''} aria-pressed={state.view === value} onClick={() => change({ view: value }, { history: 'push' })}>{label}</button>
-          ))}
-        </div>
-      </div>
-      <div className="maturity-toolbar__group">
-        <span className="maturity-toolbar__label">分类</span>
-        <div className="overview-segmented" role="group" aria-label="成熟度分类">
+    <div className="overview-controls" aria-label="总览分析控制">
+      <label className="overview-control overview-control--month">
+        <span>分析月份</span>
+        <input aria-label="分析月份" type="month" value={state.month} onChange={(event) => change({ month: event.target.value }, { history: 'push' })} />
+      </label>
+      <div className="overview-control overview-control--category">
+        <span>分析范围</span>
+        <div className="overview-segmented" role="group" aria-label="分析范围">
           {[['key', '关键研发活动'], ['general', '通用研发能力']].map(([value, label]) => (
             <button key={value} type="button" className={state.category === value ? 'is-active' : ''} aria-pressed={state.category === value} onClick={() => change({ category: value }, { history: 'push' })}>{label}</button>
           ))}
         </div>
       </div>
-      <label className="maturity-toolbar__group maturity-toolbar__month">
-        <span className="maturity-toolbar__label">评估月</span>
-        <input aria-label="评估月" type="month" value={state.month} onChange={(event) => change({ month: event.target.value }, { history: 'push' })} />
-      </label>
-      {state.view === 'domain' ? (
-        <label className="maturity-toolbar__group">
-          <span className="maturity-toolbar__label">条形图排序</span>
-          <select aria-label="条形图排序" value={state.sort} onChange={(event) => change({ sort: event.target.value }, { history: 'push' })}>
-            <option value="order">活动顺序</option>
-            <option value="score">领域平均分</option>
-          </select>
-        </label>
-      ) : (
-        <label className="maturity-toolbar__check">
-          <input type="checkbox" checked={state.showBaseline} onChange={(event) => change({ showBaseline: event.target.checked }, { history: 'push' })} />
-          显示领域基线
-        </label>
-      )}
       {editableTeams.length > 0 && (
-        <div className="maturity-toolbar__maintenance">
-          <select aria-label="维护团队" value={maintenanceTeamId} onChange={(event) => onMaintenanceTeamChange(event.target.value)}>
+        <div className="overview-control overview-control--maintenance">
+          <span>成熟度维护</span>
+          <div>
+            <select aria-label="维护团队" value={maintenanceTeamId} onChange={(event) => onMaintenanceTeamChange(event.target.value)}>
             <option value="">选择维护团队</option>
             {editableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
-          </select>
-          <button type="button" className="overview-primary-button" disabled={!maintenanceTeamId} onClick={onOpenMaintenance}>维护成熟度</button>
+            </select>
+            <button type="button" className="overview-primary-button" disabled={!maintenanceTeamId} onClick={onOpenMaintenance}>维护成熟度</button>
+          </div>
         </div>
       )}
     </div>
   )
 }
 
-function MaturitySummary({ data }) {
-  const activityById = new Map((data?.activities ?? []).map((activity) => [activity.activity_id, activity]))
-  const names = (ids) => ids.map((id) => activityById.get(id)?.activity_name).filter(Boolean).join('、') || '—'
+function MaturitySummary({ data, factState }) {
+  const score = maturityAverageScore(data)
+  const factStatus = factState.loading
+    ? '加载中'
+    : factState.total === 0
+    ? '暂无目录指标'
+    : factState.available === 0 ? '暂无事实'
+    : factState.available === factState.total ? '事实完整' : '部分缺失'
   return (
     <div className="maturity-summary-grid">
-      <article className="maturity-summary-card"><span>团队数</span><strong>{data?.team_count ?? 0}</strong><small>当前领域全部团队</small></article>
-      <article className="maturity-summary-card"><span>当月评估覆盖率</span><strong>{formatCoverage(data?.coverage_rate)}</strong><small>{data?.assessed_cell_count ?? 0} / {data?.total_cell_count ?? 0} 个团队×能力点</small></article>
-      <article className="maturity-summary-card maturity-summary-card--wide"><span>相对优势</span><strong>{names(data?.strength_activity_ids ?? [])}</strong><small>已评估能力点中的最高领域平均分，并列保留</small></article>
-      <article className="maturity-summary-card maturity-summary-card--wide"><span>相对薄弱</span><strong>{names(data?.weakness_activity_ids ?? [])}</strong><small>已评估能力点中的最低领域平均分，并列保留</small></article>
+      <article className="maturity-summary-card"><span>团队数</span><strong>{data?.team_count ?? '—'}</strong><small>当前领域全部团队</small></article>
+      <article className="maturity-summary-card"><span>领域平均成熟度</span><strong>{score === null ? '—' : score.toFixed(2)}</strong><small>当前分类已评估能力点平均</small></article>
+      <article className="maturity-summary-card"><span>成熟度评估覆盖率</span><strong>{formatCoverage(data?.coverage_rate)}</strong><small>{data?.assessed_cell_count ?? 0} / {data?.total_cell_count ?? 0} 个团队×能力点</small></article>
+      <article className="maturity-summary-card"><span>事实完整状态</span><strong>{factStatus}</strong><small>{factState.available} / {factState.total} 个指标在 {data?.month ?? '选定月份'} 有有效数据</small></article>
     </div>
   )
 }
@@ -307,29 +299,103 @@ function Distribution({ summary }) {
   return <span className="maturity-distribution">{entries.map(([level, count]) => <span key={level} className={`maturity-distribution__item is-${level.toLowerCase()}`}>{level} {count}</span>)}</span>
 }
 
-function DomainView({ data, sort, onOpenActivity }) {
+function factRowValue(row) {
+  if (!row.hasData) return '—'
+  if (row.metric.type === 'boolean') return `具备 ${row.booleanTrueCount} / ${row.validTeamCount}`
+  return formatMetricValue(row.metric, row.company?.value)
+}
+
+function factBarWidth(row, maxValue) {
+  const value = row.company?.value
+  if (typeof value !== 'number' || !Number.isFinite(value) || !maxValue) return 0
+  return Math.min(100, Math.abs(value) / maxValue * 100)
+}
+
+function FactPerformanceSection({ title, description, rows, loading = false, onNavigate }) {
+  if (!rows.length) return null
+  const maxValue = Math.max(1, ...rows.map((row) => Math.abs(row.company?.value ?? 0)).filter(Number.isFinite))
+  const hasData = rows.some((row) => row.hasData)
+  return (
+    <section className="overview-performance-section" aria-labelledby={`performance-${title}`}>
+      <header className="overview-section-header">
+        <div><h2 id={`performance-${title}`}>{title}</h2><p>{description}</p></div>
+        <span className="overview-section-header__note">基线：company_average</span>
+      </header>
+      {loading && <EmptyState>正在加载 {title} 的分析月份事实…</EmptyState>}
+      {!loading && !hasData && <EmptyState>分析月份暂无{title}事实，不回退到其他月份。</EmptyState>}
+      {!loading && hasData && <ol className="fact-performance-list">
+        {rows.map((row) => {
+          const value = row.company?.value
+          const negative = typeof value === 'number' && value < 0
+          return (
+            <li key={row.metric.id} className={`fact-performance-row${!row.hasData ? ' is-missing' : ''}${negative ? ' is-negative' : ''}`}>
+              <div className="fact-performance-row__label"><strong>{row.activity.name}</strong><span>{row.metric.name}</span></div>
+              <div className="fact-performance-row__bar" aria-hidden="true"><span style={{ width: `${factBarWidth(row, maxValue)}%` }} /></div>
+              <div className="fact-performance-row__value"><strong>{factRowValue(row)}</strong><span>{row.validTeamCount} / {row.totalTeamCount} 个有效团队</span></div>
+              {onNavigate && <button type="button" className="fact-performance-row__link" onClick={() => onNavigate(`/analytics/metrics/${row.metric.id}`)}>下钻</button>}
+            </li>
+          )
+        })}
+      </ol>}
+    </section>
+  )
+}
+
+function AttentionPanel({ items, loading = false, onNavigate }) {
+  const visibleItems = items.slice(0, 8)
+  function itemLabel(item) {
+    if (item.type === 'maturity-missing') return item.activityName
+    if (item.teamName) return `${item.teamName} · ${item.activityName}`
+    return item.activityName
+  }
+
+  return (
+    <section className="overview-panel attention-panel" aria-labelledby="attention-title">
+      <header className="overview-section-header"><div><h2 id="attention-title">需关注项</h2><p>只基于当前月份的缺失、负提效和相对比较。</p></div><span className="overview-section-header__note">{items.length} 项</span></header>
+      {loading && <p className="overview-empty">正在加载当前月份事实…</p>}
+      {!loading && !visibleItems.length && <p className="overview-empty">当前没有按规则生成的需关注项。</p>}
+      {!loading && !!visibleItems.length && <ul className="attention-list">
+        {visibleItems.map((item, index) => (
+          <li key={`${item.type}-${item.metricId ?? item.activityId}-${item.teamId ?? index}`} className={`attention-item is-${item.type}`}>
+            <span className="attention-item__marker" aria-hidden="true" />
+            <div><strong>{itemLabel(item)}</strong><span>{item.metricName ? `${item.metricName} · ` : ''}{item.reason}{item.value !== undefined ? ` · ${formatMetricValue({ type: item.metricType ?? 'ratio' }, item.value)}` : ''}</span></div>
+            {item.metricId && onNavigate && <button type="button" className="attention-item__link" onClick={() => onNavigate(`/analytics/metrics/${item.metricId}`)}>查看</button>}
+          </li>
+        ))}
+      </ul>}
+      {items.length > visibleItems.length && <p className="overview-card-note">已显示优先级最高的 {visibleItems.length} 项。</p>}
+    </section>
+  )
+}
+
+function DomainView({ data, category, sort, factRows, attentionItems, metricsLoading, onOpenActivity, onNavigate }) {
   const ordered = sortMaturityActivities(data?.activities ?? [], sort)
   const radarActivities = data?.activities ?? []
-  const option = useMemo(() => buildMaturityBarOption({ activities: data?.activities ?? [], sort }), [data?.activities, sort])
   const radarSeries = [{
     id: 'domain-average',
     name: '领域平均',
     color: '#667085',
     values: radarActivities.map((activity) => activity.score),
   }]
+  const penetrationRows = factRows.filter((row) => row.metric.type === 'penetration' || row.metric.type === 'ratio')
+  const efficiencyRows = factRows.filter((row) => row.metric.type === 'efficiency')
+  const countRows = factRows.filter((row) => row.metric.type === 'count')
+  const booleanRows = factRows.filter((row) => row.metric.type === 'boolean' || row.metric.type === 'bool')
+  const summaryFactState = { ...factCompleteness(factRows), loading: metricsLoading }
   return (
     <>
-      <MaturitySummary data={data} />
-      <div className="maturity-chart-grid">
-        <article className="maturity-panel">
-          <header className="maturity-panel__header"><div><h2>领域平均成熟度</h2><p>0–5 分，等级按未四舍五入分值取整</p></div><span className="maturity-panel__axis-note">{sort === 'score' ? '按平均分' : '按活动顺序'}</span></header>
-          <EChart option={option} height={Math.max(280, (ordered.length || 1) * 42)} ariaLabel="领域平均成熟度横向条形图" />
-        </article>
-        <article className="maturity-panel">
-          <header className="maturity-panel__header"><div><h2>领域雷达</h2><p>雷达轴顺序固定为目录顺序</p></div></header>
+      <MaturitySummary data={data} factState={summaryFactState} />
+      <div className="overview-hero-grid">
+        <section className="overview-panel overview-radar-panel">
+          <header className="overview-section-header"><div><h2>领域成熟度雷达</h2><p>{data?.month ?? '选定月份'} · 0–5 分；缺失轴不补零。</p></div><span className="overview-section-header__note">{sort === 'score' ? '详情按分数排序' : '目录顺序'}</span></header>
           <MaturityRadar activities={radarActivities} series={radarSeries} ariaLabel="领域平均成熟度雷达图" />
-        </article>
+        </section>
+        <AttentionPanel items={attentionItems} loading={metricsLoading} onNavigate={onNavigate} />
       </div>
+      <FactPerformanceSection title={category === 'key' ? 'AI 渗透率' : '比率'} description="按目录实际存在的渗透率/比率指标横向比较当前月数据。" rows={penetrationRows} loading={metricsLoading} onNavigate={onNavigate} />
+      <FactPerformanceSection title="提效率" description="只展示目录中实际存在的 efficiency 指标；负值保留原始语义。" rows={efficiencyRows} loading={metricsLoading} onNavigate={onNavigate} />
+      <FactPerformanceSection title="数量" description="目录中存在数量指标时按当前月 company_average 展示。" rows={countRows} loading={metricsLoading} onNavigate={onNavigate} />
+      <FactPerformanceSection title="布尔状态" description="按团队展示当前月状态；布尔指标没有 company_average。" rows={booleanRows} loading={metricsLoading} onNavigate={onNavigate} />
       <section className="maturity-panel maturity-detail-panel">
         <header className="maturity-panel__header"><div><h2>能力点明细</h2><p>点击能力点进入现有指标与趋势详情；分布仅统计已评估团队</p></div></header>
         <div className="maturity-table-wrap">
@@ -351,7 +417,7 @@ function DomainView({ data, sort, onOpenActivity }) {
   )
 }
 
-function TeamMatrix({ data, selectedTeamIds, showBaseline, teamColors, onToggleTeam, onOpenActivity }) {
+function TeamMatrix({ data, selectedTeamIds, showBaseline, teamColors, onToggleTeam, onToggleBaseline, onOpenActivity }) {
   const summaries = new Map((data?.activities ?? []).map((activity) => [activity.activity_id, activity]))
   const selected = new Set(selectedTeamIds)
   const selectedRows = (data?.teams ?? []).filter((team) => selected.has(String(team.team_id)))
@@ -369,11 +435,17 @@ function TeamMatrix({ data, selectedTeamIds, showBaseline, teamColors, onToggleT
   return (
     <>
       <section className="maturity-panel maturity-matrix-panel">
-        <header className="maturity-panel__header"><div><h2>团队 × 能力点矩阵</h2><p>点击团队名称加入雷达对比（最多 3 个）；点击列名或格子进入指标与趋势详情。</p></div><span className="maturity-selection-count">已选 {selectedRows.length} / 3</span></header>
+        <header className="maturity-panel__header"><div><h2>团队 × 能力点矩阵</h2><p>点击团队名称加入雷达对比（最多 3 个）；点击列名或格子进入指标与趋势详情。</p></div><div className="maturity-panel__header-actions"><label className="maturity-toolbar__check"><input type="checkbox" checked={showBaseline} onChange={(event) => onToggleBaseline?.(event.target.checked)} />显示领域基线</label><span className="maturity-selection-count">已选 {selectedRows.length} / 3</span></div></header>
+        <p className="maturity-matrix-hint">移动端可横向滚动，团队列固定在左侧；缺失值显示为“—”，不补零。</p>
         <div className="maturity-table-wrap maturity-table-wrap--matrix">
           <table className="maturity-table maturity-matrix-table">
             <thead><tr><th scope="col" className="maturity-sticky-column">团队</th>{(data?.activities ?? []).map((activity) => <th scope="col" key={activity.activity_id}><button type="button" className="maturity-column-button" onClick={() => onOpenActivity(activity.activity_id)}>{activity.activity_name}</button></th>)}</tr></thead>
-            <tbody>{(data?.teams ?? []).map((team) => (
+            <tbody>
+              <tr className="maturity-average-row">
+                <th scope="row" className="maturity-sticky-column">领域平均</th>
+                {(data?.activities ?? []).map((activity) => <td key={activity.activity_id}><MaturityLevel cell={summaries.get(activity.activity_id)} summary={summaries.get(activity.activity_id)} /></td>)}
+              </tr>
+              {(data?.teams ?? []).map((team) => (
               <tr key={team.team_id}>
                 <th scope="row" className="maturity-sticky-column"><button type="button" className={`maturity-team-button ${selected.has(String(team.team_id)) ? 'is-selected' : ''}`} aria-pressed={selected.has(String(team.team_id))} onClick={() => onToggleTeam(String(team.team_id))}><i style={{ backgroundColor: teamColors[String(team.team_id)] }} />{team.team_name}</button></th>
                 {(data?.activities ?? []).map((activity) => {
@@ -382,7 +454,8 @@ function TeamMatrix({ data, selectedTeamIds, showBaseline, teamColors, onToggleT
                   return <td key={activity.activity_id} className={cell?.score === null || cell?.score === undefined ? 'is-missing' : ''}><button type="button" style={{ '--maturity-level-color': maturityLevelColor(cell?.grade) }} className={`maturity-cell-button ${cell?.score === null || cell?.score === undefined ? 'is-missing' : `is-level-${cell.grade}`} `} aria-label={`${team.team_name} ${activity.activity_name} ${cell?.score === null || cell?.score === undefined ? '未评估' : `${cell.level} ${formatMaturityScore(cell)}`}`} onClick={() => onOpenActivity(activity.activity_id)}><MaturityLevel cell={cell} summary={summary} /></button></td>
                 })}
               </tr>
-            ))}</tbody>
+              ))}
+            </tbody>
           </table>
         </div>
       </section>
@@ -405,6 +478,15 @@ function TeamMatrix({ data, selectedTeamIds, showBaseline, teamColors, onToggleT
         </section>
       </div>
     </>
+  )
+}
+
+function MatrixDisclosure({ open, data, selectedTeamIds, showBaseline, teamColors, onToggle, onToggleTeam, onToggleBaseline, onOpenActivity }) {
+  return (
+    <details className="maturity-matrix-disclosure" open={open} onToggle={(event) => onToggle(event.currentTarget.open)}>
+      <summary><span>完整团队 × 能力点矩阵</span><small>默认收起；展开查看领域平均行与所有团队</small></summary>
+      {data && <TeamMatrix data={data} selectedTeamIds={selectedTeamIds} showBaseline={showBaseline} teamColors={teamColors} onToggleTeam={onToggleTeam} onToggleBaseline={onToggleBaseline} onOpenActivity={onOpenActivity} />}
+    </details>
   )
 }
 
@@ -515,41 +597,24 @@ function MaturityMaintenanceDrawer({ open, team, month, catalog, onClose, onSave
   )
 }
 
-function metricDomainPoint(data, metric, periodId) {
-  const points = data?.domain_summary ?? []
-  if (!points.length) return null
-  if (periodId !== 'all' && periodId !== null && periodId !== undefined) {
-    return points.find((point) => String(point.period_id) === String(periodId)) ?? null
-  }
-  if (points.length === 1) return points[0]
-  const numerator = points.reduce((sum, point) => sum + (point.numerator ?? 0), 0)
-  const denominator = points.reduce((sum, point) => sum + (point.denominator ?? 0), 0)
-  const factCount = points.reduce((sum, point) => sum + (point.fact_count ?? 0), 0)
-  const sampleCount = points.reduce((sum, point) => sum + (point.sample_count ?? 0), 0)
-  let value = null
-  if (metric.type === 'penetration' || metric.type === 'ratio') value = denominator > 0 ? numerator / denominator : null
-  if (metric.type === 'efficiency') {
-    value = numerator === 0 && denominator === 0 ? null : (numerator - denominator) / (denominator > 0 ? denominator : 0.5)
-  }
-  if (metric.type === 'count') value = numerator
-  return { period_id: 'all', value, numerator, denominator, estimated: numerator, actual: denominator, fact_count: factCount, sample_count: sampleCount }
-}
-
 function DomainMetricSummary({ data, metric, periodId }) {
-  const point = metricDomainPoint(data, metric, periodId)
-  const companyPoint = data?.company_average?.find((item) => String(item.period_id) === String(point?.period_id)) ?? (data?.company_average ?? []).at(-1)
-  if (!point && !companyPoint) return null
+  const periodIdForSummary = periodId === 'all' || periodId === null || periodId === undefined
+    ? data?.periods?.at(-1)?.id
+    : periodId
+  const snapshot = metricPointForMonth(data, periodIdForSummary)
+  const companyPoint = snapshot.company
+  if (!snapshot.hasData) return <EmptyState>当前深入分析周期暂无事实数据。</EmptyState>
   return (
     <div className="metric-domain-summary" aria-label="领域指标合并口径">
-      <div><span>领域合并值</span><strong>{formatMetricValue(metric, point?.value)}</strong></div>
-      <p>{point ? formatFactSummary(metric, point) : '暂无领域原始数'}</p>
-      <p>样本量：{point?.sample_count ?? '—'} · 原始事实：{point?.fact_count ?? '—'}</p>
-      <div className="metric-domain-summary__company"><span>全公司均值（独立对照）</span><strong>{formatMetricValue(metric, companyPoint?.value)}</strong></div>
+      <div><span>company_average</span><strong>{formatMetricValue(metric, companyPoint?.value)}</strong></div>
+      <p>有效团队：{snapshot.validTeamCount} / {snapshot.totalTeamCount} · 周期：{periodIdForSummary ?? '—'}</p>
+      <p>{snapshot.teams.find((team) => team.point)?.point ? formatFactSummary(metric, snapshot.teams.find((team) => team.point).point) : '暂无团队事实明细'}</p>
+      {metric.type === 'boolean' && <div className="metric-domain-summary__company"><span>布尔指标</span><strong>{snapshot.validTeamCount ? `${snapshot.teams.filter((team) => team.point?.value).length} 个团队具备` : '—'}</strong></div>}
     </div>
   )
 }
 
-function MetricComparison({ catalog, teams, versions, filter: controlledFilter, onFilterChange, onNavigate, onSessionExpired, teamColors }) {
+function MetricComparison({ catalog, teams, versions, overviewComputed, filter: controlledFilter, onFilterChange, onNavigate, onSessionExpired, teamColors }) {
   const [expanded, setExpanded] = useState(false)
   const [localFilter, setLocalFilter] = useState(INITIAL_FILTER)
   const filter = controlledFilter ?? localFilter
@@ -559,12 +624,15 @@ function MetricComparison({ catalog, teams, versions, filter: controlledFilter, 
   const [metricId, setMetricId] = useState(firstEntry?.metric.id ?? '')
   const entry = entries.find((item) => String(item.metric.id) === String(metricId)) ?? firstEntry
   const metricCatalog = useMemo(() => entry ? [{ ...entry.activity, metrics: [entry.metric] }] : [], [entry])
-  const computed = useComputedMetrics(expanded ? metricCatalog : EMPTY_METRIC_CATALOG, filter, onSessionExpired)
-  const data = entry ? computed.data[entry.metric.id] : null
+  const fallback = Boolean(entry && isGeneralIterationFallback(entry.activity, filter))
+  const reuseOverview = Boolean(expanded && overviewComputed && (filter.dimension === 'time' && filter.granularity === 'month' || fallback))
+  const computed = useComputedMetrics(expanded && !reuseOverview ? metricCatalog : EMPTY_METRIC_CATALOG, filter, onSessionExpired)
+  const data = entry && reuseOverview ? overviewComputed.data[entry.metric.id] : entry ? computed.data[entry.metric.id] : null
+  const errors = reuseOverview ? overviewComputed.errors : computed.errors
+  const loading = reuseOverview ? overviewComputed.loading : computed.loading
   const timePeriods = data?.periods ?? []
   const iterationPeriodsForFilter = useMemo(() => iterationPeriods(versions, filter.versionId), [filter.versionId, versions])
   const periods = filter.dimension === 'iteration' ? iterationPeriodsForFilter : timePeriods
-  const fallback = Boolean(entry && isGeneralIterationFallback(entry.activity, filter))
 
   useEffect(() => {
     if (!entry || String(entry.metric.id) === String(metricId)) return
@@ -586,10 +654,10 @@ function MetricComparison({ catalog, teams, versions, filter: controlledFilter, 
         <div className="metric-comparison-panel__body">
           <div className="metric-comparison-panel__controls">
             <label><span>指标</span><select aria-label="集中比较指标" value={entry.metric.id} onChange={(event) => setMetricId(event.target.value)}>{catalog.flatMap((activity) => activity.metrics.map((metric) => <option key={metric.id} value={metric.id}>{activity.name} · {metric.name}</option>))}</select></label>
-            <FilterBar filter={filter} onChange={setFilter} versions={versions} periods={timePeriods} loading={computed.loading} />
+            <FilterBar filter={filter} onChange={setFilter} versions={versions} periods={timePeriods} loading={loading} />
           </div>
           <DomainMetricSummary data={data} metric={entry.metric} periodId={filter.periodId} />
-          <TrendCard activity={entry.activity} metric={entry.metric} data={data} error={computed.errors[entry.metric.id]} loading={computed.loading} teams={teams} teamColors={teamColors} periodId={filter.periodId} fallback={fallback} onNavigate={onNavigate} showMetricPills={false} showMetricDetailLink countAsBars={entry.metric.type === 'count'} />
+          <TrendCard activity={entry.activity} metric={entry.metric} data={data} error={errors[entry.metric.id]} loading={loading} teams={teams} teamColors={teamColors} periodId={filter.periodId} fallback={fallback} onNavigate={onNavigate} showMetricPills={false} showMetricDetailLink countAsBars={entry.metric.type === 'count'} />
         </div>
       )}
     </section>
@@ -613,6 +681,7 @@ export default function OverviewPage({
   const setMaturityState = onMaturityChange ?? setLocalMaturityState
   const [maturityRevision, setMaturityRevision] = useState(0)
   const maturity = useMaturityOverview(maturityState.month, maturityState.category, onSessionExpired, maturityRevision)
+  const overviewComputed = useComputedMetrics(catalog ?? EMPTY_METRIC_CATALOG, MONTHLY_FILTER, onSessionExpired)
   const [maintenanceTeamId, setMaintenanceTeamId] = useState(() => user?.role === 'maintainer' ? String(user.maintainer_team_id) : '')
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
 
@@ -659,19 +728,46 @@ export default function OverviewPage({
   const maintenanceTeam = teams.find((team) => String(team.id) === String(maintenanceTeamId))
   const canEdit = user?.role === 'admin' || user?.role === 'maintainer'
   const maturityError = maturity.error
+  const activeActivities = useMemo(() => (catalog ?? []).filter((activity) => activity.kind === maturityState.category), [catalog, maturityState.category])
+  const factRows = useMemo(() => buildMetricRows({
+    activities: activeActivities,
+    dataByMetric: overviewComputed.data,
+    errors: overviewComputed.errors,
+    month: maturityState.month,
+    teams,
+  }), [activeActivities, maturityState.month, overviewComputed.data, overviewComputed.errors, teams])
+  const attentionItems = useMemo(() => buildAttentionItems({
+    activities: activeActivities,
+    dataByMetric: overviewComputed.data,
+    errors: overviewComputed.errors,
+    maturityData: maturity.data,
+    month: maturityState.month,
+    teams,
+  }), [activeActivities, maturity.data, maturityState.month, overviewComputed.data, overviewComputed.errors, teams])
+
+  function toggleMatrix(open) {
+    updateMaturity({ ...maturityState, view: open ? 'team' : 'domain' }, { history: 'push' })
+  }
+
+  function toggleTeam(teamId) {
+    const compareTeamIds = maturityState.compareTeamIds.includes(teamId)
+      ? maturityState.compareTeamIds.filter((id) => id !== teamId)
+      : maturityState.compareTeamIds.length < 3 ? [...maturityState.compareTeamIds, teamId] : maturityState.compareTeamIds
+    updateMaturity({ ...maturityState, compareTeamIds }, { history: 'push' })
+  }
 
   return (
     <div className="overview-shell maturity-overview-shell">
       <div className="overview-page-head">
         <div><p className="overview-eyebrow">研发效能 · 先看整体与短板，再看指标</p><h1>研发总览</h1></div>
-        <p className="overview-slice-description">成熟度评估月：{maturityState.month} · {maturityState.category === 'key' ? '关键研发活动' : '通用研发能力'} · {maturityState.view === 'domain' ? '领域视角' : '团队视角'}</p>
+        <p className="overview-slice-description">{maturityState.month} · {maturityState.category === 'key' ? '关键研发活动' : '通用研发能力'} · 成熟度与事实共用分析月份</p>
       </div>
-      <MaturityToolbar state={maturityState} teams={teams} user={user} maintenanceTeamId={maintenanceTeamId} onMaintenanceTeamChange={setMaintenanceTeamId} onChange={updateMaturity} onOpenMaintenance={() => setMaintenanceOpen(true)} />
+      <OverviewControls state={maturityState} teams={teams} user={user} maintenanceTeamId={maintenanceTeamId} onMaintenanceTeamChange={setMaintenanceTeamId} onChange={updateMaturity} onOpenMaintenance={() => setMaintenanceOpen(true)} />
       {maturity.loading && <div className="maturity-state">正在加载 {maturityState.month} 成熟度评估…</div>}
       {!maturity.loading && maturityError && <div className="maturity-state maturity-state--error" role="alert">成熟度数据加载失败：{maturityError.message}</div>}
-      {!maturity.loading && !maturityError && maturityState.view === 'domain' && <DomainView data={maturity.data} sort={maturityState.sort} onOpenActivity={openActivity} />}
-      {!maturity.loading && !maturityError && maturityState.view === 'team' && <TeamMatrix data={maturity.data} selectedTeamIds={maturityState.compareTeamIds} showBaseline={maturityState.showBaseline} teamColors={teamColors} onToggleTeam={(teamId) => updateMaturity({ ...maturityState, compareTeamIds: maturityState.compareTeamIds.includes(teamId) ? maturityState.compareTeamIds.filter((id) => id !== teamId) : maturityState.compareTeamIds.length < 3 ? [...maturityState.compareTeamIds, teamId] : maturityState.compareTeamIds }, { history: 'push' })} onOpenActivity={openActivity} />}
-      <MetricComparison catalog={catalog} teams={teams} versions={versions} filter={controlledFilter} onFilterChange={onFilterChange} onNavigate={onNavigate} onSessionExpired={onSessionExpired} teamColors={teamColors} />
+      {!maturity.loading && !maturityError && <DomainView data={maturity.data} category={maturityState.category} sort={maturityState.sort} factRows={factRows} attentionItems={attentionItems} metricsLoading={overviewComputed.loading} onOpenActivity={openActivity} onNavigate={onNavigate} />}
+      {!maturity.loading && !maturityError && <MatrixDisclosure open={maturityState.view === 'team'} data={maturity.data} selectedTeamIds={maturityState.compareTeamIds} showBaseline={maturityState.showBaseline} teamColors={teamColors} onToggle={toggleMatrix} onToggleTeam={toggleTeam} onToggleBaseline={(showBaseline) => updateMaturity({ ...maturityState, showBaseline }, { history: 'push' })} onOpenActivity={openActivity} />}
+      <MetricComparison catalog={catalog} teams={teams} versions={versions} overviewComputed={overviewComputed} filter={controlledFilter} onFilterChange={onFilterChange} onNavigate={onNavigate} onSessionExpired={onSessionExpired} teamColors={teamColors} />
       {canEdit && <MaturityMaintenanceDrawer open={maintenanceOpen} team={maintenanceTeam} month={maturityState.month} catalog={catalog} onClose={() => setMaintenanceOpen(false)} onSaved={() => { setMaturityRevision((revision) => revision + 1); setMaintenanceOpen(false) }} onSessionExpired={onSessionExpired} />}
     </div>
   )

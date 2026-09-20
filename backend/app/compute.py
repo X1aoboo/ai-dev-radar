@@ -429,13 +429,24 @@ def build_series(
     )
 
     if resolved_metric_type == "boolean":
+        def boolean_values(team):
+            values = []
+            for period in periods:
+                scoped_facts = [
+                    fact for fact in fact_list
+                    if getattr(fact, "team_id", None) == _team_id(team)
+                    and in_scope(fact, period, dimension=resolved_dimension, time_field=time_field)
+                ]
+                values.append(_point(period, _sum_facts(scoped_facts), _snapshot_value(scoped_facts)))
+            return values
+
         return {
             "periods": periods,
             "series": [
                 {
                     "team_id": _team_id(team),
                     "team_name": _team_name(team),
-                    "values": [],
+                    "values": boolean_values(team),
                     "snapshot": _snapshot_value(
                         fact for fact in fact_list if getattr(fact, "team_id", None) == _team_id(team)
                     ),
