@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { buildTrendOption } from './chartOption.js'
+import { buildInsightOption, buildTrendOption } from './chartOption.js'
 
 const data = {
   periods: [{ id: 'p1', label: '2026-01' }, { id: 'p2', label: '2026-02' }],
@@ -59,4 +59,17 @@ test('count metrics remain trend lines in the overview default', () => {
   })
 
   assert.deepEqual(option.series.map((series) => series.type), ['line', 'line'])
+})
+
+test('insight options keep missing months as disconnected real series', () => {
+  const option = buildInsightOption({
+    periods: [{ id: '2026-01', label: '01' }, { id: '2026-02', label: '02' }, { id: '2026-03', label: '03' }],
+    series: [{ name: '编码开发 · AI率', values: [null, 0, 0.4] }],
+    formatValue: (value) => `${Math.round(value * 100)}%`,
+  })
+
+  assert.deepEqual(option.xAxis.data, ['01', '02', '03'])
+  assert.deepEqual(option.series[0].data, [null, 0, 0.4])
+  assert.equal(option.series[0].connectNulls, false)
+  assert.equal(option.series[0].endLabel.show, true)
 })

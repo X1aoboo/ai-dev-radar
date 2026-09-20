@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [研发总览 Insight 驾驶舱优化](overview-insight-cockpit.md)：总览趋势卡、关键活动矩阵和 Signal 抽屉优化。
 - [研发总览决策工作台重构](overview-decision-workspace.md)：以决策摘要、优先信号、证据和下钻重组总览，不改变指标口径或后端契约。
 - [管理者优先的研发总览重设计](executive-dashboard-redesign.md)：统一分析月份、管理者首屏事实比较、关注项和可折叠团队矩阵。
 - [AI 研发数据网关版本化能力协议](ai-dev-data-gateway-contract.md)：建立版本化协议，并在首发前完成产品版本联合标识和空业务模块规范化。

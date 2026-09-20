@@ -1,12 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Drawer } from 'antd'
 import {
-  AlertOutlined,
   ArrowRightOutlined,
-  CheckCircleOutlined,
-  DatabaseOutlined,
-  RadarChartOutlined,
-  TeamOutlined,
 } from '@ant-design/icons'
 
 import { fetchJson } from '../api'
@@ -14,7 +9,7 @@ import EChart from '../components/EChart'
 import { booleanStatusRows } from '../metricDetail/metricDetailLogic'
 import FilterBar from './FilterBar'
 import MaturityRadar from './MaturityRadar'
-import { buildTrendOption } from './chartOption'
+import { buildInsightOption, buildTrendOption } from './chartOption'
 import { maturityLevelColor, sortMaturityActivities } from './maturityChartOption'
 import {
   maturitySavePayload,
@@ -23,17 +18,21 @@ import {
 } from './maturityData'
 import { hasNumericValues, useComputedMetrics } from './metricData'
 import {
+  DATAVIZ_COLORS,
   assignTeamColorSlots,
+  bestAndWeakestRows,
+  buildMaturityTrendRows,
+  buildMetricTrendRows,
   currentMetricValues,
   formatFactSummary,
   formatMetricValue,
   buildAttentionItems,
   buildMetricRows,
-  factCompleteness,
   INITIAL_FILTER,
   isGeneralIterationFallback,
   iterationPeriods,
   latestPeriodId,
+  monthWindow,
   maturityAverageScore,
   metricPointForMonth,
   normalizeMaturityState,
@@ -213,10 +212,6 @@ export function TrendCard({
   )
 }
 
-function formatCoverage(value) {
-  return typeof value === 'number' && Number.isFinite(value) ? `${Math.round(value * 100)}%` : '—'
-}
-
 function formatMaturityScore(cell) {
   return cell?.score_display ?? (typeof cell?.score === 'number' ? cell.score.toFixed(2) : '—')
 }
@@ -283,57 +278,188 @@ function OverviewControls({
   )
 }
 
-function DecisionBrief({ data, factState, attentionItems, category }) {
-  const score = maturityAverageScore(data)
-  const factStatus = factState.loading
-    ? '加载中'
-    : factState.total === 0
-    ? '暂无目录指标'
-    : factState.available === 0 ? '暂无事实'
-    : factState.available === factState.total ? '事实完整' : '部分缺失'
-  const negativeCount = attentionItems.filter((item) => item.type === 'negative-efficiency').length
-  const missingCount = attentionItems.filter((item) => item.type === 'maturity-missing' || item.type === 'fact-missing').length
-  const relativeCount = attentionItems.filter((item) => item.type === 'relative-behind').length
-  const brief = factState.loading
-    ? { icon: <DatabaseOutlined aria-hidden="true" />, title: '正在汇总当前月份信号', tone: 'loading' }
-    : negativeCount > 0
-      ? { icon: <AlertOutlined aria-hidden="true" />, title: `${negativeCount} 个负提效信号需要优先确认`, tone: 'warning' }
-      : missingCount > 0
-        ? { icon: <DatabaseOutlined aria-hidden="true" />, title: `${missingCount} 项数据或评估尚未补齐`, tone: 'warning' }
-        : relativeCount > 0
-          ? { icon: <RadarChartOutlined aria-hidden="true" />, title: `${relativeCount} 个团队指标低于当前领域均值`, tone: 'neutral' }
-          : { icon: <CheckCircleOutlined aria-hidden="true" />, title: '当前切片未发现需优先处理的信号', tone: 'positive' }
+const INSIGHT_COLORS = DATAVIZ_COLORS.team
 
-  const stats = [
-    { icon: <TeamOutlined aria-hidden="true" />, label: '覆盖团队', value: data?.team_count ?? '—', note: '当前领域' },
-    { icon: <RadarChartOutlined aria-hidden="true" />, label: '成熟度均值', value: score === null ? '—' : score.toFixed(2), note: '0–5 分' },
-    { icon: <CheckCircleOutlined aria-hidden="true" />, label: '评估覆盖', value: formatCoverage(data?.coverage_rate), note: `${data?.assessed_cell_count ?? 0} / ${data?.total_cell_count ?? 0} 单元` },
-    { icon: <DatabaseOutlined aria-hidden="true" />, label: '事实覆盖', value: factStatus, note: `${factState.available} / ${factState.total} 指标` },
-  ]
+function formatInsightValue(metric, value) {
+  if (metric?.type === 'maturity') return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '—'
+  return formatMetricValue(metric, value)
+}
+
+function formatTrendDelta(metric, delta) {
+  if (delta === null || delta === undefined || !Number.isFinite(delta)) return '—'
+  if (delta === 0) return '→ 0'
+  const magnitude = metric?.type === 'maturity'
+    ? Math.abs(delta).toFixed(2)
+    : formatMetricValue(metric, Math.abs(delta)).replace(/^\+/, '')
+  return `${delta > 0 ? '↑ +' : '↓ -'}${magnitude}`
+}
+
+function sparklinePath(values, width = 72, height = 20) {
+  const numeric = values.filter((value) => typeof value === 'number' && Number.isFinite(value))
+  if (numeric.length < 2) return ''
+  const min = Math.min(...numeric)
+  const max = Math.max(...numeric)
+  const range = max - min || 1
+  const points = values.map((value, index) => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return null
+    return `${(index / Math.max(1, values.length - 1)) * width},${height - ((value - min) / range) * (height - 2) - 1}`
+  })
+  const segments = []
+  let current = []
+  points.forEach((point) => {
+    if (point) current.push(point)
+    else if (current.length) {
+      segments.push(current.join(' '))
+      current = []
+    }
+  })
+  if (current.length) segments.push(current.join(' '))
+  return segments.map((segment) => `M ${segment.replaceAll(' ', ' L ')}`).join(' ')
+}
+
+function MicroTrend({ values, label }) {
+  const path = sparklinePath(values)
+  return (
+    <span className="overview-microtrend" role="img" aria-label={label}>
+      {path ? <svg viewBox="0 0 72 20" aria-hidden="true"><path d={path} /></svg> : <span aria-hidden="true">—</span>}
+    </span>
+  )
+}
+
+function InsightCard({ title, rows, statusRows = [], periods, loading = false, focus = 'best', note, overallRow = null }) {
+  const { best, weakest } = bestAndWeakestRows(rows)
+  const chartCandidates = overallRow ? [overallRow] : [best, weakest].filter((row, index, list) => row && list.indexOf(row) === index)
+  const fallbackChartRows = rows.filter((row) => row.values.some((value) => typeof value === 'number' && Number.isFinite(value))).slice(0, 2)
+  const chartRows = (chartCandidates.length ? chartCandidates : fallbackChartRows).filter((row) => row.values.some((value) => typeof value === 'number' && Number.isFinite(value)))
+  const option = useMemo(() => buildInsightOption({
+    periods,
+    series: chartRows.map((row, index) => ({
+      name: `${row.activity.name} · ${row.metric.name}`,
+      values: row.values,
+      color: INSIGHT_COLORS[index % INSIGHT_COLORS.length],
+    })),
+    formatValue: (value, seriesIndex) => formatInsightValue(chartRows[seriesIndex]?.metric, value),
+    yMin: chartRows.length && chartRows.every((row) => row.metric.type === 'penetration' || row.metric.type === 'ratio') ? 0 : undefined,
+    yMax: chartRows.length && chartRows.every((row) => row.metric.type === 'penetration' || row.metric.type === 'ratio') ? 1 : undefined,
+  }), [chartRows, periods])
+  const focusRow = overallRow ?? (focus === 'weakest' ? weakest : best)
+  const focusLabel = focusRow?.metric?.name ? `${focusRow.activity.name} · ${focusRow.metric.name}` : focusRow?.activity?.name
+  const status = focusRow
+    ? { value: formatInsightValue(focusRow.metric, focusRow.value), label: focusLabel, delta: focusRow.delta }
+    : statusRows.length
+      ? { value: '按团队状态', label: '当前窗口没有可合并的布尔均值', delta: null }
+      : { value: '—', label: '当前窗口暂无可用事实', delta: null }
 
   return (
-    <section className="overview-decision-card" aria-labelledby="decision-brief-title">
-      <div className="overview-decision-card__copy">
-        <p className="overview-decision-card__eyebrow">本月决策摘要</p>
-        <div className={`overview-decision-card__headline is-${brief.tone}`}>
-          <span className="overview-decision-card__icon">{brief.icon}</span>
-          <h2 id="decision-brief-title">{brief.title}</h2>
-        </div>
-        <p>{data?.month ?? '选定月份'} · {category === 'key' ? '关键研发活动' : '通用研发能力'}。基于当前月事实与成熟度；尚未配置目标或外部行业基准，因此不输出达标或排名判断。</p>
-        <div className="overview-decision-card__signals" aria-label="信号构成">
-          <span>负提效 {negativeCount}</span><span>数据缺失 {missingCount}</span><span>相对靠后 {relativeCount}</span>
-        </div>
+    <article className="overview-insight-card" aria-labelledby={`insight-${title}`}>
+      <header className="overview-insight-card__header">
+        <div><p className="overview-section-kicker">Insight</p><h2 id={`insight-${title}`}>{title}</h2></div>
+        <span>近 6 个月</span>
+      </header>
+      <div className="overview-insight-card__status">
+        <div><span>当前状态</span><strong>{loading ? '加载中…' : status.value}</strong><small>{status.label}</small></div>
+        <div><span>环比</span><strong className={status.delta < 0 ? 'is-negative' : status.delta > 0 ? 'is-positive' : ''}>{loading ? '—' : formatTrendDelta(focusRow?.metric, status.delta)}</strong><small>{focusRow ? `${focusRow.activity.name} · ${periods.at(-1)?.label ?? periods.at(-1)}` : '同一指标对比'}</small></div>
       </div>
-      <dl className="overview-decision-stats">
-        {stats.map((stat) => (
-          <div key={stat.label}>
-            <dt><span>{stat.icon}</span>{stat.label}</dt>
-            <dd>{stat.value}</dd>
-            <small>{stat.note}</small>
-          </div>
-        ))}
-      </dl>
+      {!loading && chartRows.length > 0 && <EChart option={option} height={118} ariaLabel={`${title}近六个月真实指标趋势，缺失月份保留断点`} />}
+      {!loading && chartRows.length === 0 && <div className="overview-insight-empty">当前窗口暂无可绘制的数值趋势。</div>}
+      {statusRows.length > 0 && (
+        <div className="overview-insight-status-list" aria-label={`${title}当前状态明细`}>
+          {statusRows.map((row) => {
+            const valid = row.statusRows.filter((team) => typeof team.point?.value === 'boolean')
+            const enabled = valid.filter((team) => team.point.value).length
+            return <span key={row.metric.id}><strong>{row.activity.name}</strong>{row.metric.name}：{valid.length ? `${enabled} / ${valid.length} 具备` : '暂无数据'}</span>
+          })}
+        </div>
+      )}
+      <div className="overview-insight-range">
+        <div><span>最好项</span><strong>{best ? `${best.activity.name} · ${formatInsightValue(best.metric, best.value)}` : '—'}</strong></div>
+        <div><span>最弱项</span><strong>{weakest ? `${weakest.activity.name} · ${formatInsightValue(weakest.metric, weakest.value)}` : '—'}</strong></div>
+      </div>
+      <p className="overview-card-note">{note}</p>
+    </article>
+  )
+}
+
+function InsightGrid({ category, month, maturityHistory, maturityActivities, dataByMetric, errors, teams, loading }) {
+  const months = monthWindow(month)
+  const periods = months.map((item) => ({ id: item, label: item.slice(5) }))
+  const maturityRows = buildMaturityTrendRows({ history: maturityHistory, activities: maturityActivities, months })
+  const maturityValues = months.map((item) => maturityAverageScore(maturityHistory.find((entry) => entry.month === item)?.data))
+  const maturityOverall = {
+    activity: { name: '领域平均' },
+    metric: { type: 'maturity' },
+    values: maturityValues,
+    value: maturityValues.at(-1) ?? null,
+    delta: typeof maturityValues.at(-1) === 'number' && typeof maturityValues.at(-2) === 'number' ? maturityValues.at(-1) - maturityValues.at(-2) : null,
+  }
+  const metricRows = buildMetricTrendRows({
+    activities: maturityActivities,
+    dataByMetric,
+    errors,
+    months,
+    teams,
+  })
+  const rateRows = metricRows.filter((row) => row.metric.type === 'penetration' || row.metric.type === 'ratio')
+  const efficiencyRows = metricRows.filter((row) => row.metric.type === 'efficiency')
+  const countRows = metricRows.filter((row) => row.metric.type === 'count')
+  const statusRows = metricRows.filter((row) => row.metric.type === 'boolean' || row.metric.type === 'bool')
+  const cards = [
+    <InsightCard key="maturity" title="成熟度" rows={maturityRows.map((row) => ({ ...row, metric: { type: 'maturity' } }))} overallRow={maturityOverall} periods={periods} loading={loading.maturity} focus="best" note="当前状态和趋势沿用已评估活动的领域平均语义；未评估月份保留断点。" />,
+    category === 'key'
+      ? <InsightCard key="efficiency" title="提效率" rows={efficiencyRows} periods={periods} loading={loading.metrics} focus="weakest" note="只展示目录中已有的效率指标，不生成目标线或因果建议。" />
+      : (rateRows.length || statusRows.length) > 0
+        ? <InsightCard key="usage" title="使用率 / 状态" rows={rateRows} statusRows={statusRows} periods={periods} loading={loading.metrics} note="按目录类型展示真实使用率或团队状态，不跨活动合并。" />
+        : null,
+    category === 'key'
+      ? <InsightCard key="rate" title="AI 渗透 / 比率" rows={rateRows} periods={periods} loading={loading.metrics} note="趋势由当前分类下的真实率指标组成，不计算跨活动平均。" />
+      : countRows.length > 0
+        ? <InsightCard key="count" title="数量规模" rows={countRows} periods={periods} loading={loading.metrics} note="仅展示目录已有数量指标，0 与缺失严格区分。" />
+        : null,
+  ].filter(Boolean)
+
+  return <section className="overview-insight-grid" aria-label="Insight 趋势卡">{cards}</section>
+}
+
+function signalLevel(items) {
+  if (!items.length) return '无'
+  const priority = Math.min(...items.map((item) => item.priority ?? 9))
+  return priority === 0 ? '高' : priority <= 2 ? '中' : '低'
+}
+
+function SignalSummary({ items, loading, onOpen, buttonRef }) {
+  return (
+    <section className="overview-signal-summary" aria-labelledby="signal-summary-title">
+      <div><p className="overview-section-kicker">Signal</p><h2 id="signal-summary-title">当前信号</h2><p aria-live="polite">{loading ? '正在读取当前月份数据…' : items.length ? `最高级别：${signalLevel(items)} · 按优先级查看证据` : '当前月份没有按规则生成的信号。'}</p></div>
+      <button ref={buttonRef} type="button" className="overview-signal-summary__button" aria-label="打开 Signal 详情" onClick={onOpen}><strong>{loading ? '—' : items.length}</strong><span>Signal · 最高级别 {loading ? '—' : signalLevel(items)}</span><ArrowRightOutlined aria-hidden="true" /></button>
     </section>
+  )
+}
+
+function SignalDrawer({ open, items, month, canEdit, onClose, onNavigate, onOpenMaintenance, onClosed }) {
+  function itemLabel(item) {
+    if (item.type === 'maturity-missing') return item.activityName
+    return item.teamName ? `${item.teamName} · ${item.activityName}` : item.activityName
+  }
+
+  return (
+    <Drawer className="overview-signal-drawer" rootClassName="overview-signal-drawer-root" placement="right" title={`Signal · ${month}`} open={open} onClose={onClose} afterOpenChange={(visible) => { if (!visible) onClosed?.() }} size={480}>
+      <div className="overview-signal-drawer__body">
+        {!items.length && <EmptyState>当前没有按规则生成的 Signal。</EmptyState>}
+        {items.length > 0 && <ol className="overview-signal-list">
+          {items.map((item, index) => (
+            <li key={`${item.type}-${item.metricId ?? item.activityId}-${item.teamId ?? index}`} className={`overview-signal-item is-${item.type}`}>
+              <div className="overview-signal-item__heading"><span className="overview-signal-item__level">{item.priority === 0 ? '高' : item.priority <= 2 ? '中' : '低'}</span><strong>{itemLabel(item)}</strong></div>
+              <p>{item.metricName ? `${item.metricName} · ` : ''}{item.reason}</p>
+              <dl><div><dt>当前值</dt><dd>{item.value === undefined ? '—' : formatMetricValue({ type: item.metricType ?? 'ratio' }, item.value)}</dd></div><div><dt>领域均值</dt><dd>{item.domainValue === undefined ? '—' : formatMetricValue({ type: item.metricType ?? 'ratio' }, item.domainValue)}</dd></div><div><dt>月份</dt><dd>{month}</dd></div></dl>
+              <div className="overview-signal-item__actions">
+                {item.metricId && onNavigate && <button type="button" onClick={() => onNavigate(`/analytics/metrics/${item.metricId}`)}>查看证据 <ArrowRightOutlined aria-hidden="true" /></button>}
+                {item.type === 'maturity-missing' && canEdit && <button type="button" onClick={onOpenMaintenance}>维护成熟度</button>}
+              </div>
+            </li>
+          ))}
+        </ol>}
+      </div>
+    </Drawer>
   )
 }
 
@@ -385,34 +511,74 @@ function FactPerformanceSection({ title, description, rows, loading = false, onN
   )
 }
 
-function AttentionPanel({ items, loading = false, onNavigate }) {
-  const visibleItems = items.slice(0, 8)
-  function itemLabel(item) {
-    if (item.type === 'maturity-missing') return item.activityName
-    if (item.teamName) return `${item.teamName} · ${item.activityName}`
-    return item.activityName
-  }
+function ActivityMetricCell({ row, month }) {
+  const value = row.value === null ? '—' : formatMetricValue(row.metric, row.value)
+  return (
+    <div className={`key-matrix-metric${row.value === null ? ' is-missing' : row.value < 0 ? ' is-negative' : ''}`} aria-label={`${row.activity.name} ${row.metric.name} ${value}，${month} 环比 ${formatTrendDelta(row.metric, row.delta)}`}>
+      <div className="key-matrix-metric__title"><span>{row.metric.name}</span><strong>{value}</strong></div>
+      <div className="key-matrix-metric__trend"><span>环比 {formatTrendDelta(row.metric, row.delta)}</span><MicroTrend values={row.values} label={`${row.activity.name} ${row.metric.name} 近六个月微型趋势`} /></div>
+    </div>
+  )
+}
+
+function MaturityMetricCell({ row, summary, month }) {
+  const value = summary?.score === null || summary?.score === undefined ? '—' : formatMaturityScore(summary)
+  return (
+    <div className={`key-matrix-metric${row.value === null ? ' is-missing' : ''}`} aria-label={`${summary?.activity_name ?? '成熟度'} ${value}，${month} 环比 ${formatTrendDelta({ type: 'maturity' }, row.delta)}`}>
+      <div className="key-matrix-metric__title"><span>{summary?.level ?? '未评估'}</span><strong>{value}</strong></div>
+      <div className="key-matrix-metric__trend"><span>环比 {formatTrendDelta({ type: 'maturity' }, row.delta)}</span><MicroTrend values={row.values} label={`${summary?.activity_name ?? '成熟度'} 近六个月微型趋势`} /></div>
+    </div>
+  )
+}
+
+function KeyActivityMatrix({ activities, data, history, dataByMetric, errors, teams, month, onNavigate, onOpenActivity }) {
+  const months = monthWindow(month)
+  const maturityRows = buildMaturityTrendRows({ history, activities, months })
+  const metricRows = buildMetricTrendRows({ activities, dataByMetric, errors, months, teams })
+  const maturityById = new Map(maturityRows.map((row) => [String(row.activity.id), row]))
+  const summaries = new Map((data?.activities ?? []).map((summary) => [String(summary.activity_id), summary]))
+  const metricsByActivity = new Map()
+  metricRows.forEach((row) => {
+    const key = String(row.activity.id)
+    metricsByActivity.set(key, [...(metricsByActivity.get(key) ?? []), row])
+  })
 
   return (
-    <section className="overview-panel attention-panel" aria-labelledby="attention-title">
-      <header className="overview-section-header"><div><p className="overview-section-kicker">行动队列</p><h2 id="attention-title">优先信号</h2><p>优先显示负提效和缺失，再显示低于当前领域均值的相对信号。</p></div><span className="overview-count-badge">{items.length} 项</span></header>
-      {loading && <p className="overview-empty">正在加载当前月份事实…</p>}
-      {!loading && !visibleItems.length && <p className="overview-empty">当前没有按规则生成的需关注项。</p>}
-      {!loading && !!visibleItems.length && <ul className="attention-list">
-        {visibleItems.map((item, index) => (
-          <li key={`${item.type}-${item.metricId ?? item.activityId}-${item.teamId ?? index}`} className={`attention-item is-${item.type}`}>
-            <span className="attention-item__marker" aria-hidden="true" />
-            <div><strong>{itemLabel(item)}</strong><span>{item.metricName ? `${item.metricName} · ` : ''}{item.reason}{item.value !== undefined ? ` · ${formatMetricValue({ type: item.metricType ?? 'ratio' }, item.value)}` : ''}</span></div>
-            {item.metricId && onNavigate && <button type="button" className="attention-item__link" onClick={() => onNavigate(`/analytics/metrics/${item.metricId}`)}>查看证据 <ArrowRightOutlined aria-hidden="true" /></button>}
-          </li>
-        ))}
-      </ul>}
-      {items.length > visibleItems.length && <p className="overview-card-note">已显示优先级最高的 {visibleItems.length} 项。</p>}
+    <section className="overview-key-matrix" aria-labelledby="key-activity-matrix-title">
+      <header className="overview-board-header">
+        <div><p className="overview-section-kicker">Activity matrix</p><h2 id="key-activity-matrix-title">关键研发活动对照</h2><p>8 项活动 · 当前值、环比方向和近六个月微型趋势；多率指标按真实指标分行。</p></div>
+        <span>{month} · company_average</span>
+      </header>
+      <div className="key-activity-matrix__head" aria-hidden="true"><span>活动</span><span>成熟度</span><span>AI 渗透 / 比率</span><span>提效率</span><span>数据状态</span><span>下钻</span></div>
+      <div className="key-activity-matrix__body">
+        {activities.map((activity) => {
+          const key = String(activity.id)
+          const summary = summaries.get(key)
+          const maturityRow = maturityById.get(key) ?? { value: null, delta: null, values: [] }
+          const rows = metricsByActivity.get(key) ?? []
+          const rateRows = rows.filter((row) => row.metric.type === 'penetration' || row.metric.type === 'ratio')
+          const efficiencyRows = rows.filter((row) => row.metric.type === 'efficiency')
+          const availableMetrics = rows.filter((row) => row.hasData).length
+          const maturityAvailable = typeof summary?.score === 'number' && Number.isFinite(summary.score)
+          const status = !maturityAvailable && !availableMetrics ? '缺失' : maturityAvailable && availableMetrics === rows.length ? '完整' : '部分'
+          return (
+            <article className="key-activity-matrix__row" key={activity.id}>
+              <div className="key-matrix-activity"><strong>{activity.name}</strong><span>{activity.metrics.length} 个目录指标</span></div>
+              <div className="key-matrix-cell" data-label="成熟度"><MaturityMetricCell row={maturityRow} summary={summary} month={month} /></div>
+              <div className="key-matrix-cell" data-label="AI 渗透 / 比率">{rateRows.length ? rateRows.map((row) => <ActivityMetricCell key={row.metric.id} row={row} month={month} />) : <span className="key-matrix-undefined">指标未定义</span>}</div>
+              <div className="key-matrix-cell" data-label="提效率">{efficiencyRows.length ? efficiencyRows.map((row) => <ActivityMetricCell key={row.metric.id} row={row} month={month} />) : <span className="key-matrix-undefined">指标未定义</span>}</div>
+              <div className={`key-matrix-status is-${status === '完整' ? 'complete' : status === '部分' ? 'partial' : 'missing'}`}><strong>{status}</strong><span>成熟度 {maturityAvailable ? '已评估' : '未评估'} · 指标 {availableMetrics} / {rows.length}</span></div>
+              <div className="key-matrix-drilldown"><button type="button" onClick={() => onOpenActivity(activity.id)}>查看活动 <ArrowRightOutlined aria-hidden="true" /></button>{rows.map((row) => <button key={row.metric.id} type="button" onClick={() => onNavigate?.(`/analytics/metrics/${row.metric.id}`)}>{row.metric.name}</button>)}</div>
+            </article>
+          )
+        })}
+      </div>
     </section>
   )
 }
 
-function DomainView({ data, category, sort, factRows, attentionItems, metricsLoading, onOpenActivity, onNavigate }) {
+function DomainView({ data, category, sort, activities, history, dataByMetric, errors, teams, month, factRows, metricsLoading, onOpenActivity, onNavigate }) {
+  if (category === 'key') return <KeyActivityMatrix activities={activities} data={data} history={history} dataByMetric={dataByMetric} errors={errors} teams={teams} month={month} onNavigate={onNavigate} onOpenActivity={onOpenActivity} />
   const ordered = sortMaturityActivities(data?.activities ?? [], sort)
   const radarActivities = data?.activities ?? []
   const radarSeries = [{
@@ -425,15 +591,11 @@ function DomainView({ data, category, sort, factRows, attentionItems, metricsLoa
   const efficiencyRows = factRows.filter((row) => row.metric.type === 'efficiency')
   const countRows = factRows.filter((row) => row.metric.type === 'count')
   const booleanRows = factRows.filter((row) => row.metric.type === 'boolean' || row.metric.type === 'bool')
-  const summaryFactState = { ...factCompleteness(factRows), loading: metricsLoading }
   return (
     <>
-      <DecisionBrief data={data} factState={summaryFactState} attentionItems={attentionItems} category={category} />
-      <AttentionPanel items={attentionItems} loading={metricsLoading} onNavigate={onNavigate} />
-
       <section className="overview-performance-board" aria-labelledby="performance-board-title">
         <header className="overview-board-header">
-          <div><p className="overview-section-kicker">组织信号</p><h2 id="performance-board-title">效率表现</h2><p>按当前月领域均值横向查看，值与数据覆盖同时呈现。</p></div>
+          <div><p className="overview-section-kicker">组织信号</p><h2 id="performance-board-title">{category === 'key' ? '效率表现' : '能力指标'}</h2><p>{category === 'key' ? '按当前月领域均值横向查看，值与数据覆盖同时呈现。' : '按目录类型展示当前月使用率、状态和数量，值与数据覆盖同时呈现。'}</p></div>
           <span>基线：company_average</span>
         </header>
         <div className="overview-performance-grid">
@@ -744,6 +906,8 @@ export default function OverviewPage({
   const overviewComputed = useComputedMetrics(catalog ?? EMPTY_METRIC_CATALOG, MONTHLY_FILTER, onSessionExpired)
   const [maintenanceTeamId, setMaintenanceTeamId] = useState(() => user?.role === 'maintainer' ? String(user.maintainer_team_id) : '')
   const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+  const [signalOpen, setSignalOpen] = useState(false)
+  const signalButtonRef = useRef(null)
 
   const teamIdsKey = teams.map((team) => team.id).join(',')
   const colorSlotsRef = useRef(null)
@@ -816,6 +980,12 @@ export default function OverviewPage({
     updateMaturity({ ...maturityState, compareTeamIds }, { history: 'push' })
   }
 
+  function openMaintenanceFromSignal() {
+    if (!maintenanceTeamId && teams[0]) setMaintenanceTeamId(String(teams[0].id))
+    setSignalOpen(false)
+    setMaintenanceOpen(true)
+  }
+
   return (
     <div className="overview-shell maturity-overview-shell">
       <div className="overview-page-head">
@@ -823,11 +993,14 @@ export default function OverviewPage({
         <p className="overview-slice-description"><span>当前视图</span>{maturityState.month} · {maturityState.category === 'key' ? '关键研发活动' : '通用研发能力'}</p>
       </div>
       <OverviewControls state={maturityState} teams={teams} user={user} maintenanceTeamId={maintenanceTeamId} onMaintenanceTeamChange={setMaintenanceTeamId} onChange={updateMaturity} onOpenMaintenance={() => setMaintenanceOpen(true)} />
+      <SignalSummary items={attentionItems} loading={overviewComputed.loading || maturity.loading} onOpen={() => setSignalOpen(true)} buttonRef={signalButtonRef} />
       {maturity.loading && <div className="maturity-state">正在加载 {maturityState.month} 成熟度评估…</div>}
       {!maturity.loading && maturityError && <div className="maturity-state maturity-state--error" role="alert">成熟度数据加载失败：{maturityError.message}</div>}
-      {!maturity.loading && !maturityError && <DomainView data={maturity.data} category={maturityState.category} sort={maturityState.sort} factRows={factRows} attentionItems={attentionItems} metricsLoading={overviewComputed.loading} onOpenActivity={openActivity} onNavigate={onNavigate} />}
+      {!maturity.loading && !maturityError && <InsightGrid category={maturityState.category} month={maturityState.month} maturityHistory={maturity.history ?? []} maturityActivities={activeActivities} dataByMetric={overviewComputed.data} errors={overviewComputed.errors} teams={teams} loading={{ maturity: maturity.loading, metrics: overviewComputed.loading }} />}
+      {!maturity.loading && !maturityError && <DomainView data={maturity.data} category={maturityState.category} sort={maturityState.sort} activities={activeActivities} history={maturity.history ?? []} dataByMetric={overviewComputed.data} errors={overviewComputed.errors} teams={teams} month={maturityState.month} factRows={factRows} metricsLoading={overviewComputed.loading} onOpenActivity={openActivity} onNavigate={onNavigate} />}
       {!maturity.loading && !maturityError && <MatrixDisclosure open={maturityState.view === 'team'} data={maturity.data} selectedTeamIds={maturityState.compareTeamIds} showBaseline={maturityState.showBaseline} teamColors={teamColors} onToggle={toggleMatrix} onToggleTeam={toggleTeam} onToggleBaseline={(showBaseline) => updateMaturity({ ...maturityState, showBaseline }, { history: 'push' })} onOpenActivity={openActivity} />}
       <MetricComparison catalog={catalog} teams={teams} versions={versions} overviewComputed={overviewComputed} filter={controlledFilter} onFilterChange={onFilterChange} onNavigate={onNavigate} onSessionExpired={onSessionExpired} teamColors={teamColors} />
+      <SignalDrawer open={signalOpen} items={attentionItems} month={maturityState.month} canEdit={canEdit} onClose={() => setSignalOpen(false)} onNavigate={onNavigate} onOpenMaintenance={openMaintenanceFromSignal} onClosed={() => signalButtonRef.current?.focus()} />
       {canEdit && <MaturityMaintenanceDrawer open={maintenanceOpen} team={maintenanceTeam} month={maturityState.month} catalog={catalog} onClose={() => setMaintenanceOpen(false)} onSaved={() => { setMaturityRevision((revision) => revision + 1); setMaintenanceOpen(false) }} onSessionExpired={onSessionExpired} />}
     </div>
   )

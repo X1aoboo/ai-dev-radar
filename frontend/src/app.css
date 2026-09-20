@@ -380,6 +380,12 @@ textarea:focus-visible {
   padding: var(--app-space-6);
 }
 
+.app-shell__content--overview {
+  max-width: none;
+  padding-left: clamp(16px, 2vw, 32px);
+  padding-right: clamp(16px, 2vw, 32px);
+}
+
 .app-loading,
 .app-error {
   color: var(--app-text-secondary);

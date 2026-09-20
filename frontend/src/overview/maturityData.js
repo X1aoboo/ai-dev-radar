@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchJson } from '../api'
-import { previousMonthId } from './overviewLogic'
+import { monthWindow, previousMonthId } from './overviewLogic'
 
 export function maturityOverviewUrl(month, category) {
   const params = new URLSearchParams({ month: String(month), kind: String(category) })
@@ -14,21 +14,27 @@ export function maturityRecordsUrl(teamId, month) {
 }
 
 export function useMaturityOverview(month, category, onSessionExpired, refreshKey = 0) {
-  const [state, setState] = useState({ loading: true, data: null, error: null })
+  const [state, setState] = useState({ loading: true, data: null, history: [], error: null })
   const sessionExpiredRef = useRef(onSessionExpired)
   sessionExpiredRef.current = onSessionExpired
 
   useEffect(() => {
     const controller = new AbortController()
     let active = true
-    setState({ loading: true, data: null, error: null })
-    fetchJson(maturityOverviewUrl(month, category), { signal: controller.signal })
-      .then((data) => {
-        if (active) setState({ loading: false, data, error: null })
+    const months = monthWindow(month, 6)
+    setState({ loading: true, data: null, history: [], error: null })
+    Promise.all(months.map((assessmentMonth) => fetchJson(maturityOverviewUrl(assessmentMonth, category), { signal: controller.signal })))
+      .then((responses) => {
+        if (active) setState({
+          loading: false,
+          data: responses.at(-1) ?? null,
+          history: responses.map((data, index) => ({ month: months[index], data })),
+          error: null,
+        })
       })
       .catch((error) => {
         if (!active || error.name === 'AbortError') return
-        setState({ loading: false, data: null, error })
+        setState({ loading: false, data: null, history: [], error })
         if (error.status === 401) sessionExpiredRef.current?.()
       })
     return () => {

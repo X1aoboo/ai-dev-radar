@@ -3,6 +3,9 @@ import test from 'node:test'
 
 import {
   assignTeamColorSlots,
+  bestAndWeakestRows,
+  buildMaturityTrendRows,
+  buildMetricTrendRows,
   currentSnapshot,
   currentMetricValues,
   buildAttentionItems,
@@ -14,6 +17,7 @@ import {
   formatMetricValue,
   latestPeriodId,
   maturityAverageScore,
+  monthWindow,
   metricPointForMonth,
   maturityStateFromSearchParams,
   maturityStateToSearchParams,
@@ -270,6 +274,39 @@ test('excludes missing maturity values and classifies negative and relatively-be
   assert.equal(items.some((item) => item.type === 'relative-behind' && item.teamName === '团队A'), true)
   assert.equal(items.some((item) => item.type === 'maturity-missing'), true)
   assert.equal(maturityAverageScore({ activities: [{ score: 0 }, { score: null }, { score: 2 }] }), 1)
+})
+
+test('builds a six-month window ending at the selected month without filling gaps', () => {
+  assert.deepEqual(monthWindow('2026-03'), ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03'])
+  const rows = buildMetricTrendRows({
+    activities: [{ id: 1, name: '编码开发', metrics: [{ id: 11, name: '渗透率', type: 'penetration' }] }],
+    dataByMetric: {
+      11: {
+        periods: [{ id: '2026-02' }, { id: '2026-03' }],
+        series: [{ team_id: 1, values: [{ period_id: '2026-02', value: 0 }, { period_id: '2026-03', value: 0.4 }] }],
+        company_average: [{ period_id: '2026-02', value: 0 }, { period_id: '2026-03', value: 0.4 }],
+      },
+    },
+    months: ['2026-01', '2026-02', '2026-03'],
+    teams: [{ id: 1 }],
+  })
+  assert.deepEqual(rows[0].values, [null, 0, 0.4])
+  assert.equal(rows[0].delta, 0.4)
+})
+
+test('keeps maturity zero, missing history, and best/weak values distinct', () => {
+  const rows = buildMaturityTrendRows({
+    activities: [{ id: 1, name: '编码开发' }, { id: 2, name: '测试' }],
+    history: [
+      { month: '2026-02', data: { activities: [{ activity_id: 1, score: 0 }, { activity_id: 2, score: null }] } },
+      { month: '2026-03', data: { activities: [{ activity_id: 1, score: 1.5 }, { activity_id: 2, score: 2 }] } },
+    ],
+    months: ['2026-02', '2026-03'],
+  })
+  assert.deepEqual(rows.map((row) => row.values), [[0, 1.5], [null, 2]])
+  assert.equal(rows[0].delta, 1.5)
+  assert.equal(bestAndWeakestRows(rows).best.activity.name, '测试')
+  assert.equal(bestAndWeakestRows(rows).weakest.activity.name, '编码开发')
 })
 
 function expectCurrentMonth() {

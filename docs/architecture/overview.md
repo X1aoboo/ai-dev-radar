@@ -47,7 +47,7 @@ AppShell 分别持有桌面折叠选择、matchMedia 窄屏状态与抽屉开关
 
 AppSidebar 的品牌区放共享的 frontend/public/favicon.svg 雷达 Logo 和折叠按钮：展开时水平分列，折叠后垂直居中；展开态使用 MenuFoldOutlined 收起侧栏，折叠态使用 MenuOutlined，按钮保留 Tooltip、ARIA 标签及键盘焦点反馈。按钮为 40×40px，hover 缩放 1.06、active 缩放 0.94，颜色/背景/缩放过渡 160ms；prefers-reduced-motion: reduce 时关闭按钮过渡和缩放。共享 SVG 为蓝色圆形雷达环、实色青色扫描线和三个数据点，供侧栏、抽屉、登录页和 favicon 使用。中间 app-nav 独立滚动，文字使用透明度与最大宽度裁切保持单行。窄屏使用现有 Ant Design Drawer，抽屉和侧栏共用 #F8FAFD 浅色表面，不保留折叠图标栏，关闭后焦点返回顶栏打开按钮。AppSidebar 复用角色过滤与路由元数据，数据管理直接提供四类来源链接，需求子路由共享所属入口样式；总览及其下钻同样使用所属入口样式，精确匹配才使用 aria-current=page。折叠切换不发业务请求、不改变权限。
 
-`OverviewPage` 以 `month` URL 参数为单一分析月份：父页面一次持有目录指标的 `time/month` 计算结果，主体事实比较和深入分析复用同一月数据；深入分析切换到周或迭代时才请求对应切片。主体从每个指标的团队序列和 `company_average` 派生有效团队数、事实完整度、横向比较和关注项，不使用 `domain_summary` 作为事实基线；决策摘要只对这些已派生信号做优先级表达，不新增阈值、目标或外部基准。页面呈现层按决策摘要、优先信号、效率表现、能力画像和按需深入分析分组。成熟度仍由 `/api/maturity/overview` 返回后端领域平均；矩阵用原生 `details/summary` 折叠并在表格中固定团队列。布尔指标在保留跨月 `snapshot` 的同时使用已有 `series.values` 返回按月状态，保证月度选择不回退。
+`OverviewPage` 以 `month` URL 参数为单一分析月份：父页面一次持有目录指标的 `time/month` 完整计算结果，主体 Insight、活动矩阵和深入分析复用同一结果；深入分析切换到周或迭代时才请求对应切片。成熟度 overview 对选定月及前五个月并行读取现有 `/api/maturity/overview`，当前月响应继续作为矩阵数据，历史响应只用于成熟度趋势，不新增公共 API。主体从每个指标的团队序列和 `company_average` 派生有效团队数、事实完整度、横向比较和 Signal，不使用 `domain_summary` 作为事实基线；不新增阈值、目标或外部基准。页面呈现层按上下文筛选、Signal 摘要、Insight 趋势卡、关键活动对照/通用能力指标和按需深入分析分组。成熟度仍使用后端领域平均；矩阵使用精确文本值、环比和微型趋势，并保留原生 `details/summary` 的团队比较与领域基线。布尔指标在保留跨月 `snapshot` 的同时使用已有 `series.values` 返回按月状态，保证月度选择不回退。
 
 ## 数据流和模型
 

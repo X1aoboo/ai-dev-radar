@@ -127,3 +127,47 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
     series: [...teamSeries, companySeries],
   }
 }
+
+export function buildInsightOption({ periods = [], series = [], formatValue = (value) => String(value), yMin, yMax }) {
+  const periodLabels = periods.map((period) => period.label ?? period.id ?? period)
+  return {
+    animationDuration: 180,
+    grid: { left: 8, right: 12, top: 8, bottom: 24, containLabel: true },
+    tooltip: {
+      trigger: 'axis',
+      formatter: (params) => {
+        const items = (Array.isArray(params) ? params : [params]).filter((item) => item.value !== null && item.value !== undefined)
+        if (!items.length) return ''
+        return [`<strong>${escapeHtml(items[0].axisValue ?? '')}</strong>`, ...items.map((item) => `${item.marker}${escapeHtml(item.seriesName)}：${escapeHtml(formatValue(item.value, item.seriesIndex))}`)].join('<br/>')
+      },
+    },
+    xAxis: {
+      type: 'category',
+      data: periodLabels,
+      axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
+      axisTick: { show: false },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 10, hideOverlap: true },
+    },
+    yAxis: {
+      type: 'value',
+      min: yMin,
+      max: yMax,
+      splitLine: { lineStyle: { color: DATAVIZ_COLORS.grid } },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 10, formatter: (value) => formatValue(value, 0) },
+    },
+    series: series.map((entry) => ({
+      name: entry.name,
+      type: 'line',
+      data: entry.values,
+      color: entry.color ?? DATAVIZ_COLORS.team[0],
+      connectNulls: false,
+      showSymbol: true,
+      symbol: 'circle',
+      symbolSize: 5,
+      lineStyle: { width: 2, cap: 'round', join: 'round' },
+      itemStyle: { color: entry.color ?? DATAVIZ_COLORS.team[0] },
+      endLabel: { show: series.length < 4, formatter: '{a}', color: DATAVIZ_COLORS.inkSecondary, fontSize: 10 },
+      labelLayout: { moveOverlap: 'shiftY' },
+    })),
+  }
+}

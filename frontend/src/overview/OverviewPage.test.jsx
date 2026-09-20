@@ -133,7 +133,7 @@ afterEach(() => {
   delete globalThis.window
 })
 
-test('renders the domain comparison first and keeps metric comparison collapsed', async () => {
+test('renders the insight cockpit and keeps metric comparison collapsed', async () => {
   let renderer
   await act(async () => {
     renderer = create(
@@ -149,12 +149,13 @@ test('renders the domain comparison first and keeps metric comparison collapsed'
     )
   })
 
-  expect(renderText(renderer.toJSON())).toContain('本月决策摘要')
-  expect(renderText(renderer.toJSON())).toContain('成熟度均值')
-  expect(renderText(renderer.toJSON())).toContain('覆盖团队')
-  expect(renderText(renderer.toJSON())).toContain('尚未配置目标或外部行业基准')
+  expect(renderText(renderer.toJSON())).toContain('当前信号')
+  expect(renderText(renderer.toJSON())).toContain('Insight')
+  expect(renderText(renderer.toJSON())).toContain('成熟度')
+  expect(renderText(renderer.toJSON())).toContain('AI 渗透 / 比率')
+  expect(renderText(renderer.toJSON())).toContain('提效率')
   expect(renderText(renderer.toJSON())).toContain('关键活动8')
-  expect(renderText(renderer.toJSON())).toContain('能力点明细')
+  expect(renderText(renderer.toJSON())).toContain('关键研发活动对照')
   expect(renderText(renderer.toJSON()).includes('第一指标')).toBe(false)
   expect(renderText(renderer.toJSON()).includes('第二指标')).toBe(false)
   expect(renderText(renderer.toJSON()).includes('指标集中比较')).toBe(true)
@@ -222,11 +223,14 @@ test('keeps the decision path and matrix collapsed by default', async () => {
   })
 
   const text = renderText(renderer.toJSON())
-  expect(text.indexOf('本月决策摘要')).toBeGreaterThanOrEqual(0)
-  expect(text.indexOf('优先信号')).toBeGreaterThan(text.indexOf('本月决策摘要'))
-  expect(text.indexOf('效率表现')).toBeGreaterThan(text.indexOf('优先信号'))
-  expect(text.indexOf('成熟度与能力点')).toBeGreaterThan(text.indexOf('效率表现'))
-  expect(text.indexOf('指标集中比较')).toBeGreaterThan(text.indexOf('成熟度与能力点'))
+  const signalIndex = text.indexOf('当前信号')
+  const insightIndex = text.indexOf('成熟度', signalIndex)
+  expect(signalIndex).toBeGreaterThanOrEqual(0)
+  expect(insightIndex).toBeGreaterThan(signalIndex)
+  expect(text.indexOf('关键研发活动对照')).toBeGreaterThan(insightIndex)
+  expect(text.indexOf('指标集中比较')).toBeGreaterThan(text.indexOf('关键研发活动对照'))
+  expect(text.includes('本月决策摘要')).toBe(false)
+  expect(text.includes('优先信号')).toBe(false)
   const disclosure = renderer.root.findByProps({ className: 'maturity-matrix-disclosure' })
   expect(disclosure.props.open).toBe(false)
   renderer.unmount()
@@ -276,7 +280,22 @@ test('shows selected-month fact absence without falling back to another month', 
     )
   })
 
-  expect(renderText(renderer.toJSON())).toContain('分析月份暂无AI 渗透率事实，不回退到其他月份。')
+  expect(renderText(renderer.toJSON())).toContain('—')
+  expect(renderText(renderer.toJSON())).toContain('缺失')
+  renderer.unmount()
+})
+
+test('keeps the Signal drawer closed until its summary button is activated', async () => {
+  let renderer
+  await act(async () => {
+    renderer = create(<OverviewPage catalog={catalog} teams={teams} versions={versions} filter={filter} onFilterChange={() => undefined} onNavigate={() => undefined} onSessionExpired={() => undefined} />)
+  })
+
+  expect(renderText(renderer.toJSON())).not.toContain('当前值领域均值月份')
+  const button = renderer.root.findByProps({ 'aria-label': '打开 Signal 详情' })
+  await act(async () => button.props.onClick())
+  expect(renderText(renderer.toJSON())).toContain('当前值')
+  expect(renderText(renderer.toJSON())).toContain('领域均值')
   renderer.unmount()
 })
 

@@ -258,7 +258,7 @@ function AppShell({ user, onLogout }) {
       </Drawer>}
       <div className="app-shell__body">
         <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
-        <div id="main-content" className="app-shell__content" role="main" tabIndex={-1}><Outlet /></div>
+        <div id="main-content" className={`app-shell__content${location.pathname === '/' ? ' app-shell__content--overview' : ''}`} role="main" tabIndex={-1}><Outlet /></div>
       </div>
     </div>
   )

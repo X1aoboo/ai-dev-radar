@@ -67,6 +67,17 @@ export function previousMonthId(month) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
 }
 
+export function monthWindow(month, limit = 6) {
+  const end = validMonth(month) ? String(month) : currentMonthId()
+  const months = []
+  let cursor = end
+  for (let index = 0; index < Math.max(0, limit); index += 1) {
+    months.unshift(cursor)
+    cursor = previousMonthId(cursor)
+  }
+  return months
+}
+
 function validMonth(value) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(value ?? ''))) return false
   const [year, month] = String(value).split('-').map(Number)
@@ -399,6 +410,57 @@ export function maturityAverageScore(data) {
     .map((activity) => activity.score)
     .filter((score) => typeof score === 'number' && Number.isFinite(score))
   return scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null
+}
+
+export function buildMaturityTrendRows({ history = [], activities = [], months = [] } = {}) {
+  const dataByMonth = new Map(history.map((entry) => [idKey(entry.month), entry.data]))
+  return activities.map((activity) => {
+    const values = months.map((month) => {
+      const summary = dataByMonth.get(idKey(month))?.activities?.find((item) => idKey(item.activity_id) === idKey(activity.activity_id ?? activity.id))
+      return typeof summary?.score === 'number' && Number.isFinite(summary.score) ? summary.score : null
+    })
+    const value = values.at(-1) ?? null
+    const previous = values.at(-2) ?? null
+    return {
+      activity,
+      values,
+      value,
+      delta: numericValue(value) && numericValue(previous) ? value - previous : null,
+      hasData: numericValue(value),
+    }
+  })
+}
+
+export function buildMetricTrendRows({ activities = [], dataByMetric = {}, errors = {}, months = [], teams = [] } = {}) {
+  return activities.flatMap((activity) => activity.metrics.map((metric) => {
+    const data = dataByMetric[metric.id]
+    const points = months.map((month) => metricPointForMonth(data, month, teams.length))
+    const current = points.at(-1)
+    const previous = points.at(-2)
+    const value = current?.company?.value
+    const previousValue = previous?.company?.value
+    return {
+      activity,
+      metric,
+      data,
+      points,
+      values: points.map((point) => numericValue(point.company?.value) ? point.company.value : null),
+      value: numericValue(value) ? value : null,
+      delta: numericValue(value) && numericValue(previousValue) ? value - previousValue : null,
+      validTeamCount: current?.validTeamCount ?? 0,
+      totalTeamCount: current?.totalTeamCount ?? teams.length,
+      hasData: Boolean(errors[metric.id]) ? false : Boolean(current?.hasData),
+      error: errors[metric.id] ?? null,
+      statusRows: current?.teams ?? [],
+    }
+  }))
+}
+
+export function bestAndWeakestRows(rows = []) {
+  const available = rows.filter((row) => numericValue(row.value))
+  if (!available.length) return { best: null, weakest: null }
+  const ordered = [...available].sort((left, right) => right.value - left.value)
+  return { best: ordered[0], weakest: ordered.at(-1) }
 }
 
 export function buildAttentionItems({ activities = [], dataByMetric = {}, errors = {}, maturityData, month, teams = [] } = {}) {
