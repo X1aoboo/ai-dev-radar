@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Drawer } from 'antd'
+import {
+  AlertOutlined,
+  ArrowRightOutlined,
+  CheckCircleOutlined,
+  DatabaseOutlined,
+  RadarChartOutlined,
+  TeamOutlined,
+} from '@ant-design/icons'
 
 import { fetchJson } from '../api'
 import EChart from '../components/EChart'
@@ -275,7 +283,7 @@ function OverviewControls({
   )
 }
 
-function MaturitySummary({ data, factState }) {
+function DecisionBrief({ data, factState, attentionItems, category }) {
   const score = maturityAverageScore(data)
   const factStatus = factState.loading
     ? '加载中'
@@ -283,13 +291,49 @@ function MaturitySummary({ data, factState }) {
     ? '暂无目录指标'
     : factState.available === 0 ? '暂无事实'
     : factState.available === factState.total ? '事实完整' : '部分缺失'
+  const negativeCount = attentionItems.filter((item) => item.type === 'negative-efficiency').length
+  const missingCount = attentionItems.filter((item) => item.type === 'maturity-missing' || item.type === 'fact-missing').length
+  const relativeCount = attentionItems.filter((item) => item.type === 'relative-behind').length
+  const brief = factState.loading
+    ? { icon: <DatabaseOutlined aria-hidden="true" />, title: '正在汇总当前月份信号', tone: 'loading' }
+    : negativeCount > 0
+      ? { icon: <AlertOutlined aria-hidden="true" />, title: `${negativeCount} 个负提效信号需要优先确认`, tone: 'warning' }
+      : missingCount > 0
+        ? { icon: <DatabaseOutlined aria-hidden="true" />, title: `${missingCount} 项数据或评估尚未补齐`, tone: 'warning' }
+        : relativeCount > 0
+          ? { icon: <RadarChartOutlined aria-hidden="true" />, title: `${relativeCount} 个团队指标低于当前领域均值`, tone: 'neutral' }
+          : { icon: <CheckCircleOutlined aria-hidden="true" />, title: '当前切片未发现需优先处理的信号', tone: 'positive' }
+
+  const stats = [
+    { icon: <TeamOutlined aria-hidden="true" />, label: '覆盖团队', value: data?.team_count ?? '—', note: '当前领域' },
+    { icon: <RadarChartOutlined aria-hidden="true" />, label: '成熟度均值', value: score === null ? '—' : score.toFixed(2), note: '0–5 分' },
+    { icon: <CheckCircleOutlined aria-hidden="true" />, label: '评估覆盖', value: formatCoverage(data?.coverage_rate), note: `${data?.assessed_cell_count ?? 0} / ${data?.total_cell_count ?? 0} 单元` },
+    { icon: <DatabaseOutlined aria-hidden="true" />, label: '事实覆盖', value: factStatus, note: `${factState.available} / ${factState.total} 指标` },
+  ]
+
   return (
-    <div className="maturity-summary-grid">
-      <article className="maturity-summary-card"><span>团队数</span><strong>{data?.team_count ?? '—'}</strong><small>当前领域全部团队</small></article>
-      <article className="maturity-summary-card"><span>领域平均成熟度</span><strong>{score === null ? '—' : score.toFixed(2)}</strong><small>当前分类已评估能力点平均</small></article>
-      <article className="maturity-summary-card"><span>成熟度评估覆盖率</span><strong>{formatCoverage(data?.coverage_rate)}</strong><small>{data?.assessed_cell_count ?? 0} / {data?.total_cell_count ?? 0} 个团队×能力点</small></article>
-      <article className="maturity-summary-card"><span>事实完整状态</span><strong>{factStatus}</strong><small>{factState.available} / {factState.total} 个指标在 {data?.month ?? '选定月份'} 有有效数据</small></article>
-    </div>
+    <section className="overview-decision-card" aria-labelledby="decision-brief-title">
+      <div className="overview-decision-card__copy">
+        <p className="overview-decision-card__eyebrow">本月决策摘要</p>
+        <div className={`overview-decision-card__headline is-${brief.tone}`}>
+          <span className="overview-decision-card__icon">{brief.icon}</span>
+          <h2 id="decision-brief-title">{brief.title}</h2>
+        </div>
+        <p>{data?.month ?? '选定月份'} · {category === 'key' ? '关键研发活动' : '通用研发能力'}。基于当前月事实与成熟度；尚未配置目标或外部行业基准，因此不输出达标或排名判断。</p>
+        <div className="overview-decision-card__signals" aria-label="信号构成">
+          <span>负提效 {negativeCount}</span><span>数据缺失 {missingCount}</span><span>相对靠后 {relativeCount}</span>
+        </div>
+      </div>
+      <dl className="overview-decision-stats">
+        {stats.map((stat) => (
+          <div key={stat.label}>
+            <dt><span>{stat.icon}</span>{stat.label}</dt>
+            <dd>{stat.value}</dd>
+            <small>{stat.note}</small>
+          </div>
+        ))}
+      </dl>
+    </section>
   )
 }
 
@@ -316,7 +360,7 @@ function FactPerformanceSection({ title, description, rows, loading = false, onN
   const maxValue = Math.max(1, ...rows.map((row) => Math.abs(row.company?.value ?? 0)).filter(Number.isFinite))
   const hasData = rows.some((row) => row.hasData)
   return (
-    <section className="overview-performance-section" aria-labelledby={`performance-${title}`}>
+    <article className="overview-performance-section" aria-labelledby={`performance-${title}`}>
       <header className="overview-section-header">
         <div><h2 id={`performance-${title}`}>{title}</h2><p>{description}</p></div>
         <span className="overview-section-header__note">基线：company_average</span>
@@ -332,12 +376,12 @@ function FactPerformanceSection({ title, description, rows, loading = false, onN
               <div className="fact-performance-row__label"><strong>{row.activity.name}</strong><span>{row.metric.name}</span></div>
               <div className="fact-performance-row__bar" aria-hidden="true"><span style={{ width: `${factBarWidth(row, maxValue)}%` }} /></div>
               <div className="fact-performance-row__value"><strong>{factRowValue(row)}</strong><span>{row.validTeamCount} / {row.totalTeamCount} 个有效团队</span></div>
-              {onNavigate && <button type="button" className="fact-performance-row__link" onClick={() => onNavigate(`/analytics/metrics/${row.metric.id}`)}>下钻</button>}
+              {onNavigate && <button type="button" className="fact-performance-row__link" onClick={() => onNavigate(`/analytics/metrics/${row.metric.id}`)}>下钻 <ArrowRightOutlined aria-hidden="true" /></button>}
             </li>
           )
         })}
       </ol>}
-    </section>
+    </article>
   )
 }
 
@@ -351,7 +395,7 @@ function AttentionPanel({ items, loading = false, onNavigate }) {
 
   return (
     <section className="overview-panel attention-panel" aria-labelledby="attention-title">
-      <header className="overview-section-header"><div><h2 id="attention-title">需关注项</h2><p>只基于当前月份的缺失、负提效和相对比较。</p></div><span className="overview-section-header__note">{items.length} 项</span></header>
+      <header className="overview-section-header"><div><p className="overview-section-kicker">行动队列</p><h2 id="attention-title">优先信号</h2><p>优先显示负提效和缺失，再显示低于当前领域均值的相对信号。</p></div><span className="overview-count-badge">{items.length} 项</span></header>
       {loading && <p className="overview-empty">正在加载当前月份事实…</p>}
       {!loading && !visibleItems.length && <p className="overview-empty">当前没有按规则生成的需关注项。</p>}
       {!loading && !!visibleItems.length && <ul className="attention-list">
@@ -359,7 +403,7 @@ function AttentionPanel({ items, loading = false, onNavigate }) {
           <li key={`${item.type}-${item.metricId ?? item.activityId}-${item.teamId ?? index}`} className={`attention-item is-${item.type}`}>
             <span className="attention-item__marker" aria-hidden="true" />
             <div><strong>{itemLabel(item)}</strong><span>{item.metricName ? `${item.metricName} · ` : ''}{item.reason}{item.value !== undefined ? ` · ${formatMetricValue({ type: item.metricType ?? 'ratio' }, item.value)}` : ''}</span></div>
-            {item.metricId && onNavigate && <button type="button" className="attention-item__link" onClick={() => onNavigate(`/analytics/metrics/${item.metricId}`)}>查看</button>}
+            {item.metricId && onNavigate && <button type="button" className="attention-item__link" onClick={() => onNavigate(`/analytics/metrics/${item.metricId}`)}>查看证据 <ArrowRightOutlined aria-hidden="true" /></button>}
           </li>
         ))}
       </ul>}
@@ -384,33 +428,49 @@ function DomainView({ data, category, sort, factRows, attentionItems, metricsLoa
   const summaryFactState = { ...factCompleteness(factRows), loading: metricsLoading }
   return (
     <>
-      <MaturitySummary data={data} factState={summaryFactState} />
-      <div className="overview-hero-grid">
-        <section className="overview-panel overview-radar-panel">
-          <header className="overview-section-header"><div><h2>领域成熟度雷达</h2><p>{data?.month ?? '选定月份'} · 0–5 分；缺失轴不补零。</p></div><span className="overview-section-header__note">{sort === 'score' ? '详情按分数排序' : '目录顺序'}</span></header>
-          <MaturityRadar activities={radarActivities} series={radarSeries} ariaLabel="领域平均成熟度雷达图" />
-        </section>
-        <AttentionPanel items={attentionItems} loading={metricsLoading} onNavigate={onNavigate} />
-      </div>
-      <FactPerformanceSection title={category === 'key' ? 'AI 渗透率' : '比率'} description="按目录实际存在的渗透率/比率指标横向比较当前月数据。" rows={penetrationRows} loading={metricsLoading} onNavigate={onNavigate} />
-      <FactPerformanceSection title="提效率" description="只展示目录中实际存在的 efficiency 指标；负值保留原始语义。" rows={efficiencyRows} loading={metricsLoading} onNavigate={onNavigate} />
-      <FactPerformanceSection title="数量" description="目录中存在数量指标时按当前月 company_average 展示。" rows={countRows} loading={metricsLoading} onNavigate={onNavigate} />
-      <FactPerformanceSection title="布尔状态" description="按团队展示当前月状态；布尔指标没有 company_average。" rows={booleanRows} loading={metricsLoading} onNavigate={onNavigate} />
-      <section className="maturity-panel maturity-detail-panel">
-        <header className="maturity-panel__header"><div><h2>能力点明细</h2><p>点击能力点进入现有指标与趋势详情；分布仅统计已评估团队</p></div></header>
-        <div className="maturity-table-wrap">
-          <table className="maturity-table maturity-domain-table">
-            <thead><tr><th scope="col">能力点</th><th scope="col">领域平均</th><th scope="col">等级</th><th scope="col">已评估团队</th><th scope="col">等级分布</th></tr></thead>
-            <tbody>{ordered.map((summary) => (
-              <tr key={summary.activity_id}>
-                <th scope="row"><button type="button" className="maturity-link-button" onClick={() => onOpenActivity(summary.activity_id)}>{summary.activity_name}</button></th>
-                <td className={summary.score === null ? 'is-missing' : ''}>{summary.score_display ?? '—'}</td>
-                <td><span className={summary.level ? 'maturity-level-label' : 'is-missing'} style={summary.level ? { color: maturityLevelColor(summary.grade) } : undefined}>{summary.level ?? '未评估'}</span></td>
-                <td>{summary.assessed_team_count} / {data.team_count}</td>
-                <td><Distribution summary={summary} /></td>
-              </tr>
-            ))}</tbody>
-          </table>
+      <DecisionBrief data={data} factState={summaryFactState} attentionItems={attentionItems} category={category} />
+      <AttentionPanel items={attentionItems} loading={metricsLoading} onNavigate={onNavigate} />
+
+      <section className="overview-performance-board" aria-labelledby="performance-board-title">
+        <header className="overview-board-header">
+          <div><p className="overview-section-kicker">组织信号</p><h2 id="performance-board-title">效率表现</h2><p>按当前月领域均值横向查看，值与数据覆盖同时呈现。</p></div>
+          <span>基线：company_average</span>
+        </header>
+        <div className="overview-performance-grid">
+          <FactPerformanceSection title={category === 'key' ? 'AI 渗透率' : '比率'} description="渗透率与活动比率" rows={penetrationRows} loading={metricsLoading} onNavigate={onNavigate} />
+          <FactPerformanceSection title="提效率" description="保留负值的原始语义" rows={efficiencyRows} loading={metricsLoading} onNavigate={onNavigate} />
+          <FactPerformanceSection title="数量" description="仅展示目录中已有数量指标" rows={countRows} loading={metricsLoading} onNavigate={onNavigate} />
+          <FactPerformanceSection title="布尔状态" description="按团队状态汇总，无公司均值" rows={booleanRows} loading={metricsLoading} onNavigate={onNavigate} />
+        </div>
+      </section>
+
+      <section className="overview-capability-board" aria-labelledby="capability-board-title">
+        <header className="overview-board-header">
+          <div><p className="overview-section-kicker">能力画像</p><h2 id="capability-board-title">成熟度与能力点</h2><p>{data?.month ?? '选定月份'} · 0–5 分；缺失轴不补零，分布仅统计已评估团队。</p></div>
+          <span>{sort === 'score' ? '明细按分数排序' : '目录顺序'}</span>
+        </header>
+        <div className="overview-capability-grid">
+          <section className="overview-panel overview-radar-panel">
+            <header className="overview-section-header"><div><h3>领域成熟度雷达</h3><p>用于查看能力结构，不代表行业基准。</p></div></header>
+            <MaturityRadar activities={radarActivities} series={radarSeries} ariaLabel="领域平均成熟度雷达图" />
+          </section>
+          <section className="overview-panel maturity-detail-panel">
+            <header className="overview-section-header"><div><h3>能力点明细</h3><p>点击能力点进入现有指标与趋势详情。</p></div></header>
+            <div className="maturity-table-wrap">
+              <table className="maturity-table maturity-domain-table">
+                <thead><tr><th scope="col">能力点</th><th scope="col">领域平均</th><th scope="col">等级</th><th scope="col">已评估团队</th><th scope="col">等级分布</th></tr></thead>
+                <tbody>{ordered.map((summary) => (
+                  <tr key={summary.activity_id}>
+                    <th scope="row"><button type="button" className="maturity-link-button" onClick={() => onOpenActivity(summary.activity_id)}>{summary.activity_name}</button></th>
+                    <td className={summary.score === null ? 'is-missing' : ''}>{summary.score_display ?? '—'}</td>
+                    <td><span className={summary.level ? 'maturity-level-label' : 'is-missing'} style={summary.level ? { color: maturityLevelColor(summary.grade) } : undefined}>{summary.level ?? '未评估'}</span></td>
+                    <td>{summary.assessed_team_count} / {data.team_count}</td>
+                    <td><Distribution summary={summary} /></td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
         </div>
       </section>
     </>
@@ -759,8 +819,8 @@ export default function OverviewPage({
   return (
     <div className="overview-shell maturity-overview-shell">
       <div className="overview-page-head">
-        <div><p className="overview-eyebrow">研发效能 · 先看整体与短板，再看指标</p><h1>研发总览</h1></div>
-        <p className="overview-slice-description">{maturityState.month} · {maturityState.category === 'key' ? '关键研发活动' : '通用研发能力'} · 成熟度与事实共用分析月份</p>
+        <div><p className="overview-eyebrow">Engineering intelligence</p><h1>研发总览</h1><p className="overview-page-intro">从组织信号定位需处理的问题，再下钻到团队、能力点与事实证据。</p></div>
+        <p className="overview-slice-description"><span>当前视图</span>{maturityState.month} · {maturityState.category === 'key' ? '关键研发活动' : '通用研发能力'}</p>
       </div>
       <OverviewControls state={maturityState} teams={teams} user={user} maintenanceTeamId={maintenanceTeamId} onMaintenanceTeamChange={setMaintenanceTeamId} onChange={updateMaturity} onOpenMaintenance={() => setMaintenanceOpen(true)} />
       {maturity.loading && <div className="maturity-state">正在加载 {maturityState.month} 成熟度评估…</div>}

@@ -149,8 +149,10 @@ test('renders the domain comparison first and keeps metric comparison collapsed'
     )
   })
 
-  expect(renderText(renderer.toJSON())).toContain('领域平均成熟度')
-  expect(renderText(renderer.toJSON())).toContain('团队数')
+  expect(renderText(renderer.toJSON())).toContain('本月决策摘要')
+  expect(renderText(renderer.toJSON())).toContain('成熟度均值')
+  expect(renderText(renderer.toJSON())).toContain('覆盖团队')
+  expect(renderText(renderer.toJSON())).toContain('尚未配置目标或外部行业基准')
   expect(renderText(renderer.toJSON())).toContain('关键活动8')
   expect(renderText(renderer.toJSON())).toContain('能力点明细')
   expect(renderText(renderer.toJSON()).includes('第一指标')).toBe(false)
@@ -201,7 +203,7 @@ test('keeps the maturity maintenance action out of a viewer overview', async () 
   renderer.unmount()
 })
 
-test('keeps the executive order and matrix collapsed by default', async () => {
+test('keeps the decision path and matrix collapsed by default', async () => {
   let renderer
   await act(async () => {
     renderer = create(
@@ -220,9 +222,11 @@ test('keeps the executive order and matrix collapsed by default', async () => {
   })
 
   const text = renderText(renderer.toJSON())
-  expect(text.indexOf('领域成熟度雷达')).toBeGreaterThanOrEqual(0)
-  expect(text.indexOf('需关注项')).toBeGreaterThan(text.indexOf('领域成熟度雷达'))
-  expect(text.indexOf('指标集中比较')).toBeGreaterThan(text.indexOf('需关注项'))
+  expect(text.indexOf('本月决策摘要')).toBeGreaterThanOrEqual(0)
+  expect(text.indexOf('优先信号')).toBeGreaterThan(text.indexOf('本月决策摘要'))
+  expect(text.indexOf('效率表现')).toBeGreaterThan(text.indexOf('优先信号'))
+  expect(text.indexOf('成熟度与能力点')).toBeGreaterThan(text.indexOf('效率表现'))
+  expect(text.indexOf('指标集中比较')).toBeGreaterThan(text.indexOf('成熟度与能力点'))
   const disclosure = renderer.root.findByProps({ className: 'maturity-matrix-disclosure' })
   expect(disclosure.props.open).toBe(false)
   renderer.unmount()
