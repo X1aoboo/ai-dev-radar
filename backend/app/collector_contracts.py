@@ -1,17 +1,26 @@
-"""Versioned JSON contract shared with the private Collector Gateway."""
+"""Radar consumer models conforming to the versioned Gateway protocol."""
 
 from datetime import date, datetime
-from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class ProductVersionRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    product_name: str = Field(min_length=1, max_length=100)
+    version_name: str = Field(min_length=1, max_length=50)
 
 
 class CollectorIRRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     request_id: str = Field(min_length=1, max_length=100)
-    team_name: str = Field(min_length=1, max_length=100)
-    product_versions: list[str] = Field(max_length=100)
+    product_versions: list[ProductVersionRef] = Field(
+        min_length=1,
+        max_length=100,
+        json_schema_extra={"uniqueItems": True},
+    )
     start_at: datetime
     end_at: datetime
 
@@ -22,6 +31,12 @@ class CollectorIRRequest(BaseModel):
                 raise ValueError("collection window must include a timezone")
         if self.start_at >= self.end_at:
             raise ValueError("start_at must be earlier than end_at")
+        pairs = {
+            (item.product_name, item.version_name)
+            for item in self.product_versions
+        }
+        if len(pairs) != len(self.product_versions):
+            raise ValueError("product_versions must not contain duplicates")
         return self
 
 
@@ -30,13 +45,14 @@ class CollectorIRRecord(BaseModel):
 
     source_id: str = Field(min_length=1, max_length=100)
     source_system: str = Field(min_length=1, max_length=100)
+    product_name: str = Field(min_length=1, max_length=100)
     version_name: str = Field(min_length=1, max_length=50)
     iteration_name: str = Field(min_length=1, max_length=60)
     requirement_name: str = Field(min_length=1, max_length=200)
     responsible_employee_id: str | None = Field(default=None, max_length=50)
     parent_requirement_no: str | None = Field(default=None, max_length=100)
     completed_at: date
-    business_module: str = Field(min_length=1, max_length=100)
+    business_module: str | None = Field(max_length=100)
     requirement_scenario: str = Field(min_length=1, max_length=200)
     estimated_workload: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     actual_workload: float | None = Field(default=None, ge=0, allow_inf_nan=False)
@@ -61,18 +77,3 @@ class CollectorIRError(BaseModel):
     message: str = Field(min_length=1, max_length=500)
     retryable: bool
     request_id: str = Field(min_length=1, max_length=100)
-
-
-class CollectorIRContract(BaseModel):
-    """Snapshot envelope: request, response, and standard error schemas."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    contract: Literal["collector-ir-v1"] = "collector-ir-v1"
-    request: CollectorIRRequest
-    response: CollectorIRResponse
-    error: CollectorIRError
-
-
-def collector_ir_v1_schema() -> dict:
-    return CollectorIRContract.model_json_schema()

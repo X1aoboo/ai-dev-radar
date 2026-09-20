@@ -14,7 +14,11 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy.orm.session import sessionmaker
 
-from .collector_contracts import CollectorIRRecord, CollectorIRRequest
+from .collector_contracts import (
+    CollectorIRRecord,
+    CollectorIRRequest,
+    ProductVersionRef,
+)
 from .collector_gateway import GatewayFailure, collect_ir_records, create_gateway_client
 from .db import SessionLocal
 from .ir_imports import IRImportRowInput, create_ir_import_batch
@@ -22,6 +26,7 @@ from .models import (
     CollectionRun,
     CollectionSchedule,
     Iteration,
+    Product,
     ProductVersion,
     Team,
 )
@@ -48,6 +53,7 @@ IR_BUSINESS_FIELDS = (
 COLLECTOR_RECORD_FIELDS = frozenset({
     "source_id",
     "source_system",
+    "product_name",
     "version_name",
     "iteration_name",
     *IR_BUSINESS_FIELDS,
@@ -99,6 +105,7 @@ def _collector_row_input(
     raw: object,
     *,
     duplicate_source_id: bool,
+    requested_product_versions: frozenset[tuple[str, str]],
 ) -> IRImportRowInput:
     errors: list[str] = []
     if not isinstance(raw, dict):
@@ -126,37 +133,54 @@ def _collector_row_input(
         for field in IR_BUSINESS_FIELDS
         if field in values
     }
+    business_module = import_row.get("business_module")
+    if "business_module" in import_row and (
+        business_module is None
+        or (isinstance(business_module, str) and not business_module.strip())
+    ):
+        import_row["business_module"] = "通用模块"
     if source_id is not None:
         import_row["requirement_no"] = source_id
 
+    product_name = values.get("product_name")
     version_name = values.get("version_name")
-    if isinstance(version_name, str) and version_name.strip():
+    if (
+        isinstance(product_name, str)
+        and product_name.strip()
+        and isinstance(version_name, str)
+        and version_name.strip()
+    ):
+        product_version = (product_name, version_name)
+        if product_version not in requested_product_versions:
+            errors.append("采集响应产品版本不在请求范围内")
         versions = db.scalars(
             select(ProductVersion)
             .options(joinedload(ProductVersion.product))
-            .where(ProductVersion.name == version_name)
+            .join(Product, ProductVersion.product_id == Product.id)
+            .where(
+                Product.team_id == team.id,
+                Product.name == product_name,
+                ProductVersion.name == version_name,
+            )
         ).all()
         if len(versions) != 1:
-            errors.append("版本名称缺失或无法唯一匹配本地版本")
+            errors.append("产品与版本名称缺失或无法唯一匹配本地产品版本")
         else:
             version = versions[0]
-            if version.product is None or version.product.team_id != team.id:
-                errors.append("版本所属产品不属于当前团队")
-            else:
-                import_row["product_id"] = version.product_id
-                import_row["version_id"] = version.id
-                iteration_name = values.get("iteration_name")
-                if isinstance(iteration_name, str) and iteration_name.strip():
-                    iterations = db.scalars(
-                        select(Iteration).where(
-                            Iteration.version_id == version.id,
-                            Iteration.name == iteration_name,
-                        )
-                    ).all()
-                    if len(iterations) != 1:
-                        errors.append("迭代名称缺失或不属于该版本")
-                    else:
-                        import_row["iteration_id"] = iterations[0].id
+            import_row["product_id"] = version.product_id
+            import_row["version_id"] = version.id
+            iteration_name = values.get("iteration_name")
+            if isinstance(iteration_name, str) and iteration_name.strip():
+                iterations = db.scalars(
+                    select(Iteration).where(
+                        Iteration.version_id == version.id,
+                        Iteration.name == iteration_name,
+                    )
+                ).all()
+                if len(iterations) != 1:
+                    errors.append("迭代名称缺失或不属于该版本")
+                else:
+                    import_row["iteration_id"] = iterations[0].id
     return IRImportRowInput(
         raw=import_row,
         errors=errors,
@@ -171,6 +195,68 @@ def _save_team_result(db: Session, run_id: int, result: dict) -> None:
         raise RuntimeError("collection run disappeared")
     run.team_results = [*(run.team_results or []), result]
     db.commit()
+
+
+def _resolve_product_versions(
+    db: Session,
+    team: Team,
+    configured_version_names: object,
+    *,
+    request_id: str,
+) -> list[ProductVersionRef]:
+    if not isinstance(configured_version_names, list) or any(
+        not isinstance(value, str) or not value.strip()
+        for value in configured_version_names
+    ):
+        raise GatewayFailure(
+            code="invalid_team_mapping",
+            message="团队产品版本映射无效。",
+            retryable=False,
+            request_id=request_id,
+        )
+
+    versions = db.scalars(
+        select(ProductVersion)
+        .options(joinedload(ProductVersion.product))
+        .join(Product, ProductVersion.product_id == Product.id)
+        .where(
+            Product.team_id == team.id,
+            ProductVersion.name.in_(configured_version_names),
+        )
+        .order_by(ProductVersion.name, Product.name, ProductVersion.id)
+    ).all()
+    versions_by_name: dict[str, list[ProductVersion]] = {}
+    for version in versions:
+        versions_by_name.setdefault(version.name, []).append(version)
+
+    resolved: list[ProductVersionRef] = []
+    seen: set[tuple[str, str]] = set()
+    for configured_name in configured_version_names:
+        matches = versions_by_name.get(configured_name, [])
+        if not matches:
+            raise GatewayFailure(
+                code="invalid_team_mapping",
+                message="团队产品版本映射无法匹配本地产品版本。",
+                retryable=False,
+                request_id=request_id,
+            )
+        for version in matches:
+            pair = (version.product.name, version.name)
+            if pair in seen:
+                raise GatewayFailure(
+                    code="invalid_team_mapping",
+                    message="团队产品版本映射包含重复项。",
+                    retryable=False,
+                    request_id=request_id,
+                )
+            seen.add(pair)
+            resolved.append(
+                ProductVersionRef(
+                    product_name=version.product.name,
+                    version_name=version.name,
+                )
+            )
+    return resolved
 
 
 def run_ir_collection(
@@ -222,20 +308,15 @@ def run_ir_collection(
 
         request_id = str(uuid4())
         try:
-            if not isinstance(product_versions, list) or any(
-                not isinstance(value, str) or not value.strip()
-                for value in product_versions
-            ):
-                raise GatewayFailure(
-                    code="invalid_team_mapping",
-                    message="团队产品版本映射无效。",
-                    retryable=False,
-                    request_id=request_id,
-                )
+            resolved_product_versions = _resolve_product_versions(
+                db,
+                team,
+                product_versions,
+                request_id=request_id,
+            )
             request = CollectorIRRequest(
                 request_id=request_id,
-                team_name=team_name,
-                product_versions=product_versions,
+                product_versions=resolved_product_versions,
                 start_at=start_at,
                 end_at=end_at,
             )
@@ -255,6 +336,10 @@ def run_ir_collection(
                 for source_id, count in Counter(record_ids).items()
                 if count > 1
             }
+            requested_product_versions = frozenset(
+                (item.product_name, item.version_name)
+                for item in resolved_product_versions
+            )
             row_inputs = [
                 _collector_row_input(
                     db,
@@ -265,6 +350,7 @@ def run_ir_collection(
                         and isinstance(item.get("source_id"), str)
                         and item.get("source_id") in duplicate_ids
                     ),
+                    requested_product_versions=requested_product_versions,
                 )
                 for item in records
             ]

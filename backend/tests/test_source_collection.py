@@ -62,6 +62,7 @@ def gateway_record(source_id="IR-001", **overrides):
     return {
         "source_id": source_id,
         "source_system": "internal-ir",
+        "product_name": "团队A product",
         "version_name": "版本A",
         "iteration_name": "版本A iteration",
         "requirement_name": "需求一",
@@ -102,7 +103,7 @@ def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(m
     def handle(request):
         body = json.loads(request.content)
         requests.append((request, body))
-        if body["team_name"] == "团队B":
+        if body["product_versions"][0]["product_name"] == "团队B product":
             return httpx.Response(503, json={
                 "code": "internal_unavailable",
                 "message": "https://internal.example error; Bearer test-token",
@@ -117,10 +118,12 @@ def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(m
     run_result = run(db, httpx.MockTransport(handle))
     assert run_result.status == "partial"
     assert [item["status"] for item in run_result.team_results] == ["succeeded", "failed"]
-    assert [item[1]["team_name"] for item in requests] == ["团队A", "团队B"]
+    assert all("team_name" not in item[1] for item in requests)
     assert all(item[0].url.path == "/v1/collections/ir" for item in requests)
     assert all(item[0].headers["authorization"] == "Bearer test-token" for item in requests)
-    assert requests[0][1]["product_versions"] == ["版本A"]
+    assert requests[0][1]["product_versions"] == [
+        {"product_name": "团队A product", "version_name": "版本A"}
+    ]
     assert "version_id" not in requests[0][1]
     assert "iteration_id" not in requests[0][1]
     assert requests[0][1]["start_at"] == "2026-09-17T00:00:00+08:00"
@@ -184,7 +187,12 @@ def test_unmatched_version_team_or_iteration_names_are_invalid_rows(monkeypatch)
     add_team_with_ir_hierarchy(db, "团队B", "版本B")
     records = [
         gateway_record("IR-MISSING-VERSION", version_name="不存在的版本"),
-        gateway_record("IR-WRONG-TEAM", version_name="版本B", iteration_name="版本B iteration"),
+        gateway_record(
+            "IR-WRONG-TEAM",
+            product_name="团队B product",
+            version_name="版本B",
+            iteration_name="版本B iteration",
+        ),
         gateway_record("IR-MISSING-ITERATION", iteration_name="不存在的迭代"),
     ]
 
@@ -192,7 +200,7 @@ def test_unmatched_version_team_or_iteration_names_are_invalid_rows(monkeypatch)
         body = json.loads(request.content)
         return httpx.Response(200, json={
             "request_id": body["request_id"],
-            "records": records if body["team_name"] == "团队A" else [],
+            "records": records if body["product_versions"][0]["product_name"] == "团队A product" else [],
         })
 
     result = run(db, httpx.MockTransport(handle))
@@ -203,9 +211,67 @@ def test_unmatched_version_team_or_iteration_names_are_invalid_rows(monkeypatch)
     )
     assert batch is not None
     assert all(row.status == "invalid" for row in batch.rows)
-    assert any("版本名称缺失" in error for row in batch.rows for error in row.errors)
-    assert any("不属于当前团队" in error for row in batch.rows for error in row.errors)
+    assert any("产品与版本名称缺失" in error for row in batch.rows for error in row.errors)
+    assert any("不在请求范围内" in error for row in batch.rows for error in row.errors)
     assert any("迭代名称缺失" in error for row in batch.rows for error in row.errors)
+    db.close()
+    engine.dispose()
+
+
+def test_product_version_pairs_scope_records_and_empty_module_is_normalized(monkeypatch):
+    configure_gateway(monkeypatch)
+    db, engine = collection_session()
+    team, product_a, version_a, iteration_a = add_team_with_ir_hierarchy(
+        db, "团队A", "版本A"
+    )
+    product_b = Product(name="团队A second product", team=team)
+    version_b = ProductVersion(name="版本B", product=product_b)
+    iteration_b = Iteration(
+        name="版本B iteration",
+        version=version_b,
+        start_date=date(2026, 9, 1),
+        end_date=date(2026, 9, 30),
+    )
+    db.add_all([product_b, version_b, iteration_b])
+    db.commit()
+    team.source_mapping = {"product_versions": ["版本A", "版本B"]}
+    db.commit()
+    seen_body = None
+
+    def handle(request):
+        nonlocal seen_body
+        seen_body = json.loads(request.content)
+        return httpx.Response(200, json={
+            "request_id": seen_body["request_id"],
+            "records": [
+                gateway_record(
+                    "IR-A",
+                    product_name=product_a.name,
+                    version_name=version_a.name,
+                    iteration_name=iteration_a.name,
+                    business_module=None,
+                ),
+                gateway_record(
+                    "IR-B",
+                    product_name=product_b.name,
+                    version_name=version_b.name,
+                    iteration_name=iteration_b.name,
+                    business_module="   ",
+                ),
+            ],
+        })
+
+    result = run(db, httpx.MockTransport(handle))
+    assert result.status == "succeeded"
+    assert seen_body["product_versions"] == [
+        {"product_name": product_a.name, "version_name": "版本A"},
+        {"product_name": product_b.name, "version_name": "版本B"},
+    ]
+    batch = db.scalar(select(ImportBatch).options(selectinload(ImportBatch.rows)))
+    assert batch is not None
+    assert [row.status for row in batch.rows] == ["valid", "valid"]
+    assert [row.payload["product_id"] for row in batch.rows] == [product_a.id, product_b.id]
+    assert [row.payload["business_module"] for row in batch.rows] == ["通用模块", "通用模块"]
     db.close()
     engine.dispose()
 
