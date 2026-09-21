@@ -28,11 +28,14 @@ import {
   maturityStatesEqual,
   normalizeFilter,
   normalizeMaturityState,
+  isValidMonth,
 } from './overview/overviewLogic'
 import { ADMIN_ROLES, DATA_READ_ROLES, SETTINGS_READ_ROLES, canAccess, isPendingDomain } from './routing/routeLogic'
 import { getRouteMeta, LEGACY_REDIRECT_TARGETS, ROUTE_PATHS, SIDEBAR_GROUPS } from './routing/routeMetadata'
 
 const OverviewPage = lazy(() => import('./overview/OverviewPage'))
+const ActivitiesPage = lazy(() => import('./analytics/AnalyticsPages').then((module) => ({ default: module.ActivitiesPage })))
+const CapabilitiesPage = lazy(() => import('./analytics/AnalyticsPages').then((module) => ({ default: module.CapabilitiesPage })))
 const TeamDrilldownPage = lazy(() => import('./drilldown/TeamDrilldownPage'))
 const MetricDetailPage = lazy(() => import('./metricDetail/MetricDetailPage'))
 const DataManagementPage = lazy(() => import('./dataManagement/DataManagementPage'))
@@ -290,6 +293,17 @@ function OverviewRoute({ Page, onSessionExpired, user }) {
   return <Page {...analytics} user={user} maturityState={analytics.maturity} onMaturityChange={analytics.onMaturityChange} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
 }
 
+function LegacyCategoryOrOverviewRoute({ Page, ...props }) {
+  const [searchParams] = useSearchParams()
+  const category = searchParams.get('category')
+  if (category === 'key' || category === 'general') {
+    const target = category === 'key' ? '/analytics/activities' : '/analytics/capabilities'
+    const month = searchParams.get('month')
+    return <Navigate to={isValidMonth(month) ? `${target}?month=${encodeURIComponent(month)}` : target} replace />
+  }
+  return <OverviewRoute Page={Page} {...props} />
+}
+
 function TeamAnalyticsRoute({ Page, onSessionExpired }) {
   const { teamId } = useParams()
   const analytics = useOutletContext()
@@ -308,9 +322,10 @@ function MetricAnalyticsRoute({ Page, onSessionExpired }) {
 
 function DataRoute({ Page, section, user, onSessionExpired }) {
   const { requirementType } = useParams()
+  const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   if (section === 'requirements' && !['ir', 'ar', 'sr'].includes(requirementType)) return <Navigate to="/data/requirements/ir" replace />
-  return <Page section={section} requirementType={requirementType} onRequirementTypeChange={(type) => navigate(`/data/requirements/${type}`)} user={user} onSessionExpired={onSessionExpired} />
+  return <Page section={section} requirementType={requirementType} initialMonth={searchParams.get('month')} onRequirementTypeChange={(type) => navigate(`/data/requirements/${type}`)} user={user} onSessionExpired={onSessionExpired} />
 }
 
 function RequireRole({ user, roles }) {
@@ -345,23 +360,33 @@ function LegacyDataManagementRootRedirect() {
   return <Navigate to={appendSearch(LEGACY_REDIRECT_TARGETS['/data-management'], search)} replace />
 }
 
-const DEFAULT_ROUTE_COMPONENTS = { OverviewPage, TeamDrilldownPage, MetricDetailPage, DataManagementPage, UsersSettingsPage, CollectionsSettingsPage }
+const DEFAULT_ROUTE_COMPONENTS = { OverviewPage, ActivitiesPage, CapabilitiesPage, TeamDrilldownPage, MetricDetailPage, DataManagementPage, UsersSettingsPage, CollectionsSettingsPage }
 
 export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeComponents = DEFAULT_ROUTE_COMPONENTS }) {
-  const { OverviewPage: OverviewComponent, TeamDrilldownPage: TeamDrilldownComponent, MetricDetailPage: MetricDetailComponent, DataManagementPage: DataManagementComponent, UsersSettingsPage: UsersSettingsComponent, CollectionsSettingsPage: CollectionsSettingsComponent } = routeComponents
+  const OverviewComponent = routeComponents.OverviewPage
+  const ActivitiesComponent = routeComponents.ActivitiesPage ?? OverviewComponent
+  const CapabilitiesComponent = routeComponents.CapabilitiesPage ?? OverviewComponent
+  const TeamDrilldownComponent = routeComponents.TeamDrilldownPage
+  const MetricDetailComponent = routeComponents.MetricDetailPage
+  const DataManagementComponent = routeComponents.DataManagementPage
+  const UsersSettingsComponent = routeComponents.UsersSettingsPage
+  const CollectionsSettingsComponent = routeComponents.CollectionsSettingsPage
   return (
     <Suspense fallback={<LoadingPage text="加载页面模块…" />}>
       <Routes>
         <Route path="login" element={<Navigate to="/" replace />} />
         <Route element={<AppShell user={user} onLogout={onLogout} />}>
           <Route element={<AnalyticsDataLayout onSessionExpired={onSessionExpired} />}>
-            <Route index element={<OverviewRoute Page={OverviewComponent} user={user} onSessionExpired={onSessionExpired} />} />
+            <Route index element={<LegacyCategoryOrOverviewRoute Page={OverviewComponent} user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.activitiesAnalytics} element={<OverviewRoute Page={ActivitiesComponent} user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.capabilitiesAnalytics} element={<OverviewRoute Page={CapabilitiesComponent} user={user} onSessionExpired={onSessionExpired} />} />
             <Route path={ROUTE_PATHS.teamAnalytics} element={<TeamAnalyticsRoute Page={TeamDrilldownComponent} onSessionExpired={onSessionExpired} />} />
             <Route path={ROUTE_PATHS.metricAnalytics} element={<MetricAnalyticsRoute Page={MetricDetailComponent} onSessionExpired={onSessionExpired} />} />
           </Route>
           <Route element={<RequireRole user={user} roles={DATA_READ_ROLES} />}>
             <Route path={ROUTE_PATHS.requirements} element={<Navigate to="/data/requirements/ir" replace />} />
             <Route path={ROUTE_PATHS.requirementType} element={<DataRoute Page={DataManagementComponent} section="requirements" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.maturity} element={<DataRoute Page={DataManagementComponent} section="maturity" user={user} onSessionExpired={onSessionExpired} />} />
             <Route path="data/ir" element={<Navigate to="/data/requirements/ir" replace />} />
             <Route path="data/ar" element={<Navigate to="/data/requirements/ar" replace />} />
             <Route path="data/sr" element={<Navigate to="/data/requirements/sr" replace />} />

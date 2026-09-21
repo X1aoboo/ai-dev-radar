@@ -10,6 +10,8 @@
 
 admin 管理全局配置和全部数据；maintainer 维护绑定团队数据；viewer 只读。不同列表的可见范围由后端接口分别控制，不能把导航隐藏当成授权。密码使用 Argon2，签名 cookie session 保存用户 ID；每次请求从数据库重新读取角色。
 
+成熟度评估是数据管理下的独立维护入口 `/data/maturity`。admin 可选择全部团队，maintainer 固定为绑定团队，viewer 只能查看按月的成熟度汇总；复制上月、预览保存、保存和清空都复用现有成熟度 API，并由后端再次校验团队权限。研发总览、研发活动和研发能力页面只读，不提供成熟度写入口。
+
 采集计划与手动触发仅限 admin。IR 采集批次由 admin 全局查看/确认；maintainer 只能查看/确认所属团队的采集批次。文件批次继续按原创建者权限查看/确认。
 
 ## 手工维护场景
@@ -48,6 +50,6 @@ Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start
 
 ## 实现与相关决策
 
-HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
+HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/maturity`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
 
 相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)、[ADR-0009](../adr/0009-versioned-ai-engineering-data-gateway-protocol.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。

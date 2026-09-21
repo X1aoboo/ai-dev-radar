@@ -16,8 +16,11 @@ export { PENDING_DOMAINS }
 
 export const ROUTE_PATHS = Object.freeze({
   overview: '/',
+  activitiesAnalytics: 'analytics/activities',
+  capabilitiesAnalytics: 'analytics/capabilities',
   teamAnalytics: 'analytics/teams/:teamId',
   metricAnalytics: 'analytics/metrics/:metricId',
+  maturity: 'data/maturity',
   requirements: 'data/requirements',
   requirementType: 'data/requirements/:requirementType',
   dataDomain: 'data/:domain',
@@ -53,12 +56,15 @@ export const SIDEBAR_GROUPS = [
     label: '洞察',
     items: [
       { key: 'overview', label: '研发总览', to: ROUTE_PATHS.overview, icon: BarChartOutlined, roles: ANALYTICS_ROLES },
+      { key: 'activities', label: '研发活动', to: `/${ROUTE_PATHS.activitiesAnalytics}`, activePrefix: '/analytics/activities', icon: BarChartOutlined, roles: ANALYTICS_ROLES },
+      { key: 'capabilities', label: '研发能力', to: `/${ROUTE_PATHS.capabilitiesAnalytics}`, activePrefix: '/analytics/capabilities', icon: BarChartOutlined, roles: ANALYTICS_ROLES },
     ],
   },
   {
     label: '数据管理',
     items: [
       { key: 'requirements', label: '需求', to: '/data/requirements/ir', activePrefix: '/data/requirements/', icon: FileTextOutlined, roles: DATA_READ_ROLES },
+      { key: 'maturity', label: '成熟度评估', to: `/${ROUTE_PATHS.maturity}`, icon: BarChartOutlined, roles: DATA_READ_ROLES },
       { key: 'issues', label: '问题单', to: '/data/issues', icon: BugOutlined, roles: DATA_READ_ROLES },
       { key: 'mr', label: 'MR', to: '/data/mr', icon: PullRequestOutlined, roles: DATA_READ_ROLES },
       { key: 'code-review', label: '代码检视', to: '/data/code-review', icon: CodeOutlined, roles: DATA_READ_ROLES },
@@ -79,6 +85,8 @@ export const SIDEBAR_GROUPS = [
 export function getRouteMeta(pathname) {
   const normalizedPathname = pathname === '/' ? '/' : String(pathname || '/').replace(/\/+$/, '') || '/'
   if (normalizedPathname === '/') return { title: '研发总览', items: [{ title: '洞察' }, { title: '研发总览' }] }
+  if (normalizedPathname === '/analytics/activities') return { title: '研发活动', items: [{ title: '洞察' }, { title: '研发活动' }] }
+  if (normalizedPathname === '/analytics/capabilities') return { title: '研发能力', items: [{ title: '洞察' }, { title: '研发能力' }] }
   if (/^\/analytics\/teams\//.test(normalizedPathname)) {
     return { title: '团队下钻', items: [{ title: '洞察' }, { title: '研发总览' }, { title: '团队下钻' }] }
   }
@@ -91,6 +99,7 @@ export function getRouteMeta(pathname) {
   if (sourceLabel) {
     return { title: `${sourceLabel}数据`, items: [{ title: '数据管理' }, { title: sourceLabel }] }
   }
+  if (normalizedPathname === '/data/maturity') return { title: '成熟度评估', items: [{ title: '数据管理' }, { title: '成熟度评估' }] }
   const settingsMeta = {
     '/settings/teams': ['团队与人员', '团队与人员'],
     '/settings/products': ['产品与版本', '产品与版本'],

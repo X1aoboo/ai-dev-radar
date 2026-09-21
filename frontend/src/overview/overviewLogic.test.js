@@ -25,6 +25,7 @@ import {
   previousMonthId,
   normalizeFilter,
   queryForActivity,
+  trimToAnalysisWindow,
   trimToRecentPeriods,
   valueForPeriod,
 } from './overviewLogic.js'
@@ -51,6 +52,28 @@ test('trimToRecentPeriods keeps the latest six periods and aligned series values
   assert.deepEqual(trimmed.periods.map((period) => period.id), ['p3', 'p4', 'p5', 'p6', 'p7', 'p8'])
   assert.deepEqual(trimmed.series[0].values.map((point) => point.period_id), ['p3', 'p4', 'p5', 'p6', 'p7', 'p8'])
   assert.deepEqual(trimmed.company_average.map((point) => point.period_id), ['p3', 'p4', 'p5', 'p6', 'p7', 'p8'])
+})
+
+test('analysis windows end at the selected month for month, week, and day data', () => {
+  const cases = [
+    { granularity: 'month', limit: 6, existingId: '2026-08', lastId: '2026-09' },
+    { granularity: 'week', limit: 12, existingId: '2026-W39', lastId: '2026-W40' },
+    { granularity: 'day', limit: 30, existingId: '2026-09-29', lastId: '2026-09-30' },
+  ]
+
+  for (const { granularity, limit, existingId, lastId } of cases) {
+    const trimmed = trimToAnalysisWindow({
+      granularity,
+      periods: [{ id: existingId, label: existingId, kind: granularity, start_date: existingId, end_date: existingId }],
+      series: [{ team_id: 1, values: [{ period_id: existingId, value: 0.4 }] }],
+      company_average: [{ period_id: existingId, value: 0.4 }],
+    }, { month: '2026-09', limit })
+
+    assert.equal(trimmed.periods.length, limit)
+    assert.equal(trimmed.periods.at(-1).id, lastId)
+    assert.equal(trimmed.series[0].values.some((point) => point.period_id === lastId), false)
+    assert.equal(trimmed.company_average.some((point) => point.period_id === lastId), false)
+  }
 })
 
 test('team color slots stay fixed when a team disappears', () => {
@@ -132,7 +155,7 @@ test('normalizes filter query values and serializes only supported state', () =>
   assert.equal(filterToSearchParams(parsed).toString(), 'dimension=iteration&version=2&period=p2')
   assert.deepEqual(
     normalizeFilter({ dimension: 'broken', granularity: 'day', versionId: '99', periodId: 'missing' }, { versions, periods }),
-    { dimension: 'time', granularity: 'month', versionId: 'all', periodId: null },
+    { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null },
   )
   assert.equal(filtersEqual(parsed, { ...parsed }), true)
 })

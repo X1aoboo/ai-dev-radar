@@ -433,7 +433,7 @@ def compute_metric(
     iteration_id: list[int] | None = Query(default=None),
     version_id: str | None = Query(default=None, pattern="^(all|[1-9][0-9]*)$"),
     dim: str = Query(default="time", pattern="^(time|iteration|iter)$"),
-    gran: str = Query(default="week", pattern="^(week|month)$"),
+    gran: str = Query(default="week", pattern="^(day|week|month)$"),
     time_field: str = Query(default="end_date", pattern="^(start_date|end_date)$"),
     _current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

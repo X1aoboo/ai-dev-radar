@@ -55,6 +55,8 @@ const routeComponents = {
       <button type="button" data-filter-week onClick={() => onFilterChange({ ...filter, granularity: 'week' }, { history: 'push' })}>切换周</button>
     </>
   ),
+  ActivitiesPage: () => <StubPage page="activities">研发活动</StubPage>,
+  CapabilitiesPage: () => <StubPage page="capabilities">研发能力</StubPage>,
   TeamDrilldownPage: () => <StubPage page="team-analytics">团队下钻</StubPage>,
   MetricDetailPage: () => <StubPage page="metric-analytics">指标详情</StubPage>,
   DataManagementPage: ({ section }) => <StubPage page={`data-${section}`}>{section}</StubPage>,
@@ -131,7 +133,7 @@ function hasText(renderer, text) {
 }
 
 test('route metadata treats one or more trailing slashes like the canonical path', () => {
-  for (const pathname of ['/data/requirements/ir', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections']) {
+  for (const pathname of ['/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/data/maturity', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections']) {
     expect(getRouteMeta(`${pathname}/`)).toEqual(getRouteMeta(pathname))
   }
   expect(getRouteMeta('/')).toEqual(getRouteMeta('////'))
@@ -324,6 +326,44 @@ test('hydrates the analysis slice from URL query parameters', async () => {
   const renderer = await renderAt('/?dimension=iteration&granularity=week&version=2&period=p2', 'admin')
   expect(hasText(renderer, 'iteration|month|2|p2')).toBe(true)
   expect(currentSearch(renderer)).toBe('?dimension=iteration&version=2&period=p2')
+  renderer.unmount()
+})
+
+test('splits the legacy category query into the new analysis routes and keeps valid month', async () => {
+  const key = await renderAt('/?category=key&month=2026-02&ignored=true', 'admin')
+  expect(currentPath(key)).toBe('/analytics/activities')
+  expect(currentSearch(key)).toBe('?month=2026-02')
+  expect(hasPage(key, 'activities')).toBe(true)
+  key.unmount()
+
+  const general = await renderAt('/?category=general&month=bad', 'admin')
+  expect(currentPath(general)).toBe('/analytics/capabilities')
+  expect(currentSearch(general)).toBe('')
+  expect(hasPage(general, 'capabilities')).toBe(true)
+  general.unmount()
+})
+
+test('exposes independent activity, capability, and maturity data-management routes', async () => {
+  const activities = await renderAt('/analytics/activities', 'viewer')
+  expect(hasPage(activities, 'activities')).toBe(true)
+  activities.unmount()
+
+  const capabilities = await renderAt('/analytics/capabilities', 'viewer')
+  expect(hasPage(capabilities, 'capabilities')).toBe(true)
+  capabilities.unmount()
+
+  const maturity = await renderAt('/data/maturity', 'viewer')
+  expect(hasPage(maturity, 'data-maturity')).toBe(true)
+  maturity.unmount()
+})
+
+test('highlights only the current peer analytics destination', async () => {
+  const renderer = await renderAt('/analytics/capabilities', 'viewer')
+  const links = renderer.root.findAllByType('a')
+  const overview = links.find((node) => node.props['aria-label'] === '研发总览')
+  const capabilities = links.find((node) => node.props['aria-label'] === '研发能力')
+  expect(overview.props['data-section-active']).toBeUndefined()
+  expect(capabilities.props['data-section-active']).toBe('true')
   renderer.unmount()
 })
 
