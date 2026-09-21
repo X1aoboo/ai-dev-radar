@@ -280,3 +280,23 @@
     grid-template-columns: 1fr;
   }
 }
+.maturity-management__toolbar {
+  align-items: end;
+  display: flex;
+  flex-wrap: wrap;
+  gap: .75rem;
+  margin-bottom: 1rem;
+}
+
+.maturity-editor { display: grid; gap: 1rem; }
+.maturity-editor__group { border-top: 1px solid #eaecf0; padding-top: 1rem; }
+.maturity-editor__group h3 { margin: 0 0 .75rem; }
+.maturity-editor__row { border-bottom: 1px solid #f2f4f7; display: grid; gap: .75rem; grid-template-columns: minmax(12rem, 1fr) minmax(16rem, 2fr); padding: .65rem 0; }
+.maturity-editor__row label { display: grid; gap: .3rem; }
+.maturity-editor__row label > span { color: #475467; font-size: .8rem; font-weight: 600; }
+.maturity-editor__row input { border: 1px solid #d0d5dd; border-radius: 6px; min-height: 2rem; padding: .35rem .5rem; }
+.maturity-readonly-grid { display: grid; gap: 1rem; }
+
+@media (max-width: 700px) {
+  .maturity-editor__row { grid-template-columns: 1fr; }
+}

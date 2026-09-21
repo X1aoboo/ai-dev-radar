@@ -14,7 +14,7 @@ from zoneinfo import ZoneInfo
 
 
 Dimension = Literal["time", "iteration"]
-Granularity = Literal["week", "month"]
+Granularity = Literal["day", "week", "month"]
 TimeField = Literal["start_date", "end_date"]
 
 _LOCAL_ZONE = ZoneInfo("Asia/Shanghai")
@@ -48,8 +48,8 @@ def _normalise_dimension(dimension: str) -> Dimension:
 
 def _normalise_granularity(granularity: str) -> Granularity:
     value = _enum_value(granularity)
-    if value not in {"week", "month"}:
-        raise ValueError("granularity must be 'week' or 'month'")
+    if value not in {"day", "week", "month"}:
+        raise ValueError("granularity must be 'day', 'week', or 'month'")
     return value  # type: ignore[return-value]
 
 
@@ -101,6 +101,17 @@ def _week_period(monday: date) -> dict[str, Any]:
         "kind": "week",
         "start_date": monday,
         "end_date": monday + timedelta(days=6),
+    }
+
+
+def _day_period(day: date) -> dict[str, Any]:
+    period_id = day.isoformat()
+    return {
+        "id": period_id,
+        "label": period_id,
+        "kind": "day",
+        "start_date": day,
+        "end_date": day,
     }
 
 
@@ -173,6 +184,14 @@ def periods_for(
         dates = [_fact_date(fact, resolved_time_field) for fact in fact_list]
         first_date = min(dates)
         last_date = max(dates)
+
+        if resolved_granularity == "day":
+            current = first_date
+            periods = []
+            while current <= last_date:
+                periods.append(_day_period(current))
+                current += timedelta(days=1)
+            return periods
 
         if resolved_granularity == "week":
             current = first_date - timedelta(days=first_date.weekday())

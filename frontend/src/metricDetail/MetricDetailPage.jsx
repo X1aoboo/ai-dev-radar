@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import FilterBar from '../overview/FilterBar'
-import { TrendCard } from '../overview/OverviewPage'
+import { TrendCard } from '../analytics/AnalyticsPages'
 import { useComputedMetrics } from '../overview/metricData'
 import {
   assignTeamColorSlots,

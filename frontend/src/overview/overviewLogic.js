@@ -44,6 +44,8 @@ export const MATURITY_DEFAULTS = {
   sort: 'order',
 }
 
+export const ANALYSIS_GRANULARITIES = ['month', 'week', 'day']
+
 const EXTENDED_TEAM_COLORS = [
   ...TEAM_COLORS,
   '#8256a1',
@@ -68,7 +70,7 @@ export function previousMonthId(month) {
 }
 
 export function monthWindow(month, limit = 6) {
-  const end = validMonth(month) ? String(month) : currentMonthId()
+  const end = isValidMonth(month) ? String(month) : currentMonthId()
   const months = []
   let cursor = end
   for (let index = 0; index < Math.max(0, limit); index += 1) {
@@ -78,7 +80,7 @@ export function monthWindow(month, limit = 6) {
   return months
 }
 
-function validMonth(value) {
+export function isValidMonth(value) {
   if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(String(value ?? ''))) return false
   const [year, month] = String(value).split('-').map(Number)
   return year >= 1 && year <= 9999 && month >= 1 && month <= 12
@@ -96,7 +98,7 @@ export function normalizeMaturityState(input = {}, { teams = [] } = {}) {
   return {
     view: input.view === 'team' ? 'team' : MATURITY_DEFAULTS.view,
     category: input.category === 'general' ? 'general' : MATURITY_DEFAULTS.category,
-    month: validMonth(input.month) ? String(input.month) : currentMonthId(),
+    month: isValidMonth(input.month) ? String(input.month) : currentMonthId(),
     compareTeamIds,
     showBaseline: input.showBaseline !== false && input.showBaseline !== '0',
     sort: input.sort === 'score' ? 'score' : MATURITY_DEFAULTS.sort,
@@ -154,7 +156,7 @@ export function normalizeFilter(input = {}, { versions = [], periods = [] } = {}
   const dimension = input.dimension === 'iteration' ? 'iteration' : 'time'
   const granularity = dimension === 'iteration'
     ? 'month'
-    : input.granularity === 'week' ? 'week' : 'month'
+    : ANALYSIS_GRANULARITIES.includes(input.granularity) ? input.granularity : 'month'
   const versionId = dimension === 'iteration'
     ? validIdOrDefault(input.versionId, versions, 'all')
     : 'all'
@@ -184,8 +186,8 @@ export function filterFromSearchParams(searchParams, options) {
 export function filterToSearchParams(filter) {
   const params = new URLSearchParams()
   if (filter.dimension === 'iteration') params.set(FILTER_QUERY_KEYS.dimension, 'iteration')
-  if (filter.dimension !== 'iteration' && filter.granularity === 'week') {
-    params.set(FILTER_QUERY_KEYS.granularity, 'week')
+  if (filter.dimension !== 'iteration' && filter.granularity !== 'month') {
+    params.set(FILTER_QUERY_KEYS.granularity, filter.granularity)
   }
   if (filter.dimension === 'iteration' && filter.versionId !== 'all') {
     params.set(FILTER_QUERY_KEYS.versionId, String(filter.versionId))
@@ -217,6 +219,66 @@ export function trimToRecentPeriods(data, limit = 6) {
       values: align(series.values),
     })),
     company_average: align(data?.company_average),
+    domain_summary: align(data?.domain_summary),
+  }
+}
+
+export function trimToAnalysisWindow(data, { month, limit = 6 } = {}) {
+  if (!data || !isValidMonth(month)) return data
+  const [year, monthNumber] = month.split('-').map(Number)
+  const end = new Date(Date.UTC(year, monthNumber, 0))
+  const granularity = data.granularity ?? data.periods?.[0]?.kind ?? 'month'
+  const isoDate = (date) => date.toISOString().slice(0, 10)
+  const periodFor = (date) => {
+    if (granularity === 'day') {
+      const id = isoDate(date)
+      return { id, label: id, kind: 'day', start_date: id, end_date: id }
+    }
+    if (granularity === 'week') {
+      const monday = new Date(date)
+      monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7))
+      const thursday = new Date(monday)
+      thursday.setUTCDate(thursday.getUTCDate() + 3)
+      const isoYear = thursday.getUTCFullYear()
+      const firstThursday = new Date(Date.UTC(isoYear, 0, 4))
+      firstThursday.setUTCDate(firstThursday.getUTCDate() + 3 - ((firstThursday.getUTCDay() + 6) % 7))
+      const week = Math.round((thursday - firstThursday) / 604800000) + 1
+      const id = `${isoYear}-W${String(week).padStart(2, '0')}`
+      const sunday = new Date(monday)
+      sunday.setUTCDate(sunday.getUTCDate() + 6)
+      return { id, label: id, kind: 'week', start_date: isoDate(monday), end_date: isoDate(sunday) }
+    }
+    const first = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1))
+    const last = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0))
+    const id = isoDate(first).slice(0, 7)
+    return { id, label: id, kind: 'month', start_date: isoDate(first), end_date: isoDate(last) }
+  }
+  const existingPeriods = new Map((data.periods ?? []).map((period) => [idKey(period.id), period]))
+  const keptPeriods = Array.from({ length: Math.max(0, limit) }, (_, index) => {
+    const offset = limit - index - 1
+    const date = new Date(end)
+    if (granularity === 'day') date.setUTCDate(date.getUTCDate() - offset)
+    else if (granularity === 'week') date.setUTCDate(date.getUTCDate() - offset * 7)
+    else date.setUTCMonth(date.getUTCMonth() - offset, 1)
+    const expected = periodFor(date)
+    return existingPeriods.get(idKey(expected.id)) ?? expected
+  })
+  const periodIds = new Set(keptPeriods.map((period) => idKey(period.id)))
+
+  function align(values = []) {
+    const valuesByPeriod = new Map(values.map((point) => [idKey(point.period_id), point]))
+    return keptPeriods
+      .map((period) => valuesByPeriod.get(idKey(period.id)))
+      .filter(Boolean)
+      .filter((point) => periodIds.has(idKey(point.period_id)))
+  }
+
+  return {
+    ...data,
+    periods: keptPeriods,
+    series: (data.series ?? []).map((series) => ({ ...series, values: align(series.values) })),
+    company_average: align(data.company_average),
+    domain_summary: align(data.domain_summary),
   }
 }
 

@@ -57,7 +57,7 @@ function buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAs
   }
 }
 
-export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, countAsBars = false }) {
+export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, countAsBars = false, averageLabel = '全公司均值' }) {
   const countMetric = isCountMetric(metric, countAsBars)
   const teamSeries = (data?.series ?? []).map((series) => (
     buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars })
@@ -65,7 +65,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
   const companyColor = DATAVIZ_COLORS.companyAverage
   const companyData = (data?.company_average ?? []).map((point) => chartPoint(point, selectedPeriodId))
   const companySeries = {
-    name: '全公司均值',
+    name: averageLabel,
     type: 'line',
     data: companyData,
     color: companyColor,
@@ -101,7 +101,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
         const lines = items.map((item) => {
           const point = item.data?.rawPoint
           const value = point?.value ?? item.value
-          const fact = point && item.seriesName !== '全公司均值'
+          const fact = point && item.seriesName !== averageLabel
             ? ` · ${formatFactSummary(metric, point)}`
             : ''
           return `${item.marker}${escapeHtml(item.seriesName)}：${escapeHtml(formatMetricValue(metric, value))}${escapeHtml(fact)}`

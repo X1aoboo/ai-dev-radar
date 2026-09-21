@@ -32,7 +32,8 @@ import {
 } from '@ant-design/icons'
 
 import { fetchJson } from '../api'
-import { formatMetricValue } from '../overview/overviewLogic'
+import { currentMonthId, formatMetricValue, isValidMonth } from '../overview/overviewLogic'
+import { maturitySavePayload, useMaturityRecords } from '../overview/maturityData'
 import {
   buildIrQuery,
   irFormFromRecord,
@@ -661,7 +662,113 @@ function MetricManagement({ user, refs, onSessionExpired }) {
   return <div className="workbench-page"><PageIntro eyebrow="系统管理 / 指标定义" title="指标定义" description="分别管理看板指标目录和 IR 源数据指标规则，避免混淆两套计算入口。" /><ReferenceError error={catalogError} />{user.role !== 'admin' && <ReadOnlyHint />}<Tabs items={[{ key: 'catalog', label: '看板指标目录', children: <DashboardCatalogTab user={user} catalog={catalog} loading={loading} onReload={loadCatalog} onSessionExpired={onSessionExpired} /> }, { key: 'source', label: '源数据指标规则 / 结果查询', children: <DataMetricTab user={user} refs={refs} onSessionExpired={onSessionExpired} /> }]} /></div>
 }
 
-export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', onRequirementTypeChange, user, onSessionExpired }) {
+function MaturityReadOnly({ month, onSessionExpired }) {
+  const [state, setState] = useState({ loading: true, data: [], error: null })
+  useEffect(() => {
+    let active = true
+    Promise.all(['key', 'general'].map((kind) => fetchJson(`/api/maturity/overview?month=${encodeURIComponent(month)}&kind=${kind}`)))
+      .then((data) => { if (active) setState({ loading: false, data, error: null }) })
+      .catch((error) => { if (active) setState({ loading: false, data: [], error }); if (error.status === 401) onSessionExpired() })
+    return () => { active = false }
+  }, [month, onSessionExpired])
+  if (state.loading) return <LoadingState text="加载成熟度评估…" />
+  if (state.error) return <ReferenceError error={state.error} />
+  return <div className="maturity-readonly-grid">{state.data.map((overview) => <Card key={overview.kind} title={overview.kind === 'key' ? '关键研发活动' : '通用研发能力'}><Table rowKey="activity_id" size="small" pagination={false} dataSource={overview.activities} columns={[{ title: '活动', dataIndex: 'activity_name' }, { title: '领域平均', dataIndex: 'score_display', render: (value) => value ?? '未评估' }, { title: '等级', dataIndex: 'level', render: (value) => value ?? '未评估' }, { title: '覆盖', render: (_, row) => `${row.assessed_team_count} / ${overview.team_count}` }]} /></Card>)}</div>
+}
+
+function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
+  const [draft, setDraft] = useState([])
+  const [preview, setPreview] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [clearing, setClearing] = useState(false)
+  const [clearArmed, setClearArmed] = useState(false)
+  const [message, setMessage] = useState(null)
+  const recordsState = useMaturityRecords(teamId, month, onSessionExpired, Boolean(teamId))
+  const activities = useMemo(() => [...catalog].sort((left, right) => (left.sort_order ?? left.id) - (right.sort_order ?? right.id)), [catalog])
+
+  useEffect(() => {
+    if (!teamId || recordsState.loading) return
+    const records = new Map(recordsState.records.map((record) => [record.activity_id, record]))
+    setDraft(activities.map((activity) => {
+      const record = records.get(activity.id)
+      return { activity_id: activity.id, activity_name: activity.name, kind: activity.kind, score: record?.score_raw ?? '', note: record?.note ?? '' }
+    }))
+    setPreview(false)
+    setClearArmed(false)
+    setMessage(null)
+  }, [activities, month, recordsState.loading, recordsState.records, teamId])
+
+  function updateEntry(activityId, patch) {
+    setDraft((current) => current.map((entry) => entry.activity_id === activityId ? { ...entry, ...patch } : entry))
+  }
+
+  function copyPrevious() {
+    const previous = new Map(recordsState.previousRecords.map((record) => [record.activity_id, record]))
+    setDraft((current) => current.map((entry) => {
+      const record = previous.get(entry.activity_id)
+      return record ? { ...entry, score: record.score_raw, note: record.note ?? '' } : entry
+    }))
+    setMessage(recordsState.previousRecords.length ? `已载入上月 ${recordsState.previousRecords.length} 条已有评估，请预览确认后保存。` : '上月没有已评估值，当前月仍保持未评估。')
+  }
+
+  async function save() {
+    setSaving(true)
+    setMessage(null)
+    try {
+      await fetchJson(`/api/maturity/teams/${teamId}/months/${month}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(maturitySavePayload(draft)) })
+      setMessage('成熟度已保存。')
+      setPreview(false)
+      onSaved?.()
+    } catch (error) {
+      setMessage(error.message)
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function clear() {
+    if (!clearArmed) { setClearArmed(true); return }
+    setClearing(true)
+    try {
+      await fetchJson(`/api/maturity/teams/${teamId}/months/${month}`, { method: 'DELETE' })
+      setDraft((current) => current.map((entry) => ({ ...entry, score: '', note: '' })))
+      setClearArmed(false)
+      setPreview(false)
+      setMessage('本月成熟度已清空。')
+      onSaved?.()
+    } catch (error) {
+      setMessage(error.message)
+      if (error.status === 401) onSessionExpired()
+    } finally {
+      setClearing(false)
+    }
+  }
+
+  if (!teamId) return <Empty description="先选择可维护团队。" />
+  if (recordsState.loading) return <LoadingState text="加载当前月和上月评估…" />
+  if (recordsState.error) return <ReferenceError error={recordsState.error} />
+  const grouped = ['key', 'general'].map((kind) => ({ kind, items: draft.filter((entry) => entry.kind === kind) }))
+  return <div className="maturity-editor">{grouped.map(({ kind, items }) => <section key={kind} className="maturity-editor__group"><h3>{kind === 'key' ? '关键研发活动' : '通用研发能力'}</h3>{items.map((entry) => <div key={entry.activity_id} className="maturity-editor__row"><label><span>{entry.activity_name} 分值</span><input aria-label={`${entry.activity_name}成熟度分值`} type="number" min="0" max="5" step="0.01" value={entry.score} onChange={(event) => updateEntry(entry.activity_id, { score: event.target.value })} placeholder="未评估" /></label><label><span>说明</span><Input.TextArea aria-label={`${entry.activity_name}说明`} rows={2} value={entry.note} onChange={(event) => updateEntry(entry.activity_id, { note: event.target.value })} placeholder="可选" /></label></div>)}</section>)}{message && <Alert type="info" message={message} showIcon />}{preview && <Card size="small" title="保存预览"><Table rowKey="activity_id" size="small" pagination={false} dataSource={draft} columns={[{ title: '能力点', dataIndex: 'activity_name' }, { title: '分值', dataIndex: 'score', render: (value) => value || '—' }, { title: '说明', dataIndex: 'note', render: (value) => value || '—' }]} /></Card>}<Space wrap><Button onClick={copyPrevious} disabled={!recordsState.previousRecords.length || saving || clearing}>复制上月已有值</Button>{preview ? <><Button type="primary" onClick={save} loading={saving}>确认保存</Button><Button onClick={() => setPreview(false)} disabled={saving}>返回编辑</Button></> : <Button type="primary" onClick={() => setPreview(true)}>预览保存</Button>}<Button danger onClick={clear} loading={clearing}>{clearArmed ? '再次确认清空' : '清空本月评估'}</Button></Space></div>
+}
+
+function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
+  const [month, setMonth] = useState(() => isValidMonth(initialMonth) ? initialMonth : currentMonthId())
+  const [teamId, setTeamId] = useState(user.role === 'maintainer' ? String(user.maintainer_team_id) : '')
+  const [catalog, setCatalog] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [savedAt, setSavedAt] = useState(0)
+  const canEdit = user.role === 'admin' || user.role === 'maintainer'
+  useEffect(() => {
+    let active = true
+    fetchJson('/api/catalog').then((data) => { if (active) setCatalog(data) }).catch((error) => { if (error.status === 401) onSessionExpired() }).finally(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [onSessionExpired])
+  const selectedTeam = refs.teams.find((team) => String(team.id) === String(teamId))
+  return <div className="workbench-page maturity-management"><PageIntro eyebrow="数据管理 / 成熟度评估" title="成熟度评估" description="按团队和自然月维护人工成熟度；分析页只读展示，不在这里之外写入。" /><div className="workbench-toolbar maturity-management__toolbar"><label className="workbench-filter-control"><span>评估月份</span><Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>{canEdit && <label className="workbench-filter-control"><span>维护团队</span><Select aria-label="维护团队" value={teamId || undefined} disabled={user.role === 'maintainer'} placeholder="选择团队" onChange={setTeamId} options={refs.teams.map((team) => ({ value: String(team.id), label: team.name }))} /></label>}</div>{loading ? <LoadingState text="加载成熟度目录…" /> : canEdit ? <Card title={selectedTeam ? `${selectedTeam.name} · ${month}` : '选择团队后编辑'}><MaturityEditor key={`${teamId}-${month}-${savedAt}`} teamId={teamId} month={month} catalog={catalog} onSessionExpired={onSessionExpired} onSaved={() => setSavedAt((value) => value + 1)} /></Card> : <MaturityReadOnly month={month} onSessionExpired={onSessionExpired} />}</div>
+}
+
+export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', initialMonth, onRequirementTypeChange, user, onSessionExpired }) {
   const section = requestedSection ?? sectionFromPath(pathname)
   const refs = useReferenceData(onSessionExpired, user)
   if (refs.loading) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
@@ -671,6 +778,7 @@ export default function DataManagementPage({ pathname, section: requestedSection
   else if (section === 'ir') content = <IRManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'requirements') content = <RequirementManagement requirementType={requirementType} onRequirementTypeChange={onRequirementTypeChange} user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'metrics') content = <MetricManagement user={user} refs={refs} onSessionExpired={onSessionExpired} />
+  else if (section === 'maturity') content = <MaturityManagement user={user} refs={refs} initialMonth={initialMonth} onSessionExpired={onSessionExpired} />
   else content = <EmptyState>该数据域尚未定义。</EmptyState>
   return <div className="data-management-content"><ReferenceError error={refs.error} />{content}</div>
 }

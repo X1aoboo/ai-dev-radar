@@ -90,8 +90,9 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         <SegmentedControl
           label="时间粒度"
           options={[
-            { value: 'month', label: '月' },
-            { value: 'week', label: '周' },
+          { value: 'month', label: '月' },
+          { value: 'week', label: '周' },
+          { value: 'day', label: '日' },
           ]}
           value={filter.granularity}
           onChange={changeGranularity}

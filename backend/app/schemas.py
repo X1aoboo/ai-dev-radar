@@ -562,7 +562,7 @@ class ManualFactIn(BaseModel):
 class ComputePeriodOut(BaseModel):
     id: int | str
     label: str
-    kind: Literal["week", "month", "iteration"]
+    kind: Literal["day", "week", "month", "iteration"]
     iteration_id: int | str | None = None
     start_date: date | None = None
     end_date: date | None = None
@@ -598,7 +598,7 @@ class ComputeOut(BaseModel):
     metric_id: int
     activity_id: int
     dimension: Literal["time", "iteration"]
-    granularity: Literal["week", "month"]
+    granularity: Literal["day", "week", "month"]
     time_field: Literal["start_date", "end_date"]
     periods: list[ComputePeriodOut]
     series: list[ComputeSeriesOut]

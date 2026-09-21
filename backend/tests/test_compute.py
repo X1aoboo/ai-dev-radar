@@ -107,6 +107,24 @@ def test_month_periods_keep_cross_year_month_boundaries():
     assert periods[0]["end_date"] == date(2025, 12, 31)
 
 
+def test_day_periods_keep_local_calendar_gaps_and_boundaries():
+    facts = [
+        fact(1, end_date=date(2026, 8, 31)),
+        fact(2, end_date=date(2026, 9, 2)),
+    ]
+
+    periods = periods_for(facts, dimension="time", granularity="day")
+
+    assert [period["id"] for period in periods] == [
+        "2026-08-31",
+        "2026-09-01",
+        "2026-09-02",
+    ]
+    assert periods[1]["kind"] == "day"
+    assert in_scope(facts[0], periods[0], dimension="time")
+    assert not in_scope(facts[0], periods[1], dimension="time")
+
+
 def test_iteration_periods_use_latest_record_by_label_even_when_they_cross_months():
     first = iteration(
         10,

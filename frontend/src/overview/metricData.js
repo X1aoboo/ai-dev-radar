@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
 import { fetchJson } from '../api'
-import { queryForActivity, trimToRecentPeriods } from './overviewLogic'
+import { queryForActivity, trimToAnalysisWindow, trimToRecentPeriods } from './overviewLogic'
 
 export function metricRequests(catalog, filter) {
   return catalog.flatMap((activity) => activity.metrics.map((metric) => ({ activity, metric })))
@@ -35,7 +35,9 @@ export function useComputedMetrics(catalog, filter, onSessionExpired) {
         const response = await fetchJson(request.url, { signal: controller.signal })
         return {
           metricId: request.metric.id,
-          data: request.fallback ? trimToRecentPeriods(response, 6) : response,
+          data: filter.windowLimit
+            ? trimToAnalysisWindow(response, { month: filter.analysisMonth, limit: filter.windowLimit })
+            : request.fallback ? trimToRecentPeriods(response, 6) : response,
         }
       }),
     ).then((results) => {
@@ -63,7 +65,7 @@ export function useComputedMetrics(catalog, filter, onSessionExpired) {
       active = false
       controller.abort()
     }
-  }, [catalog, filter.dimension, filter.granularity, filter.versionId])
+  }, [catalog, filter.analysisMonth, filter.dimension, filter.granularity, filter.versionId, filter.windowLimit])
 
   return state
 }

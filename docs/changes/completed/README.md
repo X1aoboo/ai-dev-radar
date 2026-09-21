@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [Dashboard 三页分析重构](dashboard-three-page-analytics.md)：拆分研发总览、研发活动、研发能力与成熟度维护，并增加日粒度事实分析。
 - [研发总览 Insight 驾驶舱优化](overview-insight-cockpit.md)：总览趋势卡、关键活动矩阵和 Signal 抽屉优化。
 - [研发总览决策工作台重构](overview-decision-workspace.md)：以决策摘要、优先信号、证据和下钻重组总览，不改变指标口径或后端契约。
 - [管理者优先的研发总览重设计](executive-dashboard-redesign.md)：统一分析月份、管理者首屏事实比较、关注项和可折叠团队矩阵。

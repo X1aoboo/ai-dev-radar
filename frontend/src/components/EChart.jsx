@@ -31,5 +31,5 @@ export default function EChart({ option, height = 240, ariaLabel, onClick }) {
       : option, true)
   }, [option])
 
-  return <div ref={elementRef} className="overview-chart" role="img" aria-label={ariaLabel} style={{ height }} />
+  return <div ref={elementRef} className="overview-chart" role="img" tabIndex={0} aria-label={ariaLabel} style={{ height }} />
 }
