@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { fetchJson } from '../api'
+import useActiveSection from '../components/useActiveSection'
 import EChart from '../components/EChart'
+import PageHeader from '../components/PageHeader'
 import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
 import { maturityOverviewUrl, maturityRecordsUrl } from '../overview/maturityData'
@@ -18,13 +20,13 @@ import {
 } from '../overview/overviewLogic'
 import { buildIterationCompareOption, buildTeamTrendOption } from './chartOption'
 import {
-  averageMetricValues,
   deltaForSelection,
   maturityProfileSeries,
   mergePeriods,
   pointForSelection,
   previousPeriodId,
   sourceForPeriod,
+  teamKpiEntries,
   teamAccentColor,
   valueForSelection,
 } from './drilldownLogic'
@@ -76,21 +78,6 @@ function metricEntries(catalog, dataByMetric) {
 
 function metricEntry(entries, predicate) {
   return entries.find(({ metric, activity }) => predicate(metric, activity))
-}
-
-function averageKpi(entries, predicate, teamId, periodId) {
-  const selectedEntries = entries.filter(({ metric }) => predicate(metric))
-  const representative = selectedEntries.find(({ data }) => data?.periods?.length)
-  const data = representative?.data
-  const value = averageMetricValues(selectedEntries, predicate, teamId, periodId)
-  const previousId = previousPeriodId(data, periodId)
-  const previous = previousId === null
-    ? null
-    : averageMetricValues(selectedEntries, predicate, teamId, previousId)
-  const spark = (data?.periods ?? []).slice(-12)
-    .map((period) => averageMetricValues(selectedEntries, predicate, teamId, period.id))
-
-  return { value, delta: value !== null && previous !== null ? value - previous : null, spark }
 }
 
 function singleMetricKpi(entry, teamId, periodId) {
@@ -156,25 +143,21 @@ function KpiTile({ label, metric, value, delta, spark, loading, status }) {
   )
 }
 
-function ActivityDirectory({ groups }) {
-  function scrollToActivity(activityId) {
-    document.getElementById(`activity-${activityId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  }
-
+function ActivityDirectory({ groups, activeId }) {
   return (
-    <aside className="drilldown-directory" aria-label="活动目录">
+    <nav className="drilldown-directory" aria-label="活动目录">
       {groups.map((group) => (
         <section key={group.title}>
           <h2>{group.title}</h2>
           {group.activities.map((activity) => (
-            <button key={activity.id} type="button" onClick={() => scrollToActivity(activity.id)}>
+            <a key={activity.id} href={`#activity-${activity.id}`} aria-current={activeId === `activity-${activity.id}` ? 'location' : undefined}>
               <span>{activity.name}</span>
               {activity.metrics.length > 1 && <small>{activity.metrics.length}指标</small>}
-            </button>
+            </a>
           ))}
         </section>
       ))}
-    </aside>
+    </nav>
   )
 }
 
@@ -221,7 +204,7 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
 
   return (
     <section className="drilldown-maturity" aria-labelledby="team-maturity-title">
-      <header><div><p className="analytics-eyebrow">Capability profile</p><h2 id="team-maturity-title">成熟度画像</h2><p>团队与领域平均按相同活动、相同评估月比较；未评估不补零。</p></div></header>
+      <header><div><h2 id="team-maturity-title">成熟度画像</h2><p>团队与领域平均按相同活动、相同评估月比较；未评估不补零。</p></div></header>
       <div className="drilldown-maturity__grid">{profile('key', maturity.key, '关键研发活动')}{profile('general', maturity.general, '通用研发能力')}</div>
     </section>
   )
@@ -400,6 +383,7 @@ function ActivityTrendCard({
               type="button"
               className={`drilldown-detail-button ${showDetail ? 'is-active' : ''}`}
               aria-expanded={showDetail}
+              aria-controls={`activity-detail-${activity.id}`}
               onClick={() => setShowDetail((current) => !current)}
             >
               {showDetail ? '收起详细数据' : '详细数据'}
@@ -444,7 +428,7 @@ function ActivityTrendCard({
       )}
 
       {showDetail && metric.type !== 'boolean' && (
-        <div className="drilldown-details">
+        <div id={`activity-detail-${activity.id}`} className="drilldown-details">
           {activity.kind === 'key' && (
             <IterationCompare
               data={iterationData[metric.id]}
@@ -470,9 +454,10 @@ function ActivityTrendCard({
 }
 
 function currentFilterDescription(filter, versions, periods) {
+  const timeUnit = { month: '月', week: '周', day: '日' }[filter.granularity] ?? '月'
   const dimension = filter.dimension === 'iteration'
     ? `按版本/迭代${filter.versionId !== 'all' ? ` · ${versions.find((version) => String(version.id) === String(filter.versionId))?.name ?? ''}` : ''}`
-    : `按时间 · ${filter.granularity === 'month' ? '月' : '周'}`
+    : `按时间 · ${timeUnit}`
   const period = periods.find((item) => String(item.id) === String(filter.periodId))
   return `${dimension} · 周期：${filter.periodId === 'all' ? '全部周期' : period?.label ?? '最新'}`
 }
@@ -512,10 +497,7 @@ function TeamDrilldownContent({
   )
   const entries = useMemo(() => metricEntries(catalog, computed.data), [catalog, computed.data])
   const keyEntries = entries.filter(({ activity }) => activity.kind === 'key')
-  const reviewEntry = metricEntry(entries, (metric, activity) => (
-    metric.code === 'mrr-rate' || (activity.name === 'MR代码检视' && ['penetration', 'ratio'].includes(metric.type))
-  ))
-  const booleanEntry = metricEntry(entries, (metric) => metric.type === 'boolean')
+  const reviewEntry = metricEntry(entries, (metric) => metric.code === 'mrr-rate')
   const maturityMonth = filter.dimension === 'time' && isValidMonth(filter.periodId) ? filter.periodId : currentMonthId()
 
   const timePeriods = useMemo(() => {
@@ -548,37 +530,27 @@ function TeamDrilldownContent({
   const generalPeriodId = filter.dimension === 'iteration'
     ? latestPeriodId(reviewEntry?.data?.periods)
     : (filter.periodId ?? latestPeriodId(reviewEntry?.data?.periods))
-  const penetrationKpi = averageKpi(
-    keyEntries,
-    (metric) => metric.type === 'penetration' || metric.type === 'ratio',
-    team.id,
-    keyPeriodId,
-  )
-  const efficiencyKpi = averageKpi(keyEntries, (metric) => metric.type === 'efficiency', team.id, keyPeriodId)
-  const reviewKpi = singleMetricKpi(reviewEntry, team.id, generalPeriodId)
-  const booleanValue = booleanEntry
-    ? valueForSelection(booleanEntry.data, booleanEntry.metric, team.id, generalPeriodId)
-    : null
+  const teamKpis = teamKpiEntries(entries).map((entry) => ({
+    entry,
+    data: singleMetricKpi(entry, team.id, entry.activity.kind === 'key' ? keyPeriodId : generalPeriodId),
+  }))
   const groups = [
     { title: '关键研发活动', activities: keyActivities },
     { title: '通用研发能力', activities: generalActivities },
   ]
+  const activeActivityId = useActiveSection(groups.flatMap((group) => group.activities.map((activity) => `activity-${activity.id}`)))
 
   return (
     <div
       className="overview-shell drilldown-shell"
       style={{ '--drilldown-accent': accent }}
     >
-      <div className="overview-page-head drilldown-page-head">
-        <div>
-          <button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>
-            ← 返回总览
-          </button>
-          <p className="overview-eyebrow">研发效能 · 团队下钻</p>
-          <h1>{team.name} · 团队下钻</h1>
-        </div>
-        <p className="overview-slice-description">当前切片：{currentFilterDescription(filter, versions, periods)}</p>
-      </div>
+      <PageHeader
+        className="drilldown-page-head"
+        title={`${team.name} · 团队下钻`}
+        description={`当前切片：${currentFilterDescription(filter, versions, periods)}`}
+        actions={<button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>返回总览</button>}
+      />
 
       <FilterBar
         filter={filter}
@@ -589,35 +561,18 @@ function TeamDrilldownContent({
       />
 
       <div className="drilldown-kpi-row">
-        <KpiTile
-          label="平均渗透率（关键活动）"
-          metric={{ type: 'penetration' }}
-          {...penetrationKpi}
+        {teamKpis.map(({ entry, data }) => <KpiTile
+          key={entry.metric.id}
+          label={`${entry.activity.name} · ${entry.metric.name}`}
+          metric={entry.metric}
+          {...data}
+          status={entry.metric.type === 'boolean' ? (typeof data.value === 'boolean' ? data.value : 'unknown') : undefined}
           loading={computed.loading}
-        />
-        <KpiTile
-          label="平均效率提升（关键活动）"
-          metric={{ type: 'efficiency' }}
-          {...efficiencyKpi}
-          loading={computed.loading}
-        />
-        <KpiTile
-          label="AI检视率"
-          metric={{ type: 'ratio' }}
-          {...reviewKpi}
-          loading={computed.loading}
-        />
-        <KpiTile
-          label="自动化构建部署"
-          metric={{ type: 'boolean' }}
-          value={booleanValue}
-          status={booleanValue ?? 'unknown'}
-          loading={computed.loading}
-        />
+        />)}
       </div>
 
       <div className="drilldown-layout">
-        <ActivityDirectory groups={groups} />
+        <ActivityDirectory groups={groups} activeId={activeActivityId} />
         <div className="drilldown-main">
           {groups.map((group) => (
             <section key={group.title} className="drilldown-activity-group">
@@ -660,12 +615,8 @@ function TeamDrilldownContent({
 export default function TeamDrilldownPage({ team, ...props }) {
   if (!team) {
     return (
-      <div className="overview-shell drilldown-shell">
-        <button type="button" className="drilldown-back-button" onClick={() => props.onNavigate('/')}>
-          ← 返回总览
-        </button>
-        <h1>团队不存在</h1>
-        <p className="drilldown-muted">找不到请求的团队。</p>
+      <div className="analytics-page drilldown-shell">
+        <PageHeader title="团队不存在" description="找不到请求的团队。" actions={<button type="button" className="drilldown-back-button" onClick={() => props.onNavigate('/')}>返回总览</button>} />
       </div>
     )
   }

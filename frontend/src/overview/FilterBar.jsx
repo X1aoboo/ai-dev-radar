@@ -1,10 +1,11 @@
-import { iterationPeriods, latestPeriodId } from './overviewLogic'
+import { INITIAL_FILTER, iterationPeriods, latestPeriodId } from './overviewLogic'
 import FilterToolbar from '../components/FilterToolbar'
 
 function SegmentedControl({ label, options, value, onChange }) {
   return (
     <div className="analytics-granularity" role="group" aria-label={label}>
       <span>{label}</span>
+      <div className="analytics-granularity__options">
         {options.map((option) => (
           <button
             key={String(option.value)}
@@ -16,6 +17,7 @@ function SegmentedControl({ label, options, value, onChange }) {
             {option.label}
           </button>
         ))}
+      </div>
     </div>
   )
 }
@@ -58,11 +60,14 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
     }, { history: 'push' })
   }
 
+  function resetFilters() {
+    onChange({ ...INITIAL_FILTER, periodId: periods?.length ? latestPeriodId(periods) : null }, { history: 'push' })
+  }
+
   return (
-    <FilterToolbar className="analytics-filter-toolbar" label="分析筛选">
+    <FilterToolbar className="analytics-filter-toolbar" label="分析筛选" actions={<button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button>}>
       <div className="analytics-page-controls">
       {month && onMonthChange && <label><span>成熟度月份</span><input aria-label="成熟度月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
-      {metricOptions && <label><span>指标</span><select aria-label="指标" value={filter.metricId ?? 'all'} onChange={(event) => onChange({ ...filter, metricId: event.target.value, periodId: null }, { history: 'push' })}><option value="all">全部指标</option>{metricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
       <SegmentedControl
         label="统计维度"
         options={[
@@ -74,7 +79,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
       />
 
       {isIteration ? (
-        <label>
+        <label className="analytics-filter-group">
           <span>版本</span>
           <select
             aria-label="版本"
@@ -99,6 +104,8 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
           onChange={changeGranularity}
         />
       )}
+
+      {metricOptions && <label><span>指标</span><select aria-label="指标" value={filter.metricId ?? 'all'} onChange={(event) => onChange({ ...filter, metricId: event.target.value, periodId: null }, { history: 'push' })}><option value="all">全部指标</option>{metricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
 
       <label>
         <span>周期</span>

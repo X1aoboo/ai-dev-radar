@@ -26,13 +26,14 @@
   display: grid;
   gap: 0.75rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin: 0 0 1.25rem;
+  margin: 0 auto 1.25rem;
+  max-width: min(100%, 1760px);
 }
 
 .drilldown-maturity { border-top: 1px solid var(--color-border-default); margin: 0 0 1.25rem; padding-top: 1rem; }
 .drilldown-maturity > header h2 { color: var(--color-text-primary); font-size: var(--font-size-section-title); margin: 0; }
 .drilldown-maturity > header p:not(.analytics-eyebrow) { color: var(--color-text-secondary); font-size: var(--font-size-secondary); margin: .25rem 0 .75rem; }
-.drilldown-maturity__grid { display: grid; gap: var(--space-5); grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: auto; max-width: 1200px; }
+.drilldown-maturity__grid { display: grid; gap: var(--space-5); grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .drilldown-maturity__profile { min-width: 0; }
 .drilldown-maturity__profile h3 { color: var(--color-text-primary); font-size: var(--font-size-card-title); margin: 0 0 var(--space-2); }
 
@@ -103,11 +104,11 @@
 }
 
 .drilldown-directory {
-  background: var(--color-bg-surface);
-  border: 1px solid var(--color-border-default);
-  border-radius: 0.65rem;
+  border-left: 1px solid var(--color-border-default);
+  min-width: 0;
+  padding-left: var(--space-3);
   position: sticky;
-  top: calc(var(--app-topbar-height, 72px) + 16px);
+  top: calc(var(--size-topbar) + var(--space-4));
 }
 
 .drilldown-directory section + section {
@@ -115,37 +116,41 @@
 }
 
 .drilldown-directory h2 {
-  color: var(--color-text-tertiary);
-  font-size: 0.68rem;
-  font-weight: 500;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-secondary);
+  font-weight: 650;
   margin: 0;
-  padding: 0.7rem 0.7rem 0.25rem;
+  padding: 0.6rem 0.65rem 0.3rem;
 }
 
-.drilldown-directory button {
-  align-items: baseline;
+.drilldown-directory a {
+  align-items: center;
   background: transparent;
   border: 0;
   border-left: 3px solid transparent;
   color: var(--color-text-secondary);
-  cursor: pointer;
   display: flex;
   font: inherit;
-  font-size: 0.74rem;
+  font-size: var(--font-size-secondary);
   gap: 0.25rem;
   justify-content: space-between;
-  padding: 0.36rem 0.55rem;
+  min-height: 36px;
+  padding: 0.3rem 0.55rem;
   text-align: left;
+  text-decoration: none;
   width: 100%;
 }
 
-.drilldown-directory button:hover,
-.drilldown-directory button:focus-visible {
+.drilldown-directory a:hover,
+.drilldown-directory a:focus-visible,
+.drilldown-directory a[aria-current="location"] {
   background: var(--color-bg-subtle);
   border-left-color: var(--drilldown-accent);
   color: var(--color-text-primary);
-  outline: none;
 }
+
+.drilldown-directory a[aria-current="location"] { background: var(--color-bg-brand-subtle); color: var(--color-brand-primary); font-weight: 650; }
+.drilldown-directory a:focus-visible { outline: 2px solid var(--color-brand-primary); outline-offset: 1px; }
 
 .drilldown-directory button span {
   overflow: hidden;
@@ -187,7 +192,7 @@
   border-radius: 0.65rem;
   min-width: 0;
   padding: 0.75rem 0.85rem 0.8rem;
-  scroll-margin-top: calc(var(--app-topbar-height, 72px) + 16px);
+  scroll-margin-top: calc(var(--size-topbar) + var(--space-4));
 }
 
 .drilldown-activity-header {
@@ -370,16 +375,16 @@
   color: var(--viz-positive);
 }
 
-.drilldown-muted {
-  color: var(--color-text-tertiary);
-}
-
 @media (max-width: 900px) {
   .drilldown-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .drilldown-maturity__grid { grid-template-columns: 1fr; }
+}
+
+@media (min-width: 1800px) {
+  .drilldown-activity-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 700px) {
@@ -391,9 +396,9 @@
     position: static;
   }
 
-  .drilldown-directory section {
-    display: inline;
-  }
+  .drilldown-directory { border-left: 0; padding-left: 0; position: static; }
+
+  .drilldown-directory section { display: inline; }
 
   .drilldown-directory section + section {
     border-top: 0;
@@ -404,7 +409,7 @@
     padding-bottom: 0.55rem;
   }
 
-  .drilldown-directory button {
+  .drilldown-directory a {
     display: inline-flex;
     margin: 0 0.25rem 0.35rem 0;
     width: auto;

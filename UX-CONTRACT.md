@@ -25,7 +25,7 @@
 - Project `DESIGN.md`: [DESIGN.md](DESIGN.md)
 - Token ownership model: existing runtime canonical.
 - Runtime design-system/token source: `frontend/src/design/tokens.css`.
-- Mapping/export/adapters: `frontend/src/design/theme.js` adapts semantic tokens for Ant Design; `frontend/src/app.css` contains temporary compatibility aliases.
+- Mapping/export/adapters: `frontend/src/design/theme.js` resolves semantic CSS tokens for Ant Design; `frontend/src/charts/chartTheme.js` resolves the same data-viz tokens for ECharts; `frontend/src/app.css` contains temporary compatibility aliases.
 - Token drift gate: review each semantic token change in `DESIGN.md`, `tokens.css`, and `theme.js`; search changed UI code for new literal colors.
 - Audit manifest: `premium-ui.json` declares this product-admin source root, `zh-CN`, and the established native Select/Listbox and Date ownership used by existing route controls.
 - Supported themes: Light mode is shipped; semantic tokens reserve a dark-mode remapping seam.
@@ -58,18 +58,23 @@
 - Exploratory lists: no generic list owner; do not introduce infinite scroll.
 - URL state: analytical filters are URL-backed; data-management state remains route-local until its existing API contract requires URL persistence.
 - Activity analytics URL state includes `month`, `dimension`, `granularity`, `version`, `period`, and selected `metric`. `month` anchors the time window and independently selects the maturity assessment month; the selected raw-data period controls the same-metric facts shown and trend focus. Selecting all periods shows the full trend without a single-period snapshot. The API request retains its existing `dim`, `gran`, and optional `version_id` contract.
+- `重置统计条件` restores time/month dimension, all metrics, and the latest available period without changing the independent maturity month. Dimension, granularity, version, period, and metric remain URL-backed.
 - Boolean capability current state uses the latest valid snapshot when no single-period filter is exposed. A route with an explicit selected period uses that period's value and preserves a missing point as unknown; it must not fall back to another period's snapshot or create a 0/1 trend.
 - Metric facts use the `company_average` arithmetic mean as the “全公司均值” comparison series. Quantitative detail displays that mean separately from `domain_summary` (merged raw values and recomputed result); the two are not interchangeable. Maturity assessment aggregates retain the distinct “领域平均” label.
 - Empty/no-results/error/loading treatment: compact stable feedback state; no fabricated zero, result, or data count.
 
 ## Navigation and responsive behavior
 
-- Route document title policy: currently not implemented; no visual refactor may imply that it is.
+- Route document title policy: `App.jsx` sets a localized route title from route metadata with the `ai-dev-radar` product suffix; loading and not-found behavior must not leave an unrelated page title.
 - Route error / 403 page behavior: existing `Result` pages return users to overview where appropriate.
 - Breadcrumb/tab/route-state policy: Breadcrumb in Topbar; page title/action in content; data source root IA remains unchanged.
-- Capability analysis: `/analytics/capabilities` presents a structure directory with one selected capability; its Current State and Evolution region keeps each metric's unit independent and renders booleans as team status, never as a 0/1 line.
+- Analytics scroll ownership: the browser document is the vertical scroll owner. Main content may clip horizontal spill only; it must not establish an unused vertical scroll ancestor that breaks sticky section navigation. Activities and Team Drilldown directories are sticky section navigation with a visible current item; their anchors do not create nested scrollers.
+- Activities: `/analytics/activities` has one anchor for each of the eight current key activities. Each section is flat, maturity is compact, and metric cards use a compact empty state when no history exists. Time trends use lines for rate, efficiency, and count metrics; selected-period comparisons remain within one metric.
+- Capability analysis: `/analytics/capabilities` presents a fluid structure directory with one selected capability; its Current State and Evolution region keeps each metric's unit independent and renders booleans as team status, never as a 0/1 line.
 - Executive lifecycle: stage labels organize individually named catalog metrics; values and trends remain per metric and no stage score or cross-unit comparison is produced.
-- Executive snapshot: maturity stays a separate assessment source; fact cards show current value, six-month same-metric trend when available, and the team's range for that same metric. The selectable overview trend plots only the selected metric's domain-average series; team distribution uses a separate single-metric ranking.
+- Executive snapshot: maturity stays a separate assessment source; fact cards show current value, six-month same-metric trend when available, and the team's range for that same metric. The selectable overview trend plots only the selected metric's domain-average series and sits beside a separate single-metric ranking before maturity content. Signal follows the supporting analysis.
+- Team Drilldown KPI: each tile refers to one existing catalog metric or one boolean status, with that same metric's value, delta, and sparkline. Never average different catalog metrics into a synthetic penetration/efficiency KPI.
+- Metric Detail: Result → Comparison → Evidence keeps one-metric team distribution/ranking distinct from the trend; raw current-period facts remain on-demand. Selecting all periods shows the full trend and asks for a single period before claiming a current result or current-period evidence.
 - Sidebar/drawer transformation: 248px expanded / 64px collapsed desktop sidebar, 280px drawer at <=680px, with preserved focus restoration and local desktop preference.
 - Responsive table strategy: local horizontal scrolling only when needed; no page-level horizontal overflow.
 

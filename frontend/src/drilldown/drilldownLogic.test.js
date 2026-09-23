@@ -2,11 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
-  averageMetricValues,
   deltaForSelection,
   mergePeriods,
   maturityProfileSeries,
   sourceForPeriod,
+  teamKpiEntries,
   teamAccentColor,
   valueForSelection,
 } from './drilldownLogic.js'
@@ -53,22 +53,6 @@ test('computes period delta from the preceding period in the same series', () =>
   assert.equal(deltaForSelection(penetrationData, penetrationMetric, 7, 'all'), null)
 })
 
-test('averages only non-empty metrics selected by the KPI predicate', () => {
-  const entries = [
-    { metric: { id: 1, type: 'penetration' }, data: penetrationData },
-    {
-      metric: { id: 2, type: 'penetration' },
-      data: {
-        periods: penetrationData.periods,
-        series: [{ team_id: 7, values: [{ period_id: 'p2', value: 0.8, numerator: 8, denominator: 10 }] }],
-      },
-    },
-    { metric: { id: 3, type: 'count' }, data: penetrationData },
-  ]
-
-  assert.equal(averageMetricValues(entries, (metric) => metric.type === 'penetration', 7, 'p2'), 0.7)
-})
-
 test('maps fact sources to a period and prefers manual when both sources exist', () => {
   const facts = [
     { metric_id: 1, start_date: '2026-01-04', end_date: '2026-01-10', source: 'auto' },
@@ -97,6 +81,15 @@ test('maps fact sources to a period and prefers manual when both sources exist',
     start_date: '2026-03-01',
     end_date: '2026-03-31',
   }), null)
+})
+
+test('team KPI selection references existing single metrics and never combines metric values', () => {
+  const entries = ['mrr-rate', 'custom', 'ad-bool', 'cd-eff', 'cd-ar-pen'].map((code) => ({
+    activity: { name: code },
+    metric: { code },
+  }))
+  assert.deepEqual(teamKpiEntries(entries).map(({ metric }) => metric.code), ['cd-ar-pen', 'cd-eff', 'mrr-rate', 'ad-bool'])
+  assert.deepEqual(teamKpiEntries([]), [])
 })
 
 test('keeps a directly opened team on the same fixed color slot as the overview', () => {

@@ -1,7 +1,34 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import { buildInsightOption, buildTrendOption } from './chartOption.js'
+import { chartTheme } from '../charts/chartTheme.js'
+import { designTokens } from '../design/theme.js'
+
+const tokenSource = readFileSync(new URL('../design/tokens.css', import.meta.url), 'utf8')
+const tokenValue = (name) => tokenSource.match(new RegExp(`^\\s*${name}:\\s*([^;]+);`, 'm'))?.[1].trim()
+
+test('Ant and ECharts adapters resolve the canonical CSS semantic tokens', () => {
+  const pairs = [
+    ['--color-brand-primary', designTokens.brandPrimary],
+    ['--color-bg-page', designTokens.page],
+    ['--color-bg-surface', designTokens.surface],
+    ['--color-text-primary', designTokens.textPrimary],
+    ['--color-text-secondary', designTokens.textSecondary],
+    ['--color-border-default', designTokens.border],
+    ['--color-data-axis', chartTheme.axis],
+    ['--color-data-grid', chartTheme.grid],
+    ['--color-success', chartTheme.positive],
+    ['--color-danger', chartTheme.negative],
+    ['--color-data-average', chartTheme.domainAverage],
+    ['--color-data-target', chartTheme.target],
+    ...chartTheme.team.map((color, index) => [`--color-data-team-${index + 1}`, color]),
+    ...chartTheme.extendedTeam.map((color, index) => [`--color-data-team-${index + 5}`, color]),
+    ...chartTheme.maturity.map((color, index) => [`--color-data-maturity-${index}`, color]),
+  ]
+  for (const [name, color] of pairs) assert.equal(color.toLowerCase(), tokenValue(name).toLowerCase(), name)
+})
 
 const data = {
   periods: [{ id: 'p1', label: '2026-01' }, { id: 'p2', label: '2026-02' }],

@@ -1,14 +1,20 @@
-// This is the Ant Design adapter for tokens.css. Keep values in sync with its named semantic tokens.
+function cssToken(name, fallback) {
+  if (typeof document === 'undefined' || typeof getComputedStyle === 'undefined') return fallback
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback
+}
+
+// Resolve CSS semantic tokens for Ant Design's color algorithms at runtime.
 export const designTokens = {
-  brandPrimary: '#155eef',
-  brandHover: '#004eeb',
-  page: '#f7f8fa',
-  surface: '#ffffff',
-  textPrimary: '#182230',
-  textSecondary: '#475467',
-  border: '#e4e7ec',
-  radius: 6,
-  fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
+  brandPrimary: cssToken('--color-brand-primary', '#155eef'),
+  brandHover: cssToken('--color-brand-hover', '#004eeb'),
+  page: cssToken('--color-bg-page', '#f7f8fa'),
+  surface: cssToken('--color-bg-surface', '#ffffff'),
+  subtle: cssToken('--color-bg-subtle', '#f2f4f7'),
+  textPrimary: cssToken('--color-text-primary', '#182230'),
+  textSecondary: cssToken('--color-text-secondary', '#475467'),
+  border: cssToken('--color-border-default', '#e4e7ec'),
+  radius: Number.parseFloat(cssToken('--radius-sm', '6px')),
+  fontFamily: cssToken('--font-sans', 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif'),
 }
 
 export const appTheme = {
@@ -32,6 +38,6 @@ export const appTheme = {
   components: {
     Button: { borderRadius: designTokens.radius, controlHeight: 32 },
     Breadcrumb: { fontSize: 12 },
-    Table: { headerBg: '#f9fafb', headerColor: designTokens.textSecondary },
+    Table: { headerBg: designTokens.subtle, headerColor: designTokens.textSecondary },
   },
 }

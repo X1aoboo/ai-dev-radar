@@ -1,4 +1,13 @@
 import { assignTeamColorSlots } from '../overview/overviewLogic.js'
+import { EXECUTIVE_TREND_CODES } from '../overview/executiveLogic.js'
+
+export const TEAM_KPI_CODES = [...EXECUTIVE_TREND_CODES, 'ad-bool']
+
+export function teamKpiEntries(entries = []) {
+  return TEAM_KPI_CODES
+    .map((code) => entries.find(({ metric }) => metric.code === code))
+    .filter(Boolean)
+}
 
 function numeric(value) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -102,15 +111,6 @@ export function deltaForSelection(data, metric, teamId, periodId) {
   const current = valueForSelection(data, metric, teamId, periods[index].id)
   const previous = valueForSelection(data, metric, teamId, periods[index - 1].id)
   return numeric(current) && numeric(previous) ? current - previous : null
-}
-
-export function averageMetricValues(entries, predicate, teamId, periodId) {
-  const values = entries
-    .filter(({ metric }) => predicate(metric))
-    .map(({ metric, data }) => valueForSelection(data, metric, teamId, periodId))
-    .filter(numeric)
-
-  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null
 }
 
 function dateInPeriod(value, period) {

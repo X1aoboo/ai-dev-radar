@@ -39,10 +39,20 @@
   --color-data-team-2: #eb6834;
   --color-data-team-3: #1baf7a;
   --color-data-team-4: #eda100;
+  --color-data-team-5: #8256a1;
+  --color-data-team-6: #607d8b;
+  --color-data-team-7: #d14d72;
+  --color-data-team-8: #8c6d3f;
   --color-data-average: #98a2b3;
   --color-data-target: #98a2b3;
   --color-data-grid: #eaecf0;
   --color-data-axis: #d0d5dd;
+  --color-data-maturity-0: #98a2b3;
+  --color-data-maturity-1: #d0d5dd;
+  --color-data-maturity-2: #fec84b;
+  --color-data-maturity-3: #fdb022;
+  --color-data-maturity-4: #12b76a;
+  --color-data-maturity-5: #039855;
 
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   --font-size-label: 12px;

@@ -128,6 +128,10 @@ function hasPage(renderer, page) {
   return renderer.root.findAll((node) => node.props['data-page'] === page).length > 0
 }
 
+function contentMode(renderer) {
+  return renderer.root.find((node) => node.props.id === 'main-content').props.className
+}
+
 function hasText(renderer, text) {
   return renderText(renderer.toJSON()).includes(text)
 }
@@ -391,6 +395,20 @@ test('highlights only the current peer analytics destination', async () => {
   expect(overview.props['data-section-active']).toBeUndefined()
   expect(capabilities.props['data-section-active']).toBe('true')
   renderer.unmount()
+})
+
+test('assigns a named content mode without changing route ownership', async () => {
+  for (const [path, mode, role] of [
+    ['/', 'dashboard', 'admin'],
+    ['/analytics/activities', 'analytics', 'viewer'],
+    ['/analytics/teams/2', 'analytics', 'viewer'],
+    ['/data/requirements/ir', 'operational', 'viewer'],
+    ['/settings/collections', 'readable', 'admin'],
+  ]) {
+    const renderer = await renderAt(path, role)
+    expect(contentMode(renderer)).toContain(`app-shell__content--${mode}`)
+    renderer.unmount()
+  }
 })
 
 test('pushes active filter changes and restores them with MemoryRouter history', async () => {

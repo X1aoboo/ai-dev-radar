@@ -176,7 +176,7 @@ textarea:focus-visible {
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(60, 64, 67, .28) transparent;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 .app-nav__group {
@@ -330,7 +330,7 @@ textarea:focus-visible {
 
 .app-topbar {
   align-items: center;
-  background: rgba(255, 255, 255, .96);
+  background: var(--color-bg-surface);
   border-bottom: 1px solid var(--app-border);
   display: flex;
   gap: var(--app-space-5);
@@ -370,14 +370,24 @@ textarea:focus-visible {
   margin: 0 auto;
   max-width: 1600px;
   min-width: 0;
-  overflow-x: hidden;
+  overflow-x: clip;
   padding: var(--app-space-6);
 }
 
-.app-shell__content--overview {
+.app-shell__content--dashboard,
+.app-shell__content--analytics {
   max-width: none;
-  padding-left: clamp(16px, 2vw, 32px);
-  padding-right: clamp(16px, 2vw, 32px);
+  padding-left: clamp(24px, calc(2vw - 8px), 40px);
+  padding-right: clamp(24px, calc(2vw - 8px), 40px);
+  padding-top: var(--app-space-5);
+}
+
+.app-shell__content--operational {
+  max-width: 1600px;
+}
+
+.app-shell__content--readable {
+  max-width: 1120px;
 }
 
 .app-loading,

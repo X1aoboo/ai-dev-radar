@@ -5,6 +5,7 @@ import AnalyticsPanel from '../components/AnalyticsPanel'
 import FilterToolbar from '../components/FilterToolbar'
 import MetricCard from '../components/MetricCard'
 import PageHeader from '../components/PageHeader'
+import useActiveSection from '../components/useActiveSection'
 import EChart from '../components/EChart'
 import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
@@ -222,6 +223,7 @@ function AnalyticsDetailDrawer({ detail, triggerRef, onClose, onNavigate }) {
           {metric && metric.type !== 'boolean' && (
             <section className="analytics-detail__section">
               <h3>统计口径</h3>
+              {detail.leaderSummary && <p className="analytics-muted">{detail.leaderSummary}</p>}
               <dl className="analytics-detail-facts">
                 <div><dt>全公司均值</dt><dd>{valueLabel(detail.companyAverage)}</dd></div>
                 <div><dt>合并口径结果</dt><dd>{valueLabel(detail.mergedValue)}</dd></div>
@@ -295,7 +297,7 @@ export function TrendCard({ activity, metric, data, error, loading, teams, teamC
       {loading && <div className="overview-empty">正在更新指标数据…</div>}
       {!loading && error && <div className="overview-empty overview-error" role="alert">指标数据加载失败：{error.message}</div>}
       {!loading && !error && metric.type === 'boolean' && booleanTable && <div className="metric-detail-boolean-table-wrap"><table className="metric-detail-boolean-table"><thead><tr><th scope="col">团队</th><th scope="col">状态</th></tr></thead><tbody>{rows.map(({ team, value, state }) => <tr key={team.id}><th scope="row">{team.name}</th><td>{state === 'unknown' ? '暂无数据' : value ? '✓ 具备' : '✗ 不具备'}</td></tr>)}</tbody></table></div>}
-      {!loading && !error && metric.type !== 'boolean' && !hasNumericValues(data) && <div className="overview-empty">当前筛选切片暂无数据。</div>}
+      {!loading && !error && metric.type !== 'boolean' && !hasNumericValues(data) && <div className="overview-empty">所选窗口没有可展示的历史事实。</div>}
       {!loading && !error && metric.type !== 'boolean' && hasNumericValues(data) && <EChart option={option} height={300} ariaLabel={`${activity.name} ${metric.name} 团队趋势图`} />}
     </article>
   )
@@ -321,7 +323,7 @@ function MetricAnalysisCard({ activity, metric, data, error, loading, teams, tea
   const selectedPeriodId = periodId === 'all' ? 'all' : (periodId ?? snapshot.currentPeriod?.id ?? 'all')
   const periodWasSelected = periodId !== null && periodId !== undefined && periodId !== 'all'
   const option = useMemo(() => data && !error && metric.type !== 'boolean'
-    ? buildTrendOption({ data, metric, teamColors, selectedPeriodId, countAsBars: metric.type === 'count' })
+    ? buildTrendOption({ data, metric, teamColors, selectedPeriodId })
     : null, [data, error, metric, selectedPeriodId, teamColors])
   const statusRows = useMemo(() => metric.type === 'boolean' ? booleanStatusRows(data, teams, periodWasSelected ? selectedPeriodId : null) : [], [data, metric.type, periodWasSelected, selectedPeriodId, teams])
   const knownStatuses = statusRows.filter((row) => row.state !== 'unknown').length
@@ -340,23 +342,22 @@ function MetricAnalysisCard({ activity, metric, data, error, loading, teams, tea
     coverage: snapshot.coverage,
     periodLabel: snapshot.currentPeriod?.label,
     rows: snapshot.teams.map((team) => ({ teamId: team.teamId, teamName: team.teamName, value: team.point?.value ?? null })),
+    leaderSummary: snapshot.best || snapshot.weakest ? `最佳 ${snapshot.best ? `${snapshot.best.teamName} · ${formatMetricValue(metric, snapshot.best.point.value)}` : '—'} · 相对靠后 ${snapshot.weakest ? `${snapshot.weakest.teamName} · ${formatMetricValue(metric, snapshot.weakest.point.value)}` : '—'}` : null,
   }
-  const bestLabel = snapshot.best ? `${snapshot.best.teamName} · ${formatMetricValue(metric, snapshot.best.point.value)}` : '—'
-  const weakestLabel = snapshot.weakest ? `${snapshot.weakest.teamName} · ${formatMetricValue(metric, snapshot.weakest.point.value)}` : '—'
   const hasChartValue = hasNumericValues(data)
   const noCurrentValue = periodId !== 'all' && (metric.type === 'boolean' ? knownStatuses === 0 : snapshot.currentValues.length === 0)
   return (
     <article className="analytics-analysis-card">
-      <header className="analytics-analysis-card__header"><div><p className="analytics-eyebrow">原始指标</p><h3>{metric.name}</h3><p>{metric.type === 'boolean' ? (periodWasSelected ? '逐团队展示所选周期状态；不生成趋势或全公司均值。' : '逐团队展示最近有效状态；不生成趋势或全公司均值。') : `全公司均值虚线 · ${dimension === 'iteration' ? '按版本/迭代' : `近 ${granularity === 'day' ? '30 天' : granularity === 'week' ? '12 周' : '6 个月'}`}`}</p></div><button type="button" onClick={() => onOpen(detail)}>查看量化详情</button></header>
+      <header className="analytics-analysis-card__header"><div><h3>{metric.name}</h3><p>{metric.type === 'boolean' ? (periodWasSelected ? '逐团队展示所选周期状态；不生成趋势或全公司均值。' : '逐团队展示最近有效状态；不生成趋势或全公司均值。') : `全公司均值虚线 · ${dimension === 'iteration' ? '按版本/迭代' : `近 ${granularity === 'day' ? '30 天' : granularity === 'week' ? '12 周' : '6 个月'}`}`}</p></div><button type="button" onClick={() => onOpen(detail)}>查看量化详情</button></header>
       {loading && <div className="analytics-empty">正在加载指标数据…</div>}
       {!loading && error && <div className="analytics-empty analytics-empty--error" role="alert">指标加载失败：{error.message}</div>}
-      {!loading && !error && metric.type !== 'boolean' && (!data?.periods?.length || !data?.series?.length) && <div className="analytics-empty">当前窗口暂无事实数据。</div>}
-      {!loading && !error && metric.type !== 'boolean' && noCurrentValue && <div className="analytics-empty analytics-empty--current">当前周期暂无事实数据。</div>}
+      {!loading && !error && metric.type !== 'boolean' && !hasChartValue && <div className="analytics-empty">近六个月没有可展示的历史事实。</div>}
+      {!loading && !error && metric.type !== 'boolean' && hasChartValue && noCurrentValue && <div className="analytics-empty analytics-empty--current">当前周期暂无事实数据。</div>}
       {!loading && !error && metric.type === 'boolean' && <BooleanStatusList rows={statusRows} teamColors={teamColors} onNavigate={onNavigate} />}
-      {!loading && !error && metric.type !== 'boolean' && option && hasChartValue && <EChart option={option} height={245} ariaLabel={`${activity.name} ${metric.name} 趋势图`} onClick={() => onOpen(detail)} />}
+      {!loading && !error && metric.type !== 'boolean' && option && hasChartValue && <EChart option={option} height={220} ariaLabel={`${activity.name} ${metric.name} 趋势图`} onClick={() => onOpen(detail)} />}
       {!loading && !error && data && metric.type === 'boolean' && knownStatuses > 0 && <div className="analytics-analysis-meta"><SummaryStats value={`${enabledTeams} 个团队具备`} previous="—" coverage={`${knownStatuses} / ${teams.length}`} /></div>}
-      {!loading && !error && data && metric.type !== 'boolean' && periodId === 'all' && <p className="analytics-muted">显示全部周期趋势；选择单一周期可查看当期团队比较。</p>}
-      {!loading && !error && data && metric.type !== 'boolean' && periodId !== 'all' && <div className="analytics-analysis-meta"><SummaryStats value={snapshot.currentValue} previous={snapshot.previousValue} coverage={snapshot.coverage} /><div><span>最佳</span><strong>{bestLabel}</strong></div><div><span>相对靠后</span><strong>{weakestLabel}</strong></div></div>}
+      {!loading && !error && hasChartValue && metric.type !== 'boolean' && periodId === 'all' && <p className="analytics-muted">显示全部周期趋势；选择单一周期可查看当期团队比较。</p>}
+      {!loading && !error && hasChartValue && data && metric.type !== 'boolean' && periodId !== 'all' && !noCurrentValue && <div className="analytics-analysis-meta"><SummaryStats value={snapshot.currentValue} previous={snapshot.previousValue} coverage={snapshot.coverage} /></div>}
       {onNavigate && <button type="button" className="analytics-detail-link" onClick={() => onNavigate(`/analytics/metrics/${metric.id}`)}>打开现有指标详情 →</button>}
     </article>
   )
@@ -381,12 +382,20 @@ function MaturityAnalysisCard({ activity, data, history, month, months, teams, t
     periodLabel: month,
     rows: currentRows,
   }
+  const scoredRows = currentRows.filter((row) => Number.isFinite(row.value)).sort((left, right) => right.value - left.value)
   return (
-    <article className="analytics-analysis-card">
-      <header className="analytics-analysis-card__header"><div><p className="analytics-eyebrow">成熟度</p><h3>{activity.name}</h3><p>领域平均虚线 · 按已评估团队等权平均 · 未评估不补零</p></div><button type="button" onClick={() => onOpen(detail)}>查看量化详情</button></header>
-      {option ? <EChart option={option} height={245} ariaLabel={`${activity.name} 成熟度趋势图`} onClick={() => onOpen(detail)} /> : <div className="analytics-empty analytics-empty--current">近六个月暂无成熟度评估。</div>}
-      <div className="analytics-analysis-meta"><SummaryStats value={displayScore(current?.score)} previous={deltaText(current?.score, previous?.score)} coverage={coverageText(current?.assessed_team_count ?? 0, data?.team_count ?? teams.length)} /><div><span>最佳</span><strong>{currentRows.filter((row) => Number.isFinite(row.value)).sort((left, right) => right.value - left.value)[0]?.teamName ?? '—'}</strong></div><div><span>相对靠后</span><strong>{currentRows.filter((row) => Number.isFinite(row.value)).sort((left, right) => left.value - right.value)[0]?.teamName ?? '—'}</strong></div></div>
-    </article>
+    <section className="analytics-maturity-summary" aria-label={`${activity.name}成熟度`}>
+      <header className="analytics-maturity-summary__header">
+        <div><p className="analytics-eyebrow">成熟度</p><strong>{displayScore(current?.score)}</strong></div>
+        <span>环比 {deltaText(current?.score, previous?.score)}</span>
+        <span>覆盖 {coverageText(current?.assessed_team_count ?? 0, data?.team_count ?? teams.length)}</span>
+        {!hasFactValue(current?.score) && <span>当前月未评估</span>}
+        {scoredRows.length > 0 && <span>最佳 {scoredRows[0].teamName} · 相对靠后 {scoredRows.at(-1).teamName}</span>}
+        {!option && <span className="analytics-maturity-summary__empty">近六个月暂无历史评估</span>}
+        <button type="button" className="analytics-maturity-summary__action" onClick={() => onOpen(detail)}>查看成熟度详情</button>
+      </header>
+      {option && <div className="analytics-maturity-summary__chart"><EChart option={option} height={160} ariaLabel={`${activity.name} 成熟度趋势图`} onClick={() => onOpen(detail)} /></div>}
+    </section>
   )
 }
 
@@ -394,7 +403,6 @@ function AnalysisPageHead({ title, description }) {
   return (
     <PageHeader
       className="analytics-page-head"
-      eyebrow="Engineering intelligence"
       title={title}
       description={description}
     />
@@ -406,7 +414,7 @@ function AnalyticsFilterToolbar({ month, onMonthChange, granularity, onGranulari
     <FilterToolbar label="分析筛选" className="analytics-filter-toolbar">
       <div className="analytics-page-controls">
         <label><span>分析月份</span><input aria-label="分析月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>
-        {showGranularity && <div className="analytics-granularity" role="group" aria-label="原始指标时间粒度"><span>原始指标</span>{[['month', '月'], ['week', '周'], ['day', '日']].map(([value, label]) => <button key={value} type="button" aria-pressed={granularity === value} className={granularity === value ? 'is-active' : ''} onClick={() => onGranularityChange(value)}>{label}</button>)}</div>}
+        {showGranularity && <div className="analytics-granularity" role="group" aria-label="原始指标时间粒度"><span>时间粒度</span><div className="analytics-granularity__options">{[['month', '月'], ['week', '周'], ['day', '日']].map(([value, label]) => <button key={value} type="button" aria-pressed={granularity === value} className={granularity === value ? 'is-active' : ''} onClick={() => onGranularityChange(value)}>{label}</button>)}</div></div>}
       </div>
     </FilterToolbar>
   )
@@ -425,7 +433,9 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
   const selectedActivity = selectedMetricId ? activities.find((activity) => activity.metrics.some((metric) => String(metric.id) === selectedMetricId)) : null
   const selectedMetric = selectedActivity?.metrics.find((metric) => String(metric.id) === selectedMetricId) ?? null
   const visibleActivities = selectedMetric ? [selectedActivity] : activities
+  const activitySectionIds = kind === 'key' ? visibleActivities.map((activity) => `analytics-activity-${activity.id}`) : []
   const maturity = useMaturityOverview(month, kind, onSessionExpired)
+  const activeActivityId = useActiveSection(activitySectionIds, !maturity.loading && !maturity.error)
   const versionId = metricDimension === 'iteration' ? (filter?.versionId ?? 'all') : 'all'
   const metricFilter = useMemo(() => ({
     dimension: metricDimension,
@@ -482,25 +492,31 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
         ? <FilterBar filter={filter ?? { dimension: 'time', granularity: 'month', versionId: 'all', periodId: null, metricId: 'all' }} onChange={onFilterChange ?? (() => undefined)} versions={versions ?? []} periods={timePeriods} loading={metrics.loading} month={month} onMonthChange={changeMonth} metricOptions={metricOptions} />
         : <AnalyticsFilterToolbar month={month} onMonthChange={changeMonth} granularity={granularity} onGranularityChange={changeGranularity} showGranularity />}
       <div className="analytics-page-note">成熟度按自然月计算；原始指标按所选维度、周期查看，缺失保留断点，不插值、不补零。当前角色：{user?.role ?? 'viewer'}。</div>
+      {kind === 'key' && !maturity.loading && !maturity.error && visibleActivities.length > 0 && <nav className="analytics-activity-navigator" aria-label="活动导航">
+        {visibleActivities.map((activity) => {
+          const id = `analytics-activity-${activity.id}`
+          return <a key={activity.id} href={`#${id}`} aria-current={activeActivityId === id ? 'location' : undefined}>{activity.name}</a>
+        })}
+      </nav>}
       {maturity.loading && <div className="analytics-empty">正在加载成熟度历史…</div>}
       {maturity.error && <div className="analytics-empty analytics-empty--error" role="alert">成熟度加载失败：{maturity.error.message}</div>}
       {kind === 'general' && !maturity.loading && !maturity.error && selectedCapability && <div className="capability-workspace">
         <nav className="capability-directory" aria-label="能力结构">
-          <header><p className="analytics-eyebrow">Capability Structure</p><h2>能力结构</h2><span>{activities.length} 项</span></header>
+          <header><h2>能力结构</h2><span>{activities.length} 项</span></header>
           {activities.map((activity) => <button key={activity.id} type="button" aria-label={`查看能力：${activity.name}`} aria-pressed={String(activity.id) === String(selectedCapability.id)} onClick={() => setSelectedCapabilityId(activity.id)}><span>{activity.name}</span><small>{activity.metrics.length} 项指标</small></button>)}
         </nav>
         <section className="capability-detail" aria-labelledby="capability-current-title">
-          <header className="capability-detail__header"><div><p className="analytics-eyebrow">Current State</p><h2 id="capability-current-title">{selectedCapability.name}</h2><p>{selectedCapability.metrics.length ? '查看该能力的人工成熟度和目录原始指标。' : '当前目录没有原始指标；未评估状态保持为空。'}</p></div><span>{selectedCapability.metrics.length} 项原始指标</span></header>
-          <section className="capability-detail__evolution" aria-label="成熟度演进"><header><p className="analytics-eyebrow">Evolution</p><h3>成熟度演进</h3></header><MaturityAnalysisCard activity={selectedCapability} data={maturity.data} history={maturity.history} month={month} months={months} teams={teams} teamColors={teamColors} onOpen={drawer.open} /></section>
-          <section className="capability-detail__metrics" aria-label="能力当前状态与原始指标"><header><p className="analytics-eyebrow">原始指标</p><h3>当前状态与趋势</h3></header><div className="analytics-metric-grid">{selectedCapability.metrics.map((metric) => <MetricAnalysisCard key={metric.id} activity={selectedCapability} metric={metric} data={metrics.data[metric.id]} error={metrics.errors[metric.id]} loading={metrics.loading} teams={teams} teamColors={teamColors} onOpen={drawer.open} onNavigate={onNavigate} granularity={granularity} dimension="time" />)}</div></section>
+          <header className="capability-detail__header"><div><h2 id="capability-current-title">{selectedCapability.name}</h2><p>{selectedCapability.metrics.length ? '当前状态 · 人工成熟度与目录原始指标。' : '当前目录没有原始指标；未评估状态保持为空。'}</p></div><span>{selectedCapability.metrics.length} 项指标</span></header>
+          <section className="capability-detail__evolution" aria-label="成熟度演进"><header><h3>成熟度演进</h3></header><MaturityAnalysisCard activity={selectedCapability} data={maturity.data} history={maturity.history} month={month} months={months} teams={teams} teamColors={teamColors} onOpen={drawer.open} /></section>
+          <section className="capability-detail__metrics" aria-label="能力当前状态与原始指标"><header><h3>原始指标 · 当前状态与趋势</h3></header><div className="analytics-metric-grid">{selectedCapability.metrics.map((metric) => <MetricAnalysisCard key={metric.id} activity={selectedCapability} metric={metric} data={metrics.data[metric.id]} error={metrics.errors[metric.id]} loading={metrics.loading} teams={teams} teamColors={teamColors} onOpen={drawer.open} onNavigate={onNavigate} granularity={granularity} dimension="time" />)}</div></section>
         </section>
       </div>}
       {kind === 'general' && !activities.length && !maturity.loading && !maturity.error && <div className="analytics-empty">当前目录没有可展示的通用研发能力。</div>}
       {!maturity.loading && !maturity.error && (
         kind === 'key' && <div className="analytics-activity-list">
           {visibleActivities.map((activity) => (
-            <section key={activity.id} className="analytics-activity-section">
-              <header className="analytics-activity-section__header"><div><p className="analytics-eyebrow">关键研发活动</p><h2>{activity.name}</h2></div><span>{selectedMetric ? '当前筛选指标' : `${activity.metrics.length} 个原始指标`}</span></header>
+            <section key={activity.id} id={`analytics-activity-${activity.id}`} className="analytics-activity-section">
+              <header className="analytics-activity-section__header"><div><h2>{activity.name}</h2></div><span>{selectedMetric ? '当前筛选指标' : `${activity.metrics.length} 个原始指标`}</span></header>
               <MaturityAnalysisCard activity={activity} data={maturity.data} history={maturity.history} month={month} months={months} teams={teams} teamColors={teamColors} onOpen={drawer.open} />
               <div className="analytics-metric-grid">{(selectedMetric ? activity.metrics.filter((metric) => String(metric.id) === selectedMetricId) : activity.metrics).map((metric) => <MetricAnalysisCard key={metric.id} activity={activity} metric={metric} data={metrics.data[metric.id]} error={metrics.errors[metric.id]} loading={metrics.loading} teams={teams} teamColors={teamColors} onOpen={drawer.open} onNavigate={onNavigate} granularity={granularity} dimension={metricDimension} periodId={filter?.periodId} />)}</div>
             </section>
@@ -559,7 +575,7 @@ function ExecutiveOverallTrend({ rows, dataByMetric, month, onNavigate }) {
   const hasTrend = snapshot?.values.some((value) => typeof value === 'number' && Number.isFinite(value)) ?? false
   const option = row && data && hasTrend ? buildTrendOption({ data: { ...data, series: [] }, metric: row.metric, teamColors: {}, selectedPeriodId: 'all', averageLabel: '全公司均值' }) : null
   const action = row && <div className="executive-trend-actions"><label><span>指标</span><Select size="small" value={String(row.metric.id)} onChange={setMetricId} options={rows.map((item) => ({ value: String(item.metric.id), label: `${item.activity.name} · ${item.metric.name}` }))} /></label><Button type="link" onClick={() => onNavigate?.(`/analytics/metrics/${row.metric.id}`)}>查看指标详情</Button></div>
-  return <AnalyticsPanel title="核心指标趋势" description={row ? `${row.metric.name} · 全公司均值 · 近六个月` : '当前目录没有可用的核心数值指标'} action={action}>{!row ? <div className="analytics-empty">当前目录没有可展示的核心数值指标。</div> : !data ? <div className="analytics-empty">正在加载指标趋势…</div> : !hasTrend ? <div className="analytics-empty analytics-empty--current">近六个月暂无此指标事实。</div> : <EChart option={option} height={255} ariaLabel={`${row.metric.name}全公司均值近六个月趋势图`} onClick={() => onNavigate?.(`/analytics/metrics/${row.metric.id}`)} />}</AnalyticsPanel>
+  return <AnalyticsPanel className="executive-analysis-grid__trend" title="核心指标趋势" description={row ? `${row.metric.name} · 全公司均值 · 近六个月` : '当前目录没有可用的核心数值指标'} action={action}>{!row ? <div className="analytics-empty">当前目录没有可展示的核心数值指标。</div> : !data ? <div className="analytics-empty">正在加载指标趋势…</div> : !hasTrend ? <div className="analytics-empty analytics-empty--current">近六个月暂无此指标事实。</div> : <EChart option={option} height={255} ariaLabel={`${row.metric.name}全公司均值近六个月趋势图`} onClick={() => onNavigate?.(`/analytics/metrics/${row.metric.id}`)} />}</AnalyticsPanel>
 }
 
 function rankingOption(row) {
@@ -581,7 +597,7 @@ function rankingOption(row) {
 function ExecutiveLifecycle({ rows, dataByMetric, month, teams = [], onNavigate }) {
   return (
     <section className="executive-lifecycle" aria-labelledby="lifecycle-title">
-      <div className="executive-section-heading"><div><p className="analytics-eyebrow">R&amp;D lifecycle</p><h2 id="lifecycle-title">研发生命周期</h2><span>各阶段独立显示目录指标，不比较不同单位的数值。</span></div><Button type="link" onClick={() => onNavigate?.('/analytics/activities')}>查看研发活动</Button></div>
+      <div className="executive-section-heading"><div><h2 id="lifecycle-title">研发生命周期</h2><span>各阶段独立显示目录指标，不比较不同单位的数值。</span></div><Button type="link" onClick={() => onNavigate?.('/analytics/activities')}>查看研发活动</Button></div>
       <div className="executive-lifecycle__list">
         {rows.map(({ stage, row }) => {
           const data = row ? dataByMetric[row.metric.id] : null
@@ -628,8 +644,7 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], maturityState,
     <div className="executive-overview analytics-page">
       <AnalysisPageHead title="研发总览" description="先看当前成熟度、事实覆盖与团队差异；仅展示已验证的团队事实和人工评估。" />
       <AnalyticsFilterToolbar month={month} onMonthChange={changeMonth} showGranularity={false} />
-      <div className="analytics-page-note">当前未配置业务 Target 或外部基准，因此不展示目标达成或综合评分。成熟度与事实指标独立，未评估不补零。</div>
-      <div className="executive-section-heading executive-section-heading--snapshot"><div><p className="analytics-eyebrow">Management Snapshot</p><h2>管理摘要</h2></div><span>当前月事实覆盖 {metrics.loading ? '加载中' : `${coverage.available}/${coverage.total}`} 项指标</span></div>
+      <div className="executive-section-heading executive-section-heading--snapshot"><div><h2>管理摘要</h2></div><span>当前月事实覆盖 {metrics.loading ? '加载中' : `${coverage.available}/${coverage.total}`} 项指标</span></div>
       <section className="executive-kpi-grid" aria-label="管理摘要">
         <MetricCard label="关键活动成熟度" value={displayScore(keyScore)} detail={`环比 ${deltaText(keyScore, keyMaturityValues.at(-2))} · 覆盖 ${keyMaturity.data?.assessed_cell_count ?? 0}/${keyMaturity.data?.total_cell_count ?? 0}`} trend={<InlineSparkline label="关键活动成熟度近六个月趋势" values={keyMaturityValues} />} />
         <MetricCard label="通用能力成熟度" value={displayScore(generalScore)} detail={`环比 ${deltaText(generalScore, generalMaturityValues.at(-2))} · 覆盖 ${generalMaturity.data?.assessed_cell_count ?? 0}/${generalMaturity.data?.total_cell_count ?? 0}`} trend={<InlineSparkline label="通用能力成熟度近六个月趋势" values={generalMaturityValues} />} />
@@ -638,22 +653,26 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], maturityState,
           return <MetricCard key={row.metric.id} label={`${row.activity.name} · ${row.metric.name}`} value={metrics.loading ? '—' : snapshot?.value ?? '—'} detail={metrics.loading ? '正在加载当前事实' : snapshot?.comparison ?? `当前月无事实 · 0/${teams.length} 有效`} trend={snapshot && <InlineSparkline label={`${row.metric.name}近六个月趋势`} values={snapshot.values} />} />
         })}
       </section>
-      <div className="executive-fact-note">指标卡展示各自单位与同一指标的团队分布，不合并为总分。当前未配置业务 Target 或外部基准。</div>
-      <section className="analytics-signal-strip" aria-labelledby="analytics-signal-title"><div><p className="analytics-eyebrow">Signal</p><h2 id="analytics-signal-title">当前成熟度覆盖</h2><p>{missingSignals.length ? `有 ${missingSignals.length} 个活动尚未完成当前月评估。` : '当前月活动均有成熟度记录。'}</p></div><button type="button" onClick={() => drawer.open({ type: 'overall', title: '当前成熟度覆盖', currentValue: missingSignals.length ? '存在缺失' : '已覆盖', previousValue: '—', coverage: `${keyMaturity.data?.assessed_cell_count ?? 0} + ${generalMaturity.data?.assessed_cell_count ?? 0} 个已评估单元`, activityRows: missingSignals.map(({ activity }) => ({ teamId: activity.activity_id, teamName: activity.activity_name, value: activity.score })) })}>查看量化详情</button></section>
-      {(keyMaturity.loading || generalMaturity.loading) && <div className="analytics-empty">正在加载近六个月成熟度…</div>}
-      {(keyMaturity.error || generalMaturity.error) && <div className="analytics-empty analytics-empty--error" role="alert">成熟度历史加载失败：{(keyMaturity.error ?? generalMaturity.error).message}</div>}
-      <ExecutiveOverallTrend rows={coreTrendRows} dataByMetric={metrics.data} month={month} onNavigate={onNavigate} />
-      {!keyMaturity.loading && !generalMaturity.loading && !keyMaturity.error && !generalMaturity.error && <div className="executive-chart-grid"><ExecutiveOverviewCard title="关键研发活动整体成熟度" history={keyMaturity.history} month={month} onOpen={drawer.open} /><ExecutiveOverviewCard title="通用研发能力整体成熟度" history={generalMaturity.history} month={month} onOpen={drawer.open} /></div>}
-      <div className="executive-detail-grid">
-        <AnalyticsPanel title="团队单指标排名" description={rankingRow ? `${rankingRow.metric.name} · 全公司均值虚线` : '当前月没有可排名的数值指标'} action={rankingRow && <label className="executive-ranking-select"><span>指标</span><Select size="small" value={String(rankingRow.metric.id)} onChange={setRankingMetricId} options={rankingRows.map((row) => ({ value: String(row.metric.id), label: `${row.activity.name} · ${row.metric.name}` }))} /></label>}>
-          {rankingRow ? <EChart option={rankingOption(rankingRow)} height={260} ariaLabel={`${rankingRow.metric.name}团队单指标排名`} onClick={(params) => { const team = rankedTeams(rankingRow)[params.dataIndex]; if (team) onNavigate?.(`/analytics/teams/${team.teamId}`) }} /> : <div className="analytics-empty">当前月没有可用于团队排名的数值事实。</div>}
-        </AnalyticsPanel>
-        <AnalyticsPanel title="关键活动能力画像" description="领域平均；未评估轴不补零。">
-          <MaturityRadar activities={maturityActivities} series={maturitySeries} ariaLabel="关键研发活动领域成熟度画像" />
+      <p className="executive-fact-note">当前未配置业务 Target；各指标保留原单位，并只与同一指标的团队比较，不合并计分。</p>
+      <div className="executive-analysis-grid">
+        <ExecutiveOverallTrend rows={coreTrendRows} dataByMetric={metrics.data} month={month} onNavigate={onNavigate} />
+        <AnalyticsPanel className="executive-analysis-grid__ranking" title="团队单指标排名" description={rankingRow ? `${rankingRow.metric.name} · 全公司均值虚线` : '当前月没有可排名的数值指标'} action={rankingRow && <label className="executive-ranking-select"><span>指标</span><Select size="small" value={String(rankingRow.metric.id)} onChange={setRankingMetricId} options={rankingRows.map((row) => ({ value: String(row.metric.id), label: `${row.activity.name} · ${row.metric.name}` }))} /></label>}>
+          {rankingRow ? <EChart option={rankingOption(rankingRow)} height={260} ariaLabel={`${rankingRow.metric.name}团队单指标排名`} onClick={(params) => { const team = rankedTeams(rankingRow)[params.dataIndex]; if (team) onNavigate?.(`/analytics/teams/${team.teamId}`) }} onKeyActivate={() => { const team = rankedTeams(rankingRow)[0]; if (team) onNavigate?.(`/analytics/teams/${team.teamId}`) }} /> : <div className="analytics-empty">当前月没有可用于团队排名的数值事实。</div>}
         </AnalyticsPanel>
       </div>
       <ExecutiveLifecycle rows={lifecycle} dataByMetric={metrics.data} month={month} teams={teams} onNavigate={onNavigate} />
+      <div className="executive-section-heading"><div><h2>成熟度</h2><span>关键活动与通用能力分别评估；未评估不补零。</span></div></div>
+      {(keyMaturity.loading || generalMaturity.loading) && <div className="analytics-empty">正在加载近六个月成熟度…</div>}
+      {(keyMaturity.error || generalMaturity.error) && <div className="analytics-empty analytics-empty--error" role="alert">成熟度历史加载失败：{(keyMaturity.error ?? generalMaturity.error).message}</div>}
+      {!keyMaturity.loading && !generalMaturity.loading && !keyMaturity.error && !generalMaturity.error && <div className="executive-maturity-grid">
+        <ExecutiveOverviewCard title="关键研发活动整体成熟度" history={keyMaturity.history} month={month} onOpen={drawer.open} />
+        <ExecutiveOverviewCard title="通用研发能力整体成熟度" history={generalMaturity.history} month={month} onOpen={drawer.open} />
+        <AnalyticsPanel title="关键活动能力画像" description="领域平均；未评估轴不补零。">
+          <MaturityRadar activities={maturityActivities} series={maturitySeries} ariaLabel="关键研发活动领域成熟度画像" />
+        </AnalyticsPanel>
+      </div>}
       <div className="executive-summary-links"><Button onClick={() => onNavigate?.('/analytics/activities')}>研发活动摘要</Button><Button onClick={() => onNavigate?.('/analytics/capabilities')}>研发能力摘要</Button></div>
+      <section className="analytics-signal-strip" aria-labelledby="analytics-signal-title"><div><h2 id="analytics-signal-title">当前成熟度覆盖</h2><p>{missingSignals.length ? `有 ${missingSignals.length} 个活动尚未完成当前月评估。` : '当前月活动均有成熟度记录。'}</p></div><button type="button" onClick={() => drawer.open({ type: 'overall', title: '当前成熟度覆盖', currentValue: missingSignals.length ? '存在缺失' : '已覆盖', previousValue: '—', coverage: `${keyMaturity.data?.assessed_cell_count ?? 0} + ${generalMaturity.data?.assessed_cell_count ?? 0} 个已评估单元`, activityRows: missingSignals.map(({ activity }) => ({ teamId: activity.activity_id, teamName: activity.activity_name, value: activity.score })) })}>查看量化详情</button></section>
       <AnalyticsDetailDrawer detail={drawer.detail} triggerRef={drawer.triggerRef} onClose={drawer.close} onNavigate={onNavigate} />
       {catalog.length === 0 && <p className="analytics-muted">当前目录为空，成熟度图表没有活动轴。</p>}
     </div>

@@ -237,6 +237,15 @@ function AppShell({ user, onLogout }) {
   }
   const location = useLocation()
   const meta = getRouteMeta(location.pathname)
+  const contentMode = location.pathname === '/'
+    ? 'dashboard'
+    : location.pathname.startsWith('/analytics/')
+      ? 'analytics'
+      : location.pathname === '/settings/collections'
+        ? 'readable'
+        : location.pathname.startsWith('/data/') || location.pathname.startsWith('/settings/')
+          ? 'operational'
+          : 'readable'
   return (
     <div className={`app-shell${!narrow && collapsed ? ' app-shell--collapsed' : ''}`}>
       <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
@@ -246,7 +255,7 @@ function AppShell({ user, onLogout }) {
       </Drawer>}
       <div className="app-shell__body">
         <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
-        <div id="main-content" className={`app-shell__content${location.pathname === '/' ? ' app-shell__content--overview' : ''}`} role="main" tabIndex={-1}><Outlet /></div>
+        <div id="main-content" className={`app-shell__content app-shell__content--${contentMode}`} role="main" tabIndex={-1}><Outlet /></div>
       </div>
     </div>
   )

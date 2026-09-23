@@ -2,10 +2,12 @@ import React from 'react'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const { metricLoadError, maturityLoadError } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null } }))
+const { metricLoadError, maturityLoadError, emptyMetrics } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null }, emptyMetrics: { current: false } }))
 
 vi.mock('../components/EChart', () => ({
-  default: ({ ariaLabel, onClick }) => <div role="img" aria-label={ariaLabel} onClick={onClick} />,
+  default: ({ ariaLabel, onClick }) => onClick
+    ? <button type="button" aria-label={ariaLabel} onClick={onClick} />
+    : <div role="img" aria-label={ariaLabel} />,
 }))
 
 vi.mock('antd', () => ({
@@ -54,10 +56,10 @@ function metricData(metric, granularity = 'month') {
       team_id: team.id,
       team_name: team.name,
       snapshot: metric.type === 'boolean' ? (index === 0 ? true : null) : undefined,
-      values: periods.map((period) => ({ period_id: period.id, value: metric.type === 'boolean' ? null : index === 0 ? 0.4 : null, numerator: index === 0 ? 4 : 0, denominator: index === 0 ? 10 : 0 })),
+      values: periods.map((period) => ({ period_id: period.id, value: metric.type === 'boolean' || emptyMetrics.current ? null : index === 0 ? 0.4 : null, numerator: index === 0 ? 4 : 0, denominator: index === 0 ? 10 : 0 })),
     })),
-    company_average: metric.type === 'boolean' ? [] : periods.map((period) => ({ period_id: period.id, value: 0.4 })),
-    domain_summary: metric.type === 'boolean' ? [] : periods.map((period) => ({ period_id: period.id, value: 0.25, numerator: 4, denominator: 16, fact_count: 1, sample_count: 16 })),
+    company_average: metric.type === 'boolean' ? [] : periods.map((period) => ({ period_id: period.id, value: emptyMetrics.current ? null : 0.4 })),
+    domain_summary: metric.type === 'boolean' ? [] : periods.map((period) => ({ period_id: period.id, value: emptyMetrics.current ? null : 0.25, numerator: 4, denominator: 16, fact_count: 1, sample_count: 16 })),
   }
 }
 
@@ -112,12 +114,14 @@ beforeEach(() => {
   globalThis.window = { localStorage: { getItem: () => '{}', setItem: () => undefined } }
   metricLoadError.current = null
   maturityLoadError.current = null
+  emptyMetrics.current = false
 })
 
 afterEach(() => {
   delete globalThis.window
   metricLoadError.current = null
   maturityLoadError.current = null
+  emptyMetrics.current = false
 })
 
 test('root is an evidence-bounded management summary with no maturity maintenance action', async () => {
@@ -138,6 +142,9 @@ test('root is an evidence-bounded management summary with no maturity maintenanc
   expect(text).toContain('核心指标趋势')
   expect(text).toContain('当前未配置业务 Target')
   expect(text).not.toContain('维护成熟度')
+  expect(text.indexOf('核心指标趋势')).toBeLessThan(text.indexOf('团队单指标排名'))
+  expect(text.indexOf('团队单指标排名')).toBeLessThan(text.indexOf('研发生命周期'))
+  expect(text.indexOf('研发生命周期')).toBeLessThan(text.indexOf('关键研发活动整体成熟度'))
   renderer.unmount()
 })
 
@@ -148,7 +155,10 @@ test('activity and capability pages render every metric as an independent chart'
   expect(text).toContain('研发活动')
   expect(text).toContain('AI 渗透率')
   expect(text).toContain('需求数量')
-  expect(renderer.root.findAllByProps({ role: 'img' }).length).toBeGreaterThanOrEqual(3)
+  expect(renderer.root.findAllByType('button').filter((node) => node.props['aria-label']?.includes('趋势图')).length).toBeGreaterThanOrEqual(3)
+  const activityLinks = renderer.root.findAllByType('a').filter((node) => node.props.href?.startsWith('#analytics-activity-'))
+  expect(activityLinks.map((node) => node.props.href)).toEqual(['#analytics-activity-1'])
+  expect(activityLinks[0].props['aria-current']).toBe('location')
   renderer.unmount()
 
   await act(async () => { renderer = create(<CapabilitiesPage {...analyticsProps} />) })
@@ -165,7 +175,7 @@ test('activity and capability pages render every metric as an independent chart'
 test('chart detail keeps company mean separate from merged raw-count results', async () => {
   let renderer
   await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
-  const charts = renderer.root.findAllByProps({ role: 'img' })
+  const charts = renderer.root.findAllByType('button')
   const metricChart = charts.find((chart) => chart.props['aria-label']?.includes('AI 渗透率'))
   await act(async () => metricChart.props.onClick({}))
   const text = renderText(renderer.toJSON())
@@ -178,6 +188,16 @@ test('chart detail keeps company mean separate from merged raw-count results', a
   expect(text).toContain('样本量')
   expect(text).toContain('两者不可互换')
   expect(text).toContain('打开现有指标详情')
+  renderer.unmount()
+})
+
+test('activity metrics show a compact no-history state instead of an empty chart slot', async () => {
+  emptyMetrics.current = true
+  let renderer
+  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('近六个月没有可展示的历史事实。')
+  expect(renderer.root.findAll((node) => node.props?.['aria-label']?.includes('AI 渗透率 趋势图'))).toHaveLength(0)
   renderer.unmount()
 })
 
@@ -210,16 +230,40 @@ test('activity workspace keeps URL-backed metric, dimension, and period filters'
   const allPeriodsText = renderText(renderer.toJSON())
   expect(allPeriodsText).toContain('显示全部周期趋势；选择单一周期可查看当期团队比较。')
   expect(allPeriodsText).not.toContain('最佳团队A · 40%')
+  const reset = renderer.root.findByProps({ className: 'analytics-filter-reset' })
+  await act(async () => reset.props.onClick())
+  expect(onFilterChange).toHaveBeenLastCalledWith({ dimension: 'time', granularity: 'month', versionId: 'all', periodId: '2026-03', metricId: 'all' }, { history: 'push' })
   renderer.unmount()
 })
 
 test('metric detail labels the company_average result as the full-company mean', async () => {
   let renderer
-  await act(async () => { renderer = create(<MetricDetailPage {...analyticsProps} activity={catalog[0]} metric={catalog[0].metrics[0]} />) })
+  await act(async () => { renderer = create(<MetricDetailPage {...analyticsProps} filter={{ ...analyticsProps.filter, periodId: '2026-03' }} activity={catalog[0]} metric={catalog[0].metrics[0]} />) })
   const text = renderText(renderer.toJSON())
   expect(text).toContain('全公司均值')
   expect(text).not.toContain('领域当前值')
   expect(text).toContain('团队系列与全公司均值仅在同一指标内比较')
+  expect(text).toContain('当前周期团队排名')
+  expect(text).toContain('团队A')
+  renderer.unmount()
+
+  await act(async () => { renderer = create(<MetricDetailPage {...analyticsProps} filter={{ ...analyticsProps.filter, periodId: 'all' }} activity={catalog[0]} metric={catalog[0].metrics[0]} />) })
+  const allPeriods = renderText(renderer.toJSON())
+  expect(allPeriods).toContain('选择单一周期查看当前结果；全部周期仅展示趋势。')
+  expect(allPeriods).toContain('选择单一周期查看原始事实。')
+  renderer.unmount()
+})
+
+test('boolean metric detail uses team states instead of a company mean or rank', async () => {
+  const activity = { id: 5, name: '自动化能力', kind: 'general', metrics: [{ id: 51, name: '能力是否具备', type: 'boolean' }] }
+  let renderer
+  await act(async () => { renderer = create(<MetricDetailPage {...analyticsProps} filter={{ ...analyticsProps.filter, periodId: 'all' }} activity={activity} metric={activity.metrics[0]} />) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('逐团队展示')
+  expect(text).toContain('团队A')
+  expect(text).toContain('团队B')
+  expect(text).not.toContain('团队单指标排名')
+  expect(text).not.toContain('当前周期团队排名')
   renderer.unmount()
 })
 
