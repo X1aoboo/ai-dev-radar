@@ -38,6 +38,9 @@
 | Select/Listbox | Ant Design Select or existing native select | Route component + business behavior | authored / native | keyboard and open-popup browser check |
 | Date | Existing native date input | Route component + Asia/Shanghai semantics | native | keyboard and browser check |
 | Form | Ant Design Form | Existing data-management/settings flows | create / edit | rendering and browser validation |
+| Operational filter | Shared `FilterToolbar` + Design System classes | Route-local data-workbench state | common controls plus light advanced filters | wrap, active count, reset, query behavior |
+| Operational table/status | `.operational-table` and semantic status classes | `frontend/src/design/design-system.css` | data-workbench table/empty/loading states | density, sticky/fixed cells, local scroll, no page overflow |
+| Batch review | `ImportPreviewDrawer` | Existing import/collector batch APIs | file import / staged collector | source context, valid/invalid/warning rows, explicit confirm |
 | Scrollbar | `frontend/src/design/design-system.css` | `DESIGN.md` | documented local geometry exceptions | computed style and overflow check |
 | Toast | Ant Design `App` feedback provider | Existing app ownership | success / warning / info / error | route-level workflow check |
 | CRUD | Existing route/API behavior | `docs/business/data-management.md` | return / stay according to sibling flow | full relevant route regression |
@@ -77,6 +80,17 @@
 - Metric Detail: Result → Comparison → Evidence keeps one-metric team distribution/ranking distinct from the trend; raw current-period facts remain on-demand. Selecting all periods shows the full trend and asks for a single period before claiming a current result or current-period evidence.
 - Sidebar/drawer transformation: 248px expanded / 64px collapsed desktop sidebar, 280px drawer at <=680px, with preserved focus restoration and local desktop preference.
 - Responsive table strategy: local horizontal scrolling only when needed; no page-level horizontal overflow.
+
+## Operational workbench
+
+- Page hierarchy: content `PageHeader` → only necessary status/context → `FilterToolbar` → primary workspace → Drawer/review flow. The Topbar Breadcrumb owns route context; avoid repeating it as a page eyebrow. Use at most one visually primary action. Show read-only state compactly in the header.
+- Filters: keep common filters visible; expand advanced filters as a light region with an active-filter count. Reset remains low emphasis. Preserve current route-local filter state, automatic-query timing, dependent-filter clearing and server pagination.
+- Tables: `frontend/src/design/design-system.css` owns `.operational-table`, status tags, density and stable empty states. Header height is about 42px, row height 48px, horizontal cell padding 12px; secondary metadata is 12–13px and one line with full text available on hover. Keep numeric values tabular/right-aligned, dates consistent, identifiers/actions fixed where useful, sticky headers offset below the 56px Topbar, row selection/hover, compact pagination and body-contained horizontal scrolling. The page itself must not overflow horizontally.
+- IR and staged data: formal IR is the primary workspace surface, not a Card nested inside another page surface. Hide an empty pending collector section; render existing batches compactly. Import/collector review identifies source, file/team, generated time, total/valid/invalid/warning counts, row-level differences/errors and the unchanged explicit whole-batch confirmation boundary. Invalid rows disable confirmation.
+- Drawers: create/edit keeps list context, groups existing fields by business meaning, uses a stable footer, preserves validation and submission loading, and does not change API payloads.
+- Role scope: the maintainer's IR and maturity team filters stay locked to the bound team and state why. Admin can choose the supported team scope; viewer receives no write controls.
+- Maturity: edit monthly drafts in the activity table. Blank is not evaluated and zero is valid. Copy-previous changes only the draft, preview reviews the month before save, and clear remains separately confirmed. Viewer uses compact read-only sections/tables, not a dashboard.
+- Pending domains and resilience: AR/SR, issues, MR and code review show a compact pending state; no schema, fields or actions are invented. Loading retains PageHeader/filter context when available. Errors stay in the owning domain. Empty/No Data never masquerades as zero or a fabricated count.
 
 ## Overlays and feedback
 

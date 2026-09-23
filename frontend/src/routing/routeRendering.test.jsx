@@ -305,7 +305,9 @@ test('returns 403 for non-admin access to the migrated /config entry', async () 
 
 test('only supported pending domains render the pending state', async () => {
   const pending = await renderAt('/data/issues', 'admin')
-  expect(hasText(pending, '问题单数据源规格待定义')).toBe(true)
+  expect(hasText(pending, '问题单数据')).toBe(true)
+  expect(hasText(pending, '规格待定义')).toBe(true)
+  expect(hasText(pending, '问题单数据源规格待定义')).toBe(false)
   pending.unmount()
 
   const unknownDomain = await renderAt('/data/foo', 'admin')

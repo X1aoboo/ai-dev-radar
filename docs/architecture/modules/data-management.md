@@ -6,6 +6,8 @@
 
 前端按需求、问题单、MR、代码检视组织数据源入口。`DataManagementPage` 在需求工作台组合 IR、AR、SR 页签；当前只有 IR 页签连接本模块 API，其他来源使用明确的待定义页面。旧 IR/AR/SR/DTS/MR 页面路径由路由层兼容映射，不改变后端接口。
 
+`DataManagementPage` 与 `App.jsx` 拥有业务路由和交互；共用 `PageHeader`、`FilterToolbar` 及 `frontend/src/design/design-system.css` 中的 `.operational-table`、状态和紧凑反馈样式。`dataManagement.css` 保留页面表单/网格布局及未纳入 Phase 3 的设置布局。IR 筛选与分页保持路由内状态及现有自动查询 API；维护者 IR/成熟度范围从账号绑定团队取值，前端禁用选择并说明原因，后端仍负责授权。正式 IR 使用独立工作区，待确认采集批次只在有内容时显示。导入和采集复用 `ImportPreviewDrawer` 展示暂存元数据、行校验及显式确认。IR 与成熟度在引用数据加载时保持页头/范围筛选结构，Loading 只占工作区。`App.jsx` 的问题单、MR、代码检视和需求 AR/SR 只渲染紧凑待定义状态，不建立新数据契约。
+
 主要接口为 `/api/data/ir`、`/api/data/ir/imports/preview`、`/api/data/ir/imports`、`/api/data/ir/imports/{batch_id}`、`/api/data/ir/imports/{batch_id}/confirm`、`/api/data/ir/{record_id}/audit-logs`、`/api/collection-schedules`、`/api/collection-schedules/{domain}`、`/api/collection-schedules/{domain}/run`、`/api/data-metrics` 及 `/api/data-metrics/compute`。方法和参数以路由、DTO 与运行时 OpenAPI 为准。跨服务能力语义及 Gateway 线协议见 [AI 研发数据网关能力协议](../../contracts/ai-dev-data-gateway/README.md)。
 
 ## 临时态与事务

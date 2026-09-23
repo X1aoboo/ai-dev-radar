@@ -59,10 +59,6 @@ function MockTypographyTitle({ children, level = 2 }) { return React.createEleme
 function MockUpload({ children, beforeUpload }) { return <div data-upload data-before-upload={beforeUpload}>{children}</div> }
 function MockTag({ children }) { return <span>{children}</span> }
 function MockPopconfirm({ children, onConfirm, title, description }) { return <span data-popconfirm data-on-confirm={onConfirm} data-title={title} data-description={description}>{children}</span> }
-function MockCollapse({ items = [] }) {
-  const [expanded, setExpanded] = React.useState({})
-  return <div>{items.map((item) => <section key={item.key}><button type="button" aria-expanded={Boolean(expanded[item.key])} onClick={() => setExpanded((current) => ({ ...current, [item.key]: !current[item.key] }))}>{item.label}</button>{expanded[item.key] && item.children}</section>)}</div>
-}
 function MockTabs({ items = [], activeKey, onChange }) { return <div data-tabs data-active-key={activeKey}>{items.map((item) => <section key={item.key}><h3>{item.label}</h3><button type="button" aria-label={`切换到 ${item.label}`} onClick={() => onChange?.(item.key)}>切换</button>{item.children}</section>)}</div> }
 function MockDescriptions({ items = [] }) { return <dl>{items.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.children}</dd></div>)}</dl> }
 function MockDivider({ children }) { return <hr data-divider aria-label={children} /> }
@@ -75,7 +71,6 @@ vi.mock('antd', () => ({
   Alert: MockAlert,
   Button: MockButton,
   Card: MockCard,
-  Collapse: MockCollapse,
   Descriptions: MockDescriptions,
   Divider: MockDivider,
   Drawer: MockDrawer,
@@ -88,7 +83,6 @@ vi.mock('antd', () => ({
   Space: Object.assign(MockSpace, { Compact: MockSpace }),
   Spin: MockSpin,
   Steps: MockSteps,
-  Result: ({ title, subTitle }) => <section><h2>{title}</h2><p>{subTitle}</p></section>,
   Table: MockTable,
   Tabs: MockTabs,
   Tag: MockTag,
@@ -128,7 +122,7 @@ function responseFor(url) {
   if (url.startsWith('/api/maturity/records?') && url.includes('month=2026-08')) return [maturityRecord]
   if (url.startsWith('/api/maturity/records?') && url.includes('month=2026-07')) return [{ ...maturityRecord, month: '2026-07', score_raw: '3', note: '上月评估' }]
   if (url.startsWith('/api/maturity/records?')) return []
-  if (url.startsWith('/api/maturity/overview?')) return { kind: 'key', team_count: 2, activities: [{ activity_id: 1, activity_name: 'SA设计', score_display: '3.00', level: 'L3', assessed_team_count: 1 }] }
+  if (url.startsWith('/api/maturity/overview?')) return { kind: url.includes('kind=general') ? 'general' : 'key', team_count: 2, activities: [{ activity_id: 1, activity_name: 'SA设计', score_display: '3.00', level: 'L3', assessed_team_count: 1 }] }
   if (url.startsWith('/api/data/ir?')) return { items: [irRecord], total: 101 }
   if (url === '/api/data-metrics?domain=ir') return [dataMetric]
   if (url.startsWith('/api/data-metrics/compute')) return { metric_code: dataMetric.code, metric_name: dataMetric.name, numerator: 1, denominator: 2, value: 0.5, record_count: 2 }
@@ -151,6 +145,18 @@ async function render(section, user = { id: 1, username: 'admin', role: 'admin' 
 afterEach(() => { fetchJson.mockReset() })
 
 describe('data management workbench rendering', () => {
+  test('IR header and filters remain visible while reference data loads', async () => {
+    fetchJson.mockImplementation(async (url) => {
+      if (['/api/teams', '/api/products', '/api/versions', '/api/team-members'].includes(url)) return new Promise(() => {})
+      return responseFor(String(url))
+    })
+    let renderer
+    await act(async () => { renderer = create(<DataManagementPage section="ir" user={{ id: 1, username: 'admin', role: 'admin' }} onSessionExpired={() => undefined} />) })
+    expect(renderer.root.findAllByType('h1').map((heading) => heading.children[0])).toContain('IR 需求数据')
+    expect(renderer.root.findAllByProps({ className: 'operational-filter-toolbar' })).toHaveLength(1)
+    renderer.unmount()
+  })
+
   test('IR uses common and advanced filters, server pagination, and an AntD Drawer editor', async () => {
     const renderer = await render('ir')
     expect(renderer.root.findAllByProps({ 'data-table': true }).length).toBeGreaterThan(0)
@@ -159,6 +165,7 @@ describe('data management workbench rendering', () => {
 
     await act(async () => { renderer.root.findAllByType('button').find((button) => button.children.includes('新增 IR')).props.onClick() })
     expect(renderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toBe('新增 IR 需求')
+    expect(renderer.root.findAllByProps({ 'data-divider': true }).map((divider) => divider.props['aria-label'])).toEqual(['基础信息', '归属', '业务信息', '工作量', 'AI 属性'])
     renderer.unmount()
   })
 
@@ -179,7 +186,9 @@ describe('data management workbench rendering', () => {
     const renderer = await render('maturity', { id: 2, username: 'maintainer', role: 'maintainer', maintainer_team_id: 1 }, '2026-08')
     const score = renderer.root.findByProps({ 'aria-label': 'SA设计成熟度分值' })
     expect(score.props.value).toBe(0)
-    expect(renderer.root.findAllByProps({ className: 'maturity-management__toolbar' })).toHaveLength(1)
+    expect(renderer.root.findAllByProps({ className: 'operational-filter-toolbar maturity-management__toolbar' })).toHaveLength(1)
+    expect(renderer.root.findByProps({ 'aria-label': '维护团队' }).props.disabled).toBe(true)
+    expect(renderText(renderer.toJSON())).toContain('团队由账号绑定，不能修改。')
 
     await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('预览保存')).props.onClick())
     expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('0')
@@ -212,6 +221,16 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
+  test('viewer maturity is read-only and uses two compact table sections', async () => {
+    const renderer = await render('maturity', { id: 3, username: 'viewer', role: 'viewer' }, '2026-08')
+    expect(renderText(renderer.toJSON())).toContain('只读')
+    expect(renderer.root.findAllByProps({ className: 'maturity-readonly-sections' })).toHaveLength(1)
+    expect(renderer.root.findAllByProps({ 'data-table': true })).toHaveLength(2)
+    expect(renderer.root.findAllByProps({ 'data-card': true })).toHaveLength(0)
+    expect(renderer.root.findAllByType('button').some((button) => button.children.includes('预览保存'))).toBe(false)
+    renderer.unmount()
+  })
+
   test('maturity catalog failure renders an error instead of an empty assessment table', async () => {
     const renderer = await render('maturity', { id: 1, username: 'admin', role: 'admin' }, '2026-08', (url) => {
       if (url === '/api/catalog') throw new Error('catalog unavailable')
@@ -239,11 +258,40 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
+  test('IR advanced filters show active count, query automatically, and reset', async () => {
+    const renderer = await render('ir')
+    const buttonNamed = (text) => renderer.root.findAllByType('button').find((button) => renderText(button).includes(text))
+    expect(renderer.root.findAllByProps({ className: 'operational-filter-count' })).toHaveLength(0)
+    await act(async () => buttonNamed('高级筛选').props.onClick())
+    const moduleFilter = renderer.root.findByProps({ 'aria-label': '业务模块' })
+    await act(async () => moduleFilter.props.onChange({ target: { value: '模块A' } }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(renderer.root.findAllByProps({ className: 'operational-filter-count' })).toHaveLength(1)
+    expect(renderText(renderer.root.findByProps({ className: 'operational-filter-count' }))).toBe('1')
+    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('business_module='))).toBe(true)
+
+    await act(async () => buttonNamed('重置').props.onClick())
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    const latestIrRequest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/ir?')).at(-1)
+    expect(latestIrRequest).not.toContain('business_module=')
+    expect(renderer.root.findAllByProps({ className: 'operational-filter-count' })).toHaveLength(0)
+    renderer.unmount()
+  })
+
+  test('empty collector batch results do not reserve a page section', async () => {
+    const renderer = await render('ir', undefined, undefined, (url) => url === '/api/data/ir/imports?source_kind=collector&status=pending' ? [] : responseFor(url))
+    expect(renderer.root.findAllByProps({ className: 'operational-compact-section' })).toHaveLength(0)
+    expect(renderText(renderer.toJSON())).not.toContain('待确认采集批次')
+    renderer.unmount()
+  })
+
   test('IR import renders the upload, preview steps, and confirmation drawer', async () => {
     const renderer = await render('ir')
     const upload = renderer.root.findByProps({ 'data-upload': true })
     await act(async () => { await upload.props['data-before-upload']({ name: 'ir.csv', type: 'text/csv', arrayBuffer: async () => new ArrayBuffer(0) }) })
     expect(renderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toContain('导入预览')
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('CSV / Excel 导入')
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('临时数据尚未进入正式 IR')
     expect(renderer.root.findAllByType('li').map((item) => item.children[0])).toEqual(['上传', '预览与校验', '整批确认'])
     const confirmButton = renderer.root.findAllByType('button').find((button) => button.children.includes('确认写入正式数据'))
     await act(async () => { confirmButton.props.onClick() })
@@ -252,14 +300,42 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
+  test('invalid file import shows row errors and blocks whole-batch confirmation', async () => {
+    const invalidBatch = {
+      id: 302,
+      domain: 'ir',
+      source_kind: 'import',
+      status: 'pending',
+      team_id: null,
+      filename: 'invalid.csv',
+      total_rows: 1,
+      valid_rows: 0,
+      invalid_rows: 1,
+      created_at: '2026-09-23T10:00:00',
+      rows: [{ row_number: 2, source_id: 'IR-BAD', operation: 'insert', diff: {}, errors: ['需求编号缺失'], warnings: [] }],
+    }
+    const renderer = await render('ir', undefined, undefined, (url) => String(url).includes('/imports/preview') ? invalidBatch : responseFor(String(url)))
+    const upload = renderer.root.findByProps({ 'data-upload': true })
+    await act(async () => { await upload.props['data-before-upload']({ name: 'invalid.csv', type: 'text/csv', arrayBuffer: async () => new ArrayBuffer(0) }) })
+    expect(renderText(renderer.toJSON())).toContain('需求编号缺失')
+    const confirmButton = renderer.root.findAllByType('button').find((button) => button.children.includes('存在错误，不能确认'))
+    expect(confirmButton.props.disabled).toBe(true)
+    renderer.unmount()
+  })
+
   test('collector batches open in the shared preview and invalid rows block confirmation', async () => {
     const renderer = await render('ir')
     expect(renderText(renderer.toJSON())).toContain('待确认采集批次')
     fetchJson.mockImplementation(async (url) => url === '/api/data/ir/imports/301'
-      ? { ...collectorBatchDetails, valid_rows: 0, invalid_rows: 1, rows: [{ ...collectorBatchDetails.rows[0], status: 'invalid', errors: ['迭代名称缺失或不属于该版本'] }] }
+      ? { ...collectorBatchDetails, valid_rows: 0, invalid_rows: 1, rows: [{ ...collectorBatchDetails.rows[0], status: 'invalid', errors: ['迭代名称缺失或不属于该版本'], warnings: ['责任人待匹配'] }] }
       : responseFor(String(url)))
     await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('查看批次')).props.onClick())
     expect(renderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toContain('采集批次预览')
+    expect(renderText(renderer.toJSON())).toContain('平台采集')
+    expect(renderText(renderer.toJSON())).toContain('生成时间')
+    expect(renderText(renderer.toJSON())).toContain('2026-09-18 01:00:00')
+    expect(renderText(renderer.toJSON())).toContain('临时数据')
+    expect(renderText(renderer.toJSON())).toContain('警告项 1')
     expect(renderText(renderer.toJSON())).toContain('迭代名称缺失或不属于该版本')
     const confirmButton = renderer.root.findAllByType('button').find((button) => button.children.includes('存在错误，不能确认'))
     expect(confirmButton.props.disabled).toBe(true)
@@ -375,10 +451,21 @@ describe('data management workbench rendering', () => {
 
   test('viewer can read IR but does not receive write controls', async () => {
     const renderer = await render('ir', { id: 2, username: 'viewer', role: 'viewer' })
-    expect(renderText(renderer.toJSON())).toContain('当前角色只读')
+    expect(renderText(renderer.toJSON())).toContain('只读')
     expect(renderer.root.findAllByProps({ 'data-upload': true })).toHaveLength(0)
     expect(renderer.root.findAllByType('button').some((button) => button.children.includes('新增 IR'))).toBe(false)
     expect(renderer.root.findAllByType('button').some((button) => button.children.includes('编辑'))).toBe(false)
+    renderer.unmount()
+  })
+
+  test('maintainer keeps IR edit controls within the bound team filter', async () => {
+    const renderer = await render('ir', { id: 2, username: 'maintainer.团队A', role: 'maintainer', maintainer_team_id: 1 })
+    const teamFilter = renderer.root.findAllByType('select')[0]
+    expect(teamFilter.props.disabled).toBe(true)
+    expect(teamFilter.props.value).toBe('1')
+    expect(renderText(renderer.toJSON())).toContain('按账号绑定团队筛选')
+    expect(renderer.root.findAllByProps({ 'data-upload': true })).toHaveLength(1)
+    expect(renderer.root.findAllByType('button').some((button) => button.children.includes('新增 IR'))).toBe(true)
     renderer.unmount()
   })
 

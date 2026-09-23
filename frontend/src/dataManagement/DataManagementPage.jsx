@@ -3,7 +3,6 @@ import {
   Alert,
   Button as AntButton,
   Card,
-  Collapse,
   Descriptions,
   Divider,
   Drawer,
@@ -12,7 +11,6 @@ import {
   Input,
   InputNumber,
   Popconfirm,
-  Result,
   Select,
   Space,
   Spin,
@@ -89,12 +87,24 @@ const RECORD_SOURCE_LABELS = {
   auto: '自动采集',
 }
 
+const STICKY_HEADER_OFFSET = 56
+
 const EMPTY_TEAM_FORM = { id: null, name: '', productVersions: '', repos: '' }
 const EMPTY_MEMBER_FORM = { id: null, team_id: '', employee_id: '', name: '', role: '' }
 
 function Notice({ notice }) {
   if (!notice) return null
   return <Alert className="workbench-notice" type={notice.type === 'error' ? 'error' : 'success'} showIcon closable message={notice.text} />
+}
+
+function StatusTag({ tone = 'neutral', children }) {
+  return <Tag className={`operational-status-tag operational-status-tag--${tone}`}>{children}</Tag>
+}
+
+function formatTableTimestamp(value) {
+  if (!value) return '—'
+  const timestamp = String(value)
+  return timestamp.includes('T') ? `${timestamp.slice(0, 10)} ${timestamp.slice(11, 19)}` : timestamp
 }
 
 function LoadingState({ text = '加载中…' }) {
@@ -111,16 +121,16 @@ function ReferenceError({ error }) {
 }
 
 function PageIntro({ eyebrow, title, description, action }) {
-  return <PageHeader className="workbench-page-intro" eyebrow={eyebrow} title={title} description={description} actions={action && <Space wrap>{action}</Space>} />
+  return <PageHeader className="operational-page-header" eyebrow={eyebrow} title={title} description={description} actions={action && <Space wrap>{action}</Space>} />
 }
 
 function ReadOnlyHint() {
   return <Alert type="info" showIcon message="当前角色只读，管理员可维护此主数据。" />
 }
 
-function SelectField({ label, value, onChange, options, disabled = false, placeholder = '全部' }) {
+function SelectField({ label, value, onChange, options, disabled = false, placeholder = '全部', helper, className = 'operational-filter-control' }) {
   return (
-    <label className="workbench-filter-control">
+    <label className={className}>
       <span>{label}</span>
       <Select
         size="small"
@@ -131,12 +141,13 @@ function SelectField({ label, value, onChange, options, disabled = false, placeh
         options={options.map(([optionValue, optionLabel]) => ({ value: String(optionValue), label: optionLabel }))}
         onChange={(nextValue) => onChange(nextValue ?? '')}
       />
+      {helper && <span className="operational-filter-help">{helper}</span>}
     </label>
   )
 }
 
-function InputField({ label, value, onChange, type = 'text' }) {
-  return <label className="workbench-filter-control"><span>{label}</span><Input size="small" type={type} value={value} onChange={(event) => onChange(event.target.value)} /></label>
+function InputField({ label, value, onChange, type = 'text', className = 'operational-filter-control' }) {
+  return <label className={className}><span>{label}</span><Input aria-label={label} size="small" type={type} value={value} onChange={(event) => onChange(event.target.value)} /></label>
 }
 
 function useReferenceData(onSessionExpired, user) {
@@ -315,9 +326,9 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
       <div className="workbench-master-detail">
-        <Card title="团队" extra={<Text type="secondary">{refs.teams.length} 个</Text>}><Table rowKey="id" size="small" columns={teamColumns} dataSource={refs.teams} pagination={false} scroll={{ x: canEdit ? 370 : 262 }} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} /></Card>
+        <Card title="团队" extra={<Text type="secondary">{refs.teams.length} 个</Text>}><Table className="operational-table" rowKey="id" size="small" columns={teamColumns} dataSource={refs.teams} pagination={false} scroll={{ x: canEdit ? 370 : 262 }} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} /></Card>
         <Card title={selectedTeam ? `${selectedTeam.name} · 团队详情` : '团队详情'} extra={canEdit && selectedTeam && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setMemberEditor({ ...EMPTY_MEMBER_FORM, team_id: String(selectedTeam.id) })}>新增成员</AntButton>}>
-          {selectedTeam ? <><Descriptions size="small" column={1} items={[{ key: 'mapping', label: '数据源映射', children: <Space wrap>{(selectedTeam.source_mapping?.product_versions ?? []).map((value) => <Tag key={value}>{value}</Tag>)}{(selectedTeam.source_mapping?.repos ?? []).map((value) => <Tag key={value} color="blue">{value}</Tag>)}{!selectedTeam.source_mapping?.product_versions?.length && !selectedTeam.source_mapping?.repos?.length && <Text type="secondary">未配置</Text>}</Space> }]} /><Divider titlePlacement="left" plain>团队成员</Divider><Table rowKey="id" size="small" columns={memberColumns} dataSource={members} pagination={false} locale={{ emptyText: <EmptyState>暂无团队成员。</EmptyState> }} /></> : <EmptyState>请选择团队查看详情。 </EmptyState>}
+          {selectedTeam ? <><Descriptions size="small" column={1} items={[{ key: 'mapping', label: '数据源映射', children: <Space wrap>{(selectedTeam.source_mapping?.product_versions ?? []).map((value) => <Tag key={value}>{value}</Tag>)}{(selectedTeam.source_mapping?.repos ?? []).map((value) => <Tag key={value} color="blue">{value}</Tag>)}{!selectedTeam.source_mapping?.product_versions?.length && !selectedTeam.source_mapping?.repos?.length && <Text type="secondary">未配置</Text>}</Space> }]} /><Divider titlePlacement="left" plain>团队成员</Divider><Table className="operational-table" rowKey="id" size="small" columns={memberColumns} dataSource={members} pagination={false} locale={{ emptyText: <EmptyState>暂无团队成员。</EmptyState> }} /></> : <EmptyState>请选择团队查看详情。 </EmptyState>}
         </Card>
       </div>
       <TeamEditorDrawer editor={teamEditor} onClose={() => setTeamEditor(null)} onSubmit={saveTeam} submitting={submitting} />
@@ -388,9 +399,9 @@ function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
       <div className="workbench-master-detail">
-        <Card title="产品" extra={<Text type="secondary">{refs.products.length} 个</Text>}><Table rowKey="id" size="small" columns={productColumns} dataSource={refs.products} pagination={false} scroll={{ x: canEdit ? 475 : 357 }} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} /></Card>
+        <Card title="产品" extra={<Text type="secondary">{refs.products.length} 个</Text>}><Table className="operational-table" rowKey="id" size="small" columns={productColumns} dataSource={refs.products} pagination={false} scroll={{ x: canEdit ? 475 : 357 }} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} /></Card>
         <Card title={selectedProduct ? `${selectedProduct.name} · 层级详情` : '产品详情'} extra={canEdit && selectedProduct && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setVersionEditor({ id: null, product_id: String(selectedProduct.id), name: '' })}>新增版本</AntButton>}>
-          {selectedProduct ? <><Descriptions size="small" column={2} items={[{ key: 'team', label: '负责团队', children: selectedProduct.team_name }, { key: 'versions', label: '版本数量', children: versions.length }]} /><Divider titlePlacement="left" plain>产品版本与迭代</Divider><Table rowKey="id" size="small" columns={versionColumns} dataSource={versions} pagination={false} locale={{ emptyText: <EmptyState>暂无产品版本。</EmptyState> }} /></> : <EmptyState>请选择产品查看层级。</EmptyState>}
+          {selectedProduct ? <><Descriptions size="small" column={2} items={[{ key: 'team', label: '负责团队', children: selectedProduct.team_name }, { key: 'versions', label: '版本数量', children: versions.length }]} /><Divider titlePlacement="left" plain>产品版本与迭代</Divider><Table className="operational-table" rowKey="id" size="small" columns={versionColumns} dataSource={versions} pagination={false} locale={{ emptyText: <EmptyState>暂无产品版本。</EmptyState> }} /></> : <EmptyState>请选择产品查看层级。</EmptyState>}
         </Card>
       </div>
       <ProductEditorDrawer editor={productEditor} teams={refs.teams} onClose={() => setProductEditor(null)} onSubmit={(values) => save(productEditor.id ? `/api/products/${productEditor.id}` : '/api/products', productEditor.id ? 'PATCH' : 'POST', { team_id: Number(values.team_id), name: values.name.trim() }, productEditor.id ? '产品已更新。' : '产品已创建。', () => setProductEditor(null))} submitting={submitting} />
@@ -410,9 +421,36 @@ function IRRecordDrawer({ editor, refs, onClose, onSubmit, submitting }) {
   return (
     <Drawer title={editor?.record ? '编辑 IR 需求' : '新增 IR 需求'} open={Boolean(editor)} size={760} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存需求</AntButton></Space>}>
       <AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}>
-        <div className="workbench-form-grid two"><AntForm.Item name="requirement_no" label="需求编号" rules={[{ required: true, message: '请输入需求编号' }]}><Input disabled={Boolean(editor?.record)} /></AntForm.Item><AntForm.Item name="requirement_name" label="需求名称" rules={[{ required: true, message: '请输入需求名称' }]}><Input /></AntForm.Item><AntForm.Item name="responsible_employee_id" label="责任人工号"><Input /></AntForm.Item><AntForm.Item name="parent_requirement_no" label="父需求编号"><Input /></AntForm.Item><AntForm.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}><Select onChange={() => form.setFieldsValue({ version_id: '', iteration_id: '' })} options={refs.products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></AntForm.Item><AntForm.Item name="version_id" label="版本" rules={[{ required: true, message: '请选择版本' }]}><Select onChange={() => form.setFieldsValue({ iteration_id: '' })} options={versions.map((version) => ({ value: String(version.id), label: version.name }))} /></AntForm.Item><AntForm.Item name="iteration_id" label="迭代" rules={[{ required: true, message: '请选择迭代' }]}><Select options={(selectedVersion?.iterations ?? []).map((iteration) => ({ value: String(iteration.id), label: iteration.name }))} /></AntForm.Item><AntForm.Item name="completed_at" label="完成时间" rules={[{ required: true, message: '请选择完成时间' }]}><Input type="date" /></AntForm.Item><AntForm.Item name="business_module" label="业务模块" rules={[{ required: true, message: '请输入业务模块' }]}><Input /></AntForm.Item><AntForm.Item name="requirement_scenario" label="需求场景" rules={[{ required: true, message: '请输入需求场景' }]}><Input /></AntForm.Item></div>
-        <Divider titlePlacement="left" plain>工作量与 AI 属性</Divider>
-        <div className="workbench-form-grid three"><AntForm.Item name="estimated_workload" label="总预估（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="actual_workload" label="总实际（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="ai_assisted" label="是否使用 AI"><Select options={[{ value: '', label: '待维护' }, { value: 'true', label: '是' }, { value: 'false', label: '否' }]} /></AntForm.Item><AntForm.Item name="sa_estimated_workload" label="SA 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="sa_actual_workload" label="SA 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="se_estimated_workload" label="SE 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="se_actual_workload" label="SE 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item></div>
+        <Divider titlePlacement="left" plain>基础信息</Divider>
+        <div className="workbench-form-grid two">
+          <AntForm.Item name="requirement_no" label="需求编号" rules={[{ required: true, message: '请输入需求编号' }]}><Input disabled={Boolean(editor?.record)} /></AntForm.Item>
+          <AntForm.Item name="requirement_name" label="需求名称" rules={[{ required: true, message: '请输入需求名称' }]}><Input /></AntForm.Item>
+          <AntForm.Item name="responsible_employee_id" label="责任人工号"><Input /></AntForm.Item>
+          <AntForm.Item name="parent_requirement_no" label="父需求编号"><Input /></AntForm.Item>
+        </div>
+        <Divider titlePlacement="left" plain>归属</Divider>
+        <div className="workbench-form-grid two">
+          <AntForm.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}><Select onChange={() => form.setFieldsValue({ version_id: '', iteration_id: '' })} options={refs.products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></AntForm.Item>
+          <AntForm.Item name="version_id" label="版本" rules={[{ required: true, message: '请选择版本' }]}><Select onChange={() => form.setFieldsValue({ iteration_id: '' })} options={versions.map((version) => ({ value: String(version.id), label: version.name }))} /></AntForm.Item>
+          <AntForm.Item name="iteration_id" label="迭代" rules={[{ required: true, message: '请选择迭代' }]}><Select options={(selectedVersion?.iterations ?? []).map((iteration) => ({ value: String(iteration.id), label: iteration.name }))} /></AntForm.Item>
+        </div>
+        <Divider titlePlacement="left" plain>业务信息</Divider>
+        <div className="workbench-form-grid two">
+          <AntForm.Item name="completed_at" label="完成时间" rules={[{ required: true, message: '请选择完成时间' }]}><Input type="date" /></AntForm.Item>
+          <AntForm.Item name="business_module" label="业务模块" rules={[{ required: true, message: '请输入业务模块' }]}><Input /></AntForm.Item>
+        </div>
+        <AntForm.Item name="requirement_scenario" label="需求场景" rules={[{ required: true, message: '请输入需求场景' }]}><Input /></AntForm.Item>
+        <Divider titlePlacement="left" plain>工作量</Divider>
+        <div className="workbench-form-grid three">
+          <AntForm.Item name="estimated_workload" label="总预估（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+          <AntForm.Item name="actual_workload" label="总实际（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+          <AntForm.Item name="sa_estimated_workload" label="SA 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+          <AntForm.Item name="sa_actual_workload" label="SA 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+          <AntForm.Item name="se_estimated_workload" label="SE 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+          <AntForm.Item name="se_actual_workload" label="SE 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item>
+        </div>
+        <Divider titlePlacement="left" plain>AI 属性</Divider>
+        <AntForm.Item name="ai_assisted" label="是否使用 AI"><Select options={[{ value: '', label: '待维护' }, { value: 'true', label: '是' }, { value: 'false', label: '否' }]} /></AntForm.Item>
       </AntForm>
     </Drawer>
   )
@@ -420,15 +458,48 @@ function IRRecordDrawer({ editor, refs, onClose, onSubmit, submitting }) {
 
 function ImportPreviewDrawer({ batch, teamName, onClose, onConfirm, submitting }) {
   const collectorBatch = batch.source_kind === 'collector'
+  const rows = batch.rows ?? []
+  const warningCount = rows.reduce((count, row) => count + (row.warnings?.length ?? 0), 0)
+  const details = [
+    { key: 'source', label: '来源', children: collectorBatch ? '平台采集' : 'CSV / Excel 导入' },
+    ...(collectorBatch
+      ? [{ key: 'team', label: '团队', children: teamName ?? `团队 #${batch.team_id}` }]
+      : [{ key: 'file', label: '文件', children: batch.filename ?? '数据文件' }]),
+    { key: 'created', label: '生成时间', children: batch.created_at ? <time dateTime={batch.created_at}>{formatTableTimestamp(batch.created_at)}</time> : '—' },
+    { key: 'status', label: '批次状态', children: <StatusTag tone={batch.status === 'pending' ? 'pending' : 'neutral'}>{batch.status === 'pending' ? '待确认' : '已确认'}</StatusTag> },
+  ]
   const columns = [
     { title: '行', dataIndex: 'row_number', width: 60 },
     { title: '记录 ID', dataIndex: 'source_id', render: (value) => <Text code>{value ?? '—'}</Text> },
     { title: '来源系统', dataIndex: 'source_system', render: (value) => value ?? '—' },
-    { title: '动作', dataIndex: 'operation', render: (value) => <Tag color={value === 'insert' ? 'gold' : value === 'fill' ? 'green' : 'default'}>{value === 'insert' ? '新增' : value === 'fill' ? '补充空值' : '无变化'}</Tag> },
+    { title: '动作', dataIndex: 'operation', render: (value) => <StatusTag>{value === 'insert' ? '新增' : value === 'fill' ? '补充空值' : '无变化'}</StatusTag> },
     { title: '差异', dataIndex: 'diff', render: (diff = {}) => <Space orientation="vertical" size={0}>{Object.entries(diff).filter(([, value]) => value.action !== 'unchanged').slice(0, 5).map(([field, value]) => <Text key={field} type={value.action === 'keep' ? 'secondary' : undefined}>{field}：{value.action === 'keep' ? '保留正式值' : `→ ${String(value.to)}`}</Text>)}</Space> },
-    { title: '校验', key: 'validation', render: (_, row) => <Space orientation="vertical" size={0}>{row.errors?.map((error) => <Text key={error} type="danger">{error}</Text>)}{row.warnings?.map((warning) => <Text key={warning} type="warning">{warning}</Text>)}{!row.errors?.length && !row.warnings?.length && <Tag color="green">通过</Tag>}</Space> },
+    { title: '校验', key: 'validation', render: (_, row) => <Space orientation="vertical" size={0}>{row.errors?.map((error) => <Text key={error} type="danger">{error}</Text>)}{row.warnings?.map((warning) => <Text key={warning} type="warning">{warning}</Text>)}{!row.errors?.length && !row.warnings?.length && <StatusTag tone="success">通过</StatusTag>}</Space> },
   ]
-  return <Drawer title={collectorBatch ? `采集批次预览 · ${teamName ?? `团队 #${batch.team_id}`}` : `导入预览 · ${batch.filename ?? '数据文件'}`} open size={1080} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>关闭</AntButton><AntButton type="primary" disabled={batch.invalid_rows > 0 || batch.status !== 'pending'} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : batch.status !== 'pending' ? '批次已确认' : collectorBatch ? '确认采集批次' : '确认写入正式数据'}</AntButton></Space>}><Steps current={1} size="small" items={[{ title: collectorBatch ? '采集' : '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} /><div className="workbench-import-summary"><Tag>总行数 {batch.total_rows}</Tag><Tag color="green">可确认 {batch.valid_rows}</Tag><Tag color={batch.invalid_rows ? 'red' : 'default'}>错误行 {batch.invalid_rows}</Tag></div>{batch.invalid_rows ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。" /> : <Alert type="success" showIcon message="全部行校验通过；正式数据中的已有非空字段会保留。" />}<Table className="workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={batch.rows} pagination={false} scroll={{ x: 900, y: 420 }} /></Drawer>
+  return (
+    <Drawer
+      title={collectorBatch ? `采集批次预览 · ${teamName ?? `团队 #${batch.team_id}`}` : `导入预览 · ${batch.filename ?? '数据文件'}`}
+      open
+      size={1080}
+      onClose={onClose}
+      destroyOnClose
+      footer={<Space><AntButton onClick={onClose}>关闭</AntButton><AntButton type="primary" disabled={batch.invalid_rows > 0 || batch.status !== 'pending'} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : batch.status !== 'pending' ? '批次已确认' : collectorBatch ? '确认采集批次' : '确认写入正式数据'}</AntButton></Space>}
+    >
+      <Steps current={1} size="small" items={[{ title: collectorBatch ? '采集' : '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} />
+      <Descriptions size="small" column={2} items={details} />
+      <div className="workbench-import-summary" role="group" aria-label="批次校验统计">
+        <StatusTag>总行数 {batch.total_rows}</StatusTag>
+        <StatusTag tone="success">可确认 {batch.valid_rows}</StatusTag>
+        <StatusTag tone={batch.invalid_rows ? 'error' : 'neutral'}>错误行 {batch.invalid_rows}</StatusTag>
+        {warningCount > 0 && <StatusTag tone="warning">警告项 {warningCount}</StatusTag>}
+      </div>
+      <div className="operational-inline-state" role="status"><StatusTag tone="pending">临时数据</StatusTag><Text type="secondary">尚未进入正式 IR；整批确认后才写入。</Text></div>
+      {batch.invalid_rows
+        ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。请查看对应行的字段错误。" />
+        : <div className="operational-inline-state" role="status"><StatusTag tone="success">校验通过</StatusTag><Text type="secondary">已有正式记录中的非空字段会保留。</Text></div>}
+      <Table className="operational-table workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 900, y: 420 }} />
+    </Drawer>
+  )
 }
 
 function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
@@ -442,6 +513,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
   const [importBatch, setImportBatch] = useState(null)
   const [collectorBatches, setCollectorBatches] = useState([])
   const [collectorBatchesLoading, setCollectorBatchesLoading] = useState(false)
+  const [advancedFiltersOpen, setAdvancedFiltersOpen] = useState(false)
   const [busy, setBusy] = useState(false)
 
   const availableProducts = useMemo(() => refs.products.filter((product) => !filters.team_id || product.team_id === Number(filters.team_id)), [refs.products, filters.team_id])
@@ -449,6 +521,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
   const availableVersions = useMemo(() => refs.versions.filter((version) => version.product_id && availableProductIds.has(version.product_id) && (!filters.product_id || version.product_id === Number(filters.product_id))), [refs.versions, availableProductIds, filters.product_id])
   const selectedVersion = refs.versions.find((version) => String(version.id) === String(filters.version_id))
   const availableIterations = selectedVersion?.iterations ?? []
+  const advancedFilterCount = [filters.responsible_employee_id, filters.business_module, filters.requirement_scenario, filters.completed_from, filters.completed_to, filters.ai_assisted].filter(Boolean).length
 
   const load = useCallback(async ({ clearNotice = true } = {}) => {
     setLoading(true)
@@ -507,34 +580,65 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
   }
 
   const columns = [
-    { title: '需求', key: 'requirement', fixed: 'left', width: 220, render: (_, record) => <Space orientation="vertical" size={0}><Text strong>{record.requirement_no}</Text><Text type="secondary">{record.requirement_name}</Text></Space> },
-    { title: '归属', key: 'ownership', width: 230, render: (_, record) => <Space orientation="vertical" size={0}><Text>{record.team_name}</Text><Text type="secondary">{record.product_name} / {record.version_name} / {record.iteration_name}</Text></Space> },
-    { title: '责任人', key: 'owner', width: 130, render: (_, record) => <Space>{record.responsible_employee_id ? <Text code>{record.responsible_employee_id}</Text> : <Text type="secondary">—</Text>}{record.responsible_employee_pending && <Tag color="warning">待匹配</Tag>}</Space> },
-    { title: '完成时间', dataIndex: 'completed_at', width: 120 },
-    { title: '模块 / 场景', key: 'scenario', width: 180, render: (_, record) => <Space orientation="vertical" size={0}><Text>{record.business_module}</Text><Text type="secondary">{record.requirement_scenario}</Text></Space> },
-    { title: 'AI 属性', dataIndex: 'ai_assisted', width: 100, render: (value) => <Tag color={value === true ? 'green' : value === false ? 'default' : 'gold'}>{value === true ? '是' : value === false ? '否' : '待维护'}</Tag> },
-    { title: '工作量', key: 'workload', width: 180, render: (_, record) => <Space orientation="vertical" size={0}><Text>总计 {record.estimated_workload ?? '—'} / {record.actual_workload ?? '—'}</Text><Text type="secondary">SA {record.sa_estimated_workload ?? '—'} / {record.sa_actual_workload ?? '—'} · SE {record.se_estimated_workload ?? '—'} / {record.se_actual_workload ?? '—'}</Text></Space> },
-    { title: '来源', key: 'source', width: 100, render: (_, record) => <Space orientation="vertical" size={0}><Tag>{RECORD_SOURCE_LABELS[record.record_source] ?? record.record_source}</Tag><Text type="secondary">{record.updated_by}</Text></Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 80, render: (_, record) => canEdit && <AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ record, form: irFormFromRecord(record) })}>编辑</AntButton> },
+    { title: '需求', key: 'requirement', fixed: 'left', width: 220, render: (_, record) => <Space orientation="vertical" size={0}><Text strong className="operational-table__primary">{record.requirement_no}</Text><Text type="secondary" title={record.requirement_name} className="operational-table__meta">{record.requirement_name}</Text></Space> },
+    { title: '归属', key: 'ownership', width: 230, render: (_, record) => <Space orientation="vertical" size={0}><Text className="operational-table__primary">{record.team_name}</Text><Text type="secondary" title={`${record.product_name} / ${record.version_name} / ${record.iteration_name}`} className="operational-table__meta">{record.product_name} / {record.version_name} / {record.iteration_name}</Text></Space> },
+    { title: '责任人', key: 'owner', width: 130, render: (_, record) => <Space>{record.responsible_employee_id ? <Text className="operational-table__id">{record.responsible_employee_id}</Text> : <Text type="secondary">—</Text>}{record.responsible_employee_pending && <StatusTag tone="warning">待匹配</StatusTag>}</Space> },
+    { title: '完成时间', dataIndex: 'completed_at', className: 'operational-cell--date', width: 120 },
+    { title: '模块 / 场景', key: 'scenario', width: 180, render: (_, record) => <Space orientation="vertical" size={0}><Text>{record.business_module}</Text><Text type="secondary" title={record.requirement_scenario} className="operational-table__meta">{record.requirement_scenario}</Text></Space> },
+    { title: 'AI 属性', dataIndex: 'ai_assisted', width: 100, render: (value) => <StatusTag tone={value === true || value === false ? 'neutral' : 'pending'}>{value === true ? '是' : value === false ? '否' : '待维护'}</StatusTag> },
+    { title: '工作量（预估 / 实际，人天）', key: 'workload', align: 'right', className: 'operational-cell--numeric', width: 240, render: (_, record) => <Space orientation="vertical" size={0}><Text className="operational-table__primary">总计 {record.estimated_workload ?? '—'} / {record.actual_workload ?? '—'}</Text><Text type="secondary" className="operational-table__meta">SA {record.sa_estimated_workload ?? '—'} / {record.sa_actual_workload ?? '—'} · SE {record.se_estimated_workload ?? '—'} / {record.se_actual_workload ?? '—'}</Text></Space> },
+    { title: '来源', key: 'source', width: 100, render: (_, record) => <Space orientation="vertical" size={0}><StatusTag>{RECORD_SOURCE_LABELS[record.record_source] ?? record.record_source}</StatusTag><Text type="secondary" className="operational-table__meta">{record.updated_by}</Text></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 90, render: (_, record) => canEdit && <AntButton type="text" size="small" icon={<EditOutlined />} onClick={() => setEditor({ record, form: irFormFromRecord(record) })}>编辑</AntButton> },
   ]
   const collectorBatchColumns = [
+    { title: '来源', render: () => <StatusTag>平台采集</StatusTag> },
     { title: '团队', dataIndex: 'team_id', render: (teamId) => refs.teams.find((team) => team.id === teamId)?.name ?? `团队 #${teamId}` },
-    { title: '生成时间', dataIndex: 'created_at' },
-    { title: '行数', render: (_, batch) => `${batch.valid_rows} / ${batch.total_rows} 可确认${batch.invalid_rows ? `，${batch.invalid_rows} 行错误` : ''}` },
-    { title: '操作', key: 'action', render: (_, batch) => <AntButton type="link" size="small" loading={busy} onClick={() => openCollectorBatch(batch)}>查看批次</AntButton> },
+    { title: '生成时间', dataIndex: 'created_at', className: 'operational-cell--date', render: (value) => <time dateTime={value}>{formatTableTimestamp(value)}</time> },
+    { title: '数据行', className: 'operational-cell--numeric', align: 'right', render: (_, batch) => `${batch.valid_rows} 有效 / ${batch.total_rows} 总计 · ${batch.invalid_rows} 错误` },
+    { title: '操作', key: 'action', render: (_, batch) => <AntButton type="text" size="small" loading={busy} onClick={() => openCollectorBatch(batch)}>查看批次</AntButton> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="数据管理 / IR" title="IR 需求数据" description="按团队、产品、版本、迭代、责任人和完成时间管理正式源数据；保存后保持当前筛选和页码。" action={canEdit && <Space><Upload accept=".csv,.xlsx" showUploadList={false} beforeUpload={(file) => { previewFile(file); return false }}><AntButton icon={<UploadOutlined />} loading={busy}>导入 CSV / Excel</AntButton></Upload><AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null, form: { ...EMPTY_IR_FORM, product_id: availableProducts[0]?.id ? String(availableProducts[0].id) : '' } })}>新增 IR</AntButton></Space>} />
+      <PageIntro title="IR 需求数据" description="管理正式 IR 数据、采集待确认批次和人工导入。" action={canEdit ? <><Upload accept=".csv,.xlsx" showUploadList={false} beforeUpload={(file) => { previewFile(file); return false }}><AntButton icon={<UploadOutlined />} loading={busy}>导入</AntButton></Upload><AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null, form: { ...EMPTY_IR_FORM, product_id: availableProducts[0]?.id ? String(availableProducts[0].id) : '' } })}>新增 IR</AntButton></> : <StatusTag tone="readonly">只读</StatusTag>} />
       <Notice notice={notice} />
-      {!canEdit && <ReadOnlyHint />}
-      <FilterToolbar className="workbench-filter-toolbar" label="常用筛选" actions={<AntButton type="text" size="small" icon={<ReloadOutlined />} onClick={() => setFilters(initialFilters)}>重置筛选</AntButton>}>
-        <div className="workbench-filter-row"><SelectField label="团队" value={filters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => updateFilter('team_id', value)} options={refs.teams.map((team) => [team.id, team.name])} /><SelectField label="产品" value={filters.product_id} onChange={(value) => updateFilter('product_id', value)} options={availableProducts.map((product) => [product.id, product.name])} /><SelectField label="版本" value={filters.version_id} onChange={(value) => updateFilter('version_id', value)} options={availableVersions.map((version) => [version.id, version.name])} /><SelectField label="迭代" value={filters.iteration_id} onChange={(value) => updateFilter('iteration_id', value)} options={availableIterations.map((iteration) => [iteration.id, iteration.name])} /><InputField label="需求编号" value={filters.requirement_no} onChange={(value) => updateFilter('requirement_no', value)} /></div>
-        <Collapse ghost items={[{ key: 'advanced', label: '高级筛选', children: <div className="workbench-filter-row"><InputField label="责任人工号" value={filters.responsible_employee_id} onChange={(value) => updateFilter('responsible_employee_id', value)} /><InputField label="业务模块" value={filters.business_module} onChange={(value) => updateFilter('business_module', value)} /><InputField label="需求场景" value={filters.requirement_scenario} onChange={(value) => updateFilter('requirement_scenario', value)} /><InputField label="完成时间起" type="date" value={filters.completed_from} onChange={(value) => updateFilter('completed_from', value)} /><InputField label="完成时间止" type="date" value={filters.completed_to} onChange={(value) => updateFilter('completed_to', value)} /><SelectField label="AI 辅助" value={filters.ai_assisted} onChange={(value) => updateFilter('ai_assisted', value)} options={[['true', '是'], ['false', '否']]} /></div> }]} />
+      <FilterToolbar
+        className="operational-filter-toolbar"
+        label={null}
+        actions={<>
+          <AntButton type="text" size="small" aria-expanded={advancedFiltersOpen} aria-controls={advancedFiltersOpen ? 'ir-advanced-filters' : undefined} onClick={() => setAdvancedFiltersOpen((open) => !open)}>
+            {advancedFiltersOpen ? '收起高级筛选' : '高级筛选'}
+            {advancedFilterCount > 0 && <span className="operational-filter-count" aria-label={`${advancedFilterCount} 项高级筛选已启用`}>{advancedFilterCount}</span>}
+          </AntButton>
+          <AntButton type="text" size="small" icon={<ReloadOutlined />} onClick={() => setFilters(initialFilters)}>重置</AntButton>
+        </>}
+      >
+        <div className="operational-filter-fields">
+          <SelectField className="operational-filter-control" label="团队" value={filters.team_id} disabled={user.role === 'maintainer'} helper={user.role === 'maintainer' ? '按账号绑定团队筛选' : undefined} onChange={(value) => updateFilter('team_id', value)} options={refs.teams.map((team) => [team.id, team.name])} />
+          <SelectField className="operational-filter-control" label="产品" value={filters.product_id} onChange={(value) => updateFilter('product_id', value)} options={availableProducts.map((product) => [product.id, product.name])} />
+          <SelectField className="operational-filter-control" label="版本" value={filters.version_id} onChange={(value) => updateFilter('version_id', value)} options={availableVersions.map((version) => [version.id, version.name])} />
+          <SelectField className="operational-filter-control" label="迭代" value={filters.iteration_id} onChange={(value) => updateFilter('iteration_id', value)} options={availableIterations.map((iteration) => [iteration.id, iteration.name])} />
+          <InputField className="operational-filter-control" label="需求编号" value={filters.requirement_no} onChange={(value) => updateFilter('requirement_no', value)} />
+        </div>
+        {advancedFiltersOpen && <div id="ir-advanced-filters" className="operational-filter-fields operational-filter-fields--advanced">
+          <InputField className="operational-filter-control" label="责任人工号" value={filters.responsible_employee_id} onChange={(value) => updateFilter('responsible_employee_id', value)} />
+          <InputField className="operational-filter-control" label="业务模块" value={filters.business_module} onChange={(value) => updateFilter('business_module', value)} />
+          <InputField className="operational-filter-control" label="需求场景" value={filters.requirement_scenario} onChange={(value) => updateFilter('requirement_scenario', value)} />
+          <InputField className="operational-filter-control" label="完成时间起" type="date" value={filters.completed_from} onChange={(value) => updateFilter('completed_from', value)} />
+          <InputField className="operational-filter-control" label="完成时间止" type="date" value={filters.completed_to} onChange={(value) => updateFilter('completed_to', value)} />
+          <SelectField className="operational-filter-control" label="AI 辅助" value={filters.ai_assisted} onChange={(value) => updateFilter('ai_assisted', value)} options={[['true', '是'], ['false', '否']]} />
+        </div>}
       </FilterToolbar>
-      {canEdit && <Card className="workbench-section-gap" title="待确认采集批次"><Table rowKey="id" size="small" columns={collectorBatchColumns} dataSource={collectorBatches} loading={collectorBatchesLoading} pagination={false} locale={{ emptyText: <EmptyState>暂无待确认的 IR 采集批次。</EmptyState> }} /></Card>}
-      <Card className="workbench-table-card" title={<Space><Text strong>IR 正式数据</Text><Text type="secondary">{data.total} 条记录</Text></Space>}><Table rowKey="id" size="small" sticky columns={columns} dataSource={data.items} loading={loading} scroll={{ x: 1500 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 条`, onChange: (page) => setFilters((current) => ({ ...current, page })) }} locale={{ emptyText: <EmptyState>当前筛选条件下没有 IR 正式数据。</EmptyState> }} /></Card>
+      {canEdit && (collectorBatchesLoading || collectorBatches.length > 0) && <section className="operational-compact-section" aria-label="待确认采集批次">
+        <div className="operational-compact-section__heading"><h2 className="operational-compact-section__title">待确认采集批次</h2><span className="operational-compact-section__count">{collectorBatchesLoading ? '加载中…' : `${collectorBatches.length} 个`}</span></div>
+        {collectorBatchesLoading
+          ? <div className="operational-inline-state"><Spin size="small" /><Text type="secondary">读取待确认批次…</Text></div>
+          : <Table className="operational-table" rowKey="id" size="small" columns={collectorBatchColumns} dataSource={collectorBatches} pagination={false} scroll={{ x: 720 }} />}
+      </section>}
+      <section className="operational-workspace" aria-labelledby="ir-data-heading">
+        <div className="operational-workspace__header"><h2 id="ir-data-heading" className="operational-workspace__title">IR 正式数据</h2><span className="operational-workspace__count">共 {data.total} 条</span></div>
+        <Table className="operational-table" rowKey="id" size="small" sticky={{ offsetHeader: STICKY_HEADER_OFFSET }} columns={columns} dataSource={data.items} loading={loading} scroll={{ x: 1500 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: data.total, showSizeChanger: false, onChange: (page) => setFilters((current) => ({ ...current, page })) }} locale={{ emptyText: <EmptyState>当前筛选条件下没有 IR 正式数据。</EmptyState> }} />
+      </section>
       <IRRecordDrawer editor={editor} refs={refs} onClose={() => setEditor(null)} onSubmit={saveRecord} submitting={busy} />
       {importBatch && <ImportPreviewDrawer batch={importBatch} teamName={refs.teams.find((team) => team.id === importBatch.team_id)?.name} onClose={() => setImportBatch(null)} onConfirm={confirmImport} submitting={busy} />}
     </div>
@@ -543,7 +647,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
 
 function RequirementManagement({ requirementType, onRequirementTypeChange, ...props }) {
   const activeType = ['ir', 'ar', 'sr'].includes(requirementType) ? requirementType : 'ir'
-  const pending = (type) => <Result status="info" title={`${type} 需求规格待定义`} subTitle="当前只有 IR 需求具备字段、校验、导入和指标口径。" />
+  const pending = (type) => <div className="workbench-page"><PageIntro title={`${type} 需求`} description="当前只有 IR 需求具备字段、校验、导入和指标口径。" /><section className="operational-state" role="status"><StatusTag tone="pending">规格待定义</StatusTag><span className="operational-state__message">暂不提供 {type} 需求表单。</span></section></div>
   return <Tabs activeKey={activeType} onChange={onRequirementTypeChange} items={[
     { key: 'ir', label: 'IR', children: <IRManagement {...props} /> },
     { key: 'ar', label: 'AR', children: pending('AR') },
@@ -590,7 +694,7 @@ function DashboardCatalogTab({ user, catalog, loading, onReload, onSessionExpire
     { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setMetricEditor({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '', collect_method: metric.collect_method ?? 'manual_only' })}>编辑</AntButton><Popconfirm title={`确定删除指标“${metric.name}”？`} onConfirm={() => remove(`/api/metrics/${metric.id}`, `指标“${metric.name}”`)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
-  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板活动</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</AntButton>}{canEdit && <AntButton icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton>}</Space></div><Notice notice={notice} /><Card title="研发活动目录"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} /></Card><Card className="workbench-section-gap" title="指标明细"><Table rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} /></Card><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板活动</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</AntButton>}{canEdit && <AntButton icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton>}</Space></div><Notice notice={notice} /><Card title="研发活动目录"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} /></Card><Card className="workbench-section-gap" title="指标明细"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} /></Card><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
 }
 
 function DataMetricEditorDrawer({ editor, onClose, onSubmit, submitting }) {
@@ -634,7 +738,7 @@ function DataMetricTab({ user, refs, onSessionExpired }) {
   const formattedResult = result?.value === null || result?.value === undefined
     ? '—'
     : formatMetricValue({ type: selectedMetric?.metric_type }, result.value)
-  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</AntButton>}</div><Notice notice={notice} /><div className="workbench-two-column"><Card title="源数据指标规则"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} onRow={(record) => ({ onClick: () => { setSelectedCode(record.code); setResult(null) } })} /></Card><Card title="结果查询"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><AntButton type="primary" disabled={!selectedCode} onClick={compute}>计算当前结果</AntButton></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</Card></div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</AntButton>}</div><Notice notice={notice} /><div className="workbench-two-column"><Card title="源数据指标规则"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} onRow={(record) => ({ onClick: () => { setSelectedCode(record.code); setResult(null) } })} /></Card><Card title="结果查询"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><AntButton type="primary" disabled={!selectedCode} onClick={compute}>计算当前结果</AntButton></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</Card></div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
 }
 
 function MetricManagement({ user, refs, onSessionExpired }) {
@@ -657,7 +761,28 @@ function MaturityReadOnly({ month, onSessionExpired }) {
   }, [month, onSessionExpired])
   if (state.loading) return <LoadingState text="加载成熟度评估…" />
   if (state.error) return <ReferenceError error={state.error} />
-  return <div className="maturity-readonly-grid">{state.data.map((overview) => <Card key={overview.kind} title={overview.kind === 'key' ? '关键研发活动' : '通用研发能力'}><Table rowKey="activity_id" size="small" pagination={false} dataSource={overview.activities} columns={[{ title: '活动', dataIndex: 'activity_name' }, { title: '领域平均', dataIndex: 'score_display', render: (value) => value ?? '未评估' }, { title: '等级', dataIndex: 'level', render: (value) => value ?? '未评估' }, { title: '覆盖', render: (_, row) => `${row.assessed_team_count} / ${overview.team_count}` }]} /></Card>)}</div>
+  return <div className="maturity-readonly-sections">{state.data.map((overview) => {
+    const title = overview.kind === 'key' ? '关键研发活动' : '通用研发能力'
+    const headingId = `maturity-${overview.kind}-heading`
+    return <section key={overview.kind} className="maturity-readonly-section" aria-labelledby={headingId}>
+      <h2 id={headingId} className="maturity-readonly-section__title">{title}</h2>
+      <Table
+        className="operational-table"
+        rowKey="activity_id"
+        size="small"
+        sticky={{ offsetHeader: STICKY_HEADER_OFFSET }}
+        pagination={false}
+        scroll={{ x: 600 }}
+        dataSource={overview.activities}
+        columns={[
+          { title: '活动', dataIndex: 'activity_name' },
+          { title: '领域平均', dataIndex: 'score_display', render: (value) => <StatusTag tone={value === null || value === undefined ? 'not-evaluated' : 'neutral'}>{value ?? '未评估'}</StatusTag> },
+          { title: '等级', dataIndex: 'level', render: (value) => <StatusTag tone={value === null || value === undefined ? 'not-evaluated' : 'neutral'}>{value ?? '未评估'}</StatusTag> },
+          { title: '覆盖', className: 'operational-cell--numeric', align: 'right', render: (_, row) => `${row.assessed_team_count} / ${overview.team_count}` },
+        ]}
+      />
+    </section>
+  })}</div>
 }
 
 function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
@@ -733,7 +858,7 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
   if (recordsState.loading) return <LoadingState text="加载当前月和上月评估…" />
   if (recordsState.error) return <ReferenceError error={recordsState.error} />
   const columns = [
-    { title: '活动', dataIndex: 'activity_name', render: (name, entry) => <Space wrap><Text strong>{name}</Text><Tag>{entry.kind === 'key' ? '关键研发活动' : '通用研发能力'}</Tag></Space> },
+    { title: '活动', dataIndex: 'activity_name', render: (name, entry) => <Space wrap><Text strong>{name}</Text><StatusTag>{entry.kind === 'key' ? '关键研发活动' : '通用研发能力'}</StatusTag></Space> },
     { title: '成熟度分值（0–5）', dataIndex: 'score', width: 190, render: (value, entry) => <InputNumber aria-label={`${entry.activity_name}成熟度分值`} min={0} max={5} step={0.01} value={value === '' ? null : Number(value)} onChange={(nextValue) => updateEntry(entry.activity_id, { score: nextValue === null ? '' : String(nextValue) })} placeholder="未评估" style={{ width: 132 }} /> },
     { title: '说明（可选）', dataIndex: 'note', width: 360, render: (value, entry) => <Input.TextArea aria-label={`${entry.activity_name}说明`} autoSize={{ minRows: 1, maxRows: 3 }} value={value} onChange={(event) => updateEntry(entry.activity_id, { note: event.target.value })} placeholder="补充评估依据" /> },
   ]
@@ -741,10 +866,10 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
     <div className="maturity-editor__heading"><Text strong>评估项</Text><Text type="secondary">空值表示未评估；0 是有效分值。</Text></div>
     {message && <Alert type={message.type} message={message.text} showIcon />}
     <div className="maturity-editor__actions"><Space wrap><AntButton onClick={copyPrevious} disabled={!recordsState.previousRecords.length || saving || clearing}>复制上月已有值</AntButton><AntButton type="primary" onClick={() => setPreview(true)} disabled={saving || clearing}>预览保存</AntButton><AntButton danger onClick={clear} loading={clearing} disabled={saving}>{clearArmed ? '再次确认清空' : '清空本月评估'}</AntButton></Space></div>
-    <Table rowKey="activity_id" className="maturity-editor__table" size="small" sticky columns={columns} dataSource={draft} pagination={false} scroll={{ x: 780 }} locale={{ emptyText: <EmptyState>当前没有可评估活动。</EmptyState> }} />
+    <Table rowKey="activity_id" className="maturity-editor__table operational-table" size="small" sticky={{ offsetHeader: STICKY_HEADER_OFFSET }} columns={columns} dataSource={draft} pagination={false} scroll={{ x: 780 }} locale={{ emptyText: <EmptyState>当前没有可评估活动。</EmptyState> }} />
     <Drawer title={`保存预览 · ${month}`} open={preview} width="min(640px, 100vw)" onClose={() => setPreview(false)} destroyOnClose footer={<Space><AntButton onClick={() => setPreview(false)} disabled={saving}>返回编辑</AntButton><AntButton type="primary" onClick={save} loading={saving}>确认保存</AntButton></Space>}>
       <p className="maturity-preview-drawer__description">请核对 {draft.length} 个评估项。未评估项保持为空，不会按 0 保存。</p>
-      <Table rowKey="activity_id" size="small" pagination={false} dataSource={draft} columns={[{ title: '活动', dataIndex: 'activity_name' }, { title: '分值', dataIndex: 'score', render: (value) => value === '' ? '未评估' : value }, { title: '说明', dataIndex: 'note', render: (value) => value || '—' }]} />
+      <Table rowKey="activity_id" className="operational-table" size="small" pagination={false} scroll={{ x: 600, y: 440 }} dataSource={draft} columns={[{ title: '活动', dataIndex: 'activity_name' }, { title: '分值', dataIndex: 'score', render: (value) => value === '' ? <StatusTag tone="not-evaluated">未评估</StatusTag> : value }, { title: '说明', dataIndex: 'note', render: (value) => value || '—' }]} />
     </Drawer>
   </div>
 }
@@ -764,10 +889,10 @@ function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
   }, [onSessionExpired])
   const selectedTeam = refs.teams.find((team) => String(team.id) === String(teamId))
   return <div className="workbench-page maturity-management">
-    <PageIntro eyebrow="数据管理 / 成熟度评估" title="成熟度评估" description="按团队和自然月维护人工成熟度；分析页只读展示，不在这里之外写入。" />
-    <FilterToolbar className="maturity-management__toolbar" label="评估范围">
-      <label className="workbench-filter-control"><span>评估月份</span><Input aria-label="评估月份" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
-      {canEdit && <label className="workbench-filter-control"><span>维护团队</span><Select aria-label="维护团队" value={teamId || undefined} disabled={user.role === 'maintainer'} placeholder="选择团队" onChange={setTeamId} options={refs.teams.map((team) => ({ value: String(team.id), label: team.name }))} /></label>}
+    <PageIntro title="成熟度评估" description="按团队和自然月维护人工成熟度；分析页只读展示，不在这里之外写入。" action={!canEdit && <StatusTag tone="readonly">只读</StatusTag>} />
+    <FilterToolbar className="operational-filter-toolbar maturity-management__toolbar" label="评估范围">
+      <label className="operational-filter-control"><span>评估月份</span><Input aria-label="评估月份" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+      {canEdit && <label className="operational-filter-control"><span>维护团队</span><Select aria-label="维护团队" aria-describedby={user.role === 'maintainer' ? 'maturity-team-scope-help' : undefined} value={teamId || undefined} disabled={user.role === 'maintainer'} placeholder="选择团队" onChange={setTeamId} options={refs.teams.map((team) => ({ value: String(team.id), label: team.name }))} />{user.role === 'maintainer' && <span id="maturity-team-scope-help" className="operational-filter-help">团队由账号绑定，不能修改。</span>}</label>}
     </FilterToolbar>
     {loading ? <LoadingState text="加载成熟度目录…" /> : catalogError ? <ReferenceError error={catalogError} /> : canEdit ? <MaturityEditor key={`${teamId}-${month}-${savedAt}`} teamId={teamId} month={month} catalog={catalog} onSessionExpired={onSessionExpired} onSaved={() => setSavedAt((value) => value + 1)} /> : <MaturityReadOnly month={month} onSessionExpired={onSessionExpired} />}
   </div>
@@ -776,7 +901,7 @@ function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
 export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', initialMonth, onRequirementTypeChange, user, onSessionExpired }) {
   const section = requestedSection ?? sectionFromPath(pathname)
   const refs = useReferenceData(onSessionExpired, user)
-  if (refs.loading) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
+  if (refs.loading && ['teams', 'products', 'metrics'].includes(section)) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
   let content
   if (section === 'teams') content = <TeamManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'products') content = <ProductManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />

@@ -16,6 +16,7 @@ import {
 
 import { fetchJson } from './api'
 import './app.css'
+import PageHeader from './components/PageHeader'
 import { appTheme } from './design/theme'
 import { findMetric } from './metricDetail/metricDetailLogic'
 import {
@@ -101,7 +102,15 @@ function NotFoundPage() {
 
 function PendingDomainPage({ domain }) {
   const navigate = useNavigate()
-  return <div className="status-page"><Result status="info" title={`${domain}数据源规格待定义`} subTitle="当前阶段尚未定义该数据源的字段、校验规则和指标口径，暂不提供表单。" extra={<Button type="primary" onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} /></div>
+  return (
+    <div className="operational-pending-page">
+      <PageHeader className="operational-page-header" title={`${domain}数据`} description="该数据源的字段、校验规则和指标口径尚未定义。" actions={<Button onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} />
+      <section className="operational-state" role="status">
+        <Tag className="operational-status-tag operational-status-tag--pending">规格待定义</Tag>
+        <span className="operational-state__message">当前不提供数据表单。</span>
+      </section>
+    </div>
+  )
 }
 
 function appendSearch(pathname, search) {
