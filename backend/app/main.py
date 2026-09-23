@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from sqlalchemy import func, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
@@ -15,11 +16,13 @@ from .collection_api import router as collection_router
 from .collectors import CollectorRegistry, SourceCollectorRegistry
 from .config import SESSION_HTTPS_ONLY, SESSION_MAX_AGE, SESSION_SECRET, STATIC_DIR
 from .data_api import router as data_management_router
+from .gateway_api import redact_gateway_validation_errors, router as gateway_management_router
 from .db import Base, SessionLocal, engine
 from .migrations import (
     ensure_auth_schema,
     ensure_data_management_schema,
     ensure_fact_schema,
+    ensure_gateway_schema,
     ensure_maturity_schema,
 )
 from .models import (  # noqa: F401
@@ -27,6 +30,9 @@ from .models import (  # noqa: F401
     AuditLog,
     DataMetricDefinition,
     FactRecord,
+    GatewayConfigAudit,
+    GatewayConfiguration,
+    GatewayHealthStatus,
     IRRequirement,
     ImportBatch,
     ImportRow,
@@ -42,6 +48,7 @@ from .models import (  # noqa: F401
 from .scheduler import create_scheduler
 from .scheduler import load_source_collection_schedules
 from .source_collection import ensure_ir_collection_schedule
+from .gateway_health import mark_active_status_unknown, schedule_gateway_health_check
 
 
 collector_registry = CollectorRegistry()
@@ -89,14 +96,18 @@ async def lifespan(app: FastAPI):
     ensure_auth_schema()
     ensure_data_management_schema()
     ensure_maturity_schema()
+    ensure_gateway_schema()
     with SessionLocal() as db:
         if db.scalar(select(func.count()).select_from(Activity)) == 0:
             from .seed import run_seed
             run_seed(db)
 
     ensure_ir_collection_schedule()
+    with SessionLocal() as db:
+        mark_active_status_unknown(db)
     scheduler = create_scheduler(collector_registry)
     load_source_collection_schedules(scheduler)
+    schedule_gateway_health_check(scheduler)
     scheduler.start()
     app.state.scheduler = scheduler
     app.state.source_collector_registry = source_collector_registry
@@ -112,6 +123,10 @@ def create_app(
     static_dir: str | Path | None = None,
 ) -> FastAPI:
     application = FastAPI(title="ai-dev-radar", lifespan=lifespan)
+    application.add_exception_handler(
+        RequestValidationError,
+        redact_gateway_validation_errors,
+    )
     application.add_middleware(
         SessionMiddleware,
         secret_key=SESSION_SECRET,
@@ -121,6 +136,7 @@ def create_app(
     )
     application.include_router(router)
     application.include_router(data_management_router)
+    application.include_router(gateway_management_router)
     application.include_router(collection_router)
     frontend_dir = Path(static_dir) if static_dir is not None else STATIC_DIR
     if frontend_dir.is_dir():

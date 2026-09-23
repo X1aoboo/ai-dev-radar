@@ -12,14 +12,14 @@ const virtualEnvironmentPython = isWindows
   ? path.join(virtualEnvironment, 'Scripts', 'python.exe')
   : path.join(virtualEnvironment, 'bin', 'python')
 
-function run(command, args, label, cwd = projectRoot) {
+function run(command, args, label, cwd = projectRoot, shell = false) {
   console.log(`\n[setup] ${label}`)
   console.log(`       ${command} ${args.join(' ')}`)
 
   const result = spawnSync(command, args, {
     cwd,
     stdio: 'inherit',
-    shell: false,
+    shell,
   })
 
   if (result.error) {
@@ -70,11 +70,20 @@ function createVirtualEnvironment() {
 function main() {
   console.log(`[setup] project root: ${projectRoot}`)
 
-  run(npmCommand, ['ci'], 'install root Node.js dependencies')
-  run(
-    npmCommand,
+  const npmCli = process.env.npm_execpath
+  const invokeNpm = (args, label) => npmCli
+    ? run(process.execPath, [npmCli, ...args], label)
+    : run(npmCommand, args, label, projectRoot, isWindows)
+
+  invokeNpm(['ci'], 'install root Node.js dependencies')
+  invokeNpm(
     ['--prefix', path.join(projectRoot, 'frontend'), 'ci'],
     'install frontend Node.js dependencies',
+  )
+  run(
+    process.execPath,
+    [path.join(projectRoot, 'node_modules', '@playwright', 'test', 'cli.js'), 'install', 'chromium'],
+    'install Playwright Chromium for the Project E2E gate',
   )
 
   if (!existsSync(virtualEnvironmentPython)) {

@@ -43,6 +43,7 @@ const MetricDetailPage = lazy(() => import('./metricDetail/MetricDetailPage'))
 const DataManagementPage = lazy(() => import('./dataManagement/DataManagementPage'))
 const UsersSettingsPage = lazy(() => import('./settings/UsersSettingsPage'))
 const CollectionsSettingsPage = lazy(() => import('./settings/CollectionsSettingsPage'))
+const GatewaySettingsPage = lazy(() => import('./settings/GatewaySettingsPage'))
 
 const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
 
@@ -250,7 +251,7 @@ function AppShell({ user, onLogout }) {
     ? 'dashboard'
     : location.pathname.startsWith('/analytics/')
       ? 'analytics'
-      : location.pathname === '/settings/collections'
+      : ['/settings/collections', '/settings/gateway'].includes(location.pathname)
         ? 'readable'
         : location.pathname.startsWith('/data/') || location.pathname.startsWith('/settings/')
           ? 'operational'
@@ -363,7 +364,7 @@ function LegacyDataManagementRootRedirect() {
   return <Navigate to={appendSearch(LEGACY_REDIRECT_TARGETS['/data-management'], search)} replace />
 }
 
-const DEFAULT_ROUTE_COMPONENTS = { OverviewPage, ActivitiesPage, CapabilitiesPage, TeamDrilldownPage, MetricDetailPage, DataManagementPage, UsersSettingsPage, CollectionsSettingsPage }
+const DEFAULT_ROUTE_COMPONENTS = { OverviewPage, ActivitiesPage, CapabilitiesPage, TeamDrilldownPage, MetricDetailPage, DataManagementPage, UsersSettingsPage, CollectionsSettingsPage, GatewaySettingsPage }
 
 export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeComponents = DEFAULT_ROUTE_COMPONENTS }) {
   const OverviewComponent = routeComponents.OverviewPage
@@ -374,6 +375,7 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
   const DataManagementComponent = routeComponents.DataManagementPage
   const UsersSettingsComponent = routeComponents.UsersSettingsPage
   const CollectionsSettingsComponent = routeComponents.CollectionsSettingsPage
+  const GatewaySettingsComponent = routeComponents.GatewaySettingsPage
   return (
     <Suspense fallback={<LoadingPage text="加载页面模块…" />}>
       <Routes>
@@ -407,6 +409,7 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
           <Route element={<RequireRole user={user} roles={ADMIN_ROLES} />}>
             <Route path={ROUTE_PATHS.users} element={<UsersSettingsComponent user={user} onSessionExpired={onSessionExpired} />} />
             <Route path={ROUTE_PATHS.collections} element={<CollectionsSettingsComponent user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.gateway} element={<GatewaySettingsComponent user={user} onSessionExpired={onSessionExpired} />} />
             {/* Stage three migration complete: the legacy config entry now resolves to the split settings surface. */}
             <Route path={ROUTE_PATHS.legacyConfig} element={<Navigate to={LEGACY_REDIRECT_TARGETS['/config']} replace />} />
           </Route>

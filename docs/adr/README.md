@@ -13,6 +13,7 @@
 | [0007](0007-business-source-navigation.md) | 数据管理按业务数据源分类 | Accepted |
 | [0008](0008-ir-collector-gateway.md) | IR 通过私有 Gateway 采集并先暂存确认 | Superseded by 0009 |
 | [0009](0009-versioned-ai-engineering-data-gateway-protocol.md) | AI 研发数据网关采用实现中立的版本化能力协议 | Accepted |
+| [0010](0010-database-managed-gateway-runtime.md) | 数据库托管 Gateway 运行配置、健康检查与项目 E2E 门禁 | Accepted |
 
 历史简版正文保留，0006 的中文标题视为模板等价章节。缺失状态和历史原因保持未知，不补造接受记录。校验器只为既有简版文件保留兼容，新文件使用以下格式。
 

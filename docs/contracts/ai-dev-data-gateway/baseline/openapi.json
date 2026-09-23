@@ -34,6 +34,80 @@
     }
   ],
   "paths": {
+    "/health/live": {
+      "get": {
+        "operationId": "healthLive",
+        "summary": "Check process liveness",
+        "description": "Unauthenticated process liveness probe. Radar does not use it to determine business readiness.",
+        "x-protocol-operation": "service.health.liveness",
+        "tags": [
+          "health"
+        ],
+        "responses": {
+          "200": {
+            "description": "The Gateway process is alive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthLiveResponse"
+                },
+                "example": {
+                  "status": "alive"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/health/ready": {
+      "get": {
+        "operationId": "healthReady",
+        "summary": "Check Gateway readiness",
+        "description": "Returns the Gateway service identity, readiness, and implemented protocol version. Optional upstream summaries are diagnostic only and do not define Radar v1 readiness.",
+        "x-protocol-operation": "service.health.readiness",
+        "tags": [
+          "health"
+        ],
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The Gateway is ready to serve its published contract.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReadyResponse"
+                },
+                "example": {
+                  "service": "ai-dev-data-gateway",
+                  "status": "ready",
+                  "contract_version": "1.0.0",
+                  "upstreams": [
+                    {
+                      "id": "gdemate",
+                      "status": "ready"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/v1/collections/ir": {
       "post": {
         "operationId": "collectIrRecords",
@@ -141,10 +215,86 @@
       "bearerAuth": {
         "type": "http",
         "scheme": "bearer",
-        "description": "Deployment-provided Gateway bearer token. Production transport must use HTTPS."
+        "description": "Operator-configured Gateway bearer token. Production transport must use HTTPS."
       }
     },
     "schemas": {
+      "HealthLiveResponse": {
+        "title": "HealthLiveResponse",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string",
+            "const": "alive"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "GatewayUpstreamStatus": {
+        "title": "GatewayUpstreamStatus",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 30
+          }
+        },
+        "required": [
+          "id",
+          "status"
+        ]
+      },
+      "HealthReadyResponse": {
+        "title": "HealthReadyResponse",
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "service": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "const": "ready"
+          },
+          "contract_version": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 100,
+            "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$"
+          },
+          "upstreams": {
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/GatewayUpstreamStatus"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          }
+        },
+        "required": [
+          "service",
+          "status",
+          "contract_version"
+        ]
+      },
       "ProductVersionRef": {
         "title": "ProductVersionRef",
         "type": "object",

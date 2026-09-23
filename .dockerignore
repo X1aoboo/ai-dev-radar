@@ -10,3 +10,6 @@ frontend/dist/
 *.db
 *.pyc
 .scratch/
+e2e/
+e2e-results/
+playwright.config.mjs

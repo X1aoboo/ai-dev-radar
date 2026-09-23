@@ -11,10 +11,13 @@
     "setup": "node scripts/bootstrap.mjs",
     "seed": "node scripts/run-python.mjs --cwd backend --env APP_ENV=development -m app.seed",
     "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q",
+    "test:e2e:gateway": "node scripts/run-gateway-e2e.mjs",
+    "gate": "node scripts/run-quality-gate.mjs",
     "check:docs": "node scripts/check-design-docs.mjs",
     "test:docs": "node --test scripts/check-design-docs.test.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "concurrently": "^9.1.0"
   }
 }

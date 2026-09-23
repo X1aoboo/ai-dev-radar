@@ -6,7 +6,13 @@ from sqlalchemy.orm import Session, sessionmaker
 from .auth import hash_password
 from .config import SEED_PASSWORD
 from .db import SessionLocal, engine
-from .models import MaturityRecord, User
+from .models import (
+    GatewayConfigAudit,
+    GatewayConfiguration,
+    GatewayHealthStatus,
+    MaturityRecord,
+    User,
+)
 
 
 def ensure_fact_schema(db_engine: Engine = engine) -> None:
@@ -85,3 +91,29 @@ def ensure_maturity_schema(db_engine: Engine = engine) -> None:
     """只补齐成熟度存储，不根据旧事实或指标数据生成评估记录。"""
 
     MaturityRecord.__table__.create(db_engine, checkfirst=True)
+
+
+def ensure_gateway_schema(db_engine: Engine = engine) -> None:
+    """Create Gateway state tables and add nullable run snapshots to old databases."""
+
+    for model in (GatewayConfiguration, GatewayHealthStatus, GatewayConfigAudit):
+        model.__table__.create(db_engine, checkfirst=True)
+
+    inspector = inspect(db_engine)
+    if "collection_runs" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("collection_runs")}
+    additions = {
+        "gateway_config_id": "INTEGER",
+        "gateway_base_url": "VARCHAR(2000)",
+        "error_code": "VARCHAR(100)",
+        "message": "TEXT",
+        "retryable": "BOOLEAN NOT NULL DEFAULT 0",
+    }
+    missing = [(name, sql_type) for name, sql_type in additions.items() if name not in columns]
+    if missing:
+        with db_engine.begin() as connection:
+            for name, sql_type in missing:
+                connection.execute(
+                    text(f"ALTER TABLE collection_runs ADD COLUMN {name} {sql_type}")
+                )

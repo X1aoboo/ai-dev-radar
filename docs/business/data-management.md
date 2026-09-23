@@ -36,15 +36,25 @@ flowchart LR
 
 预览只写临时批次，不参与指标计算。任何无效行阻止整批确认；确认时重新验证引用和写权限。新需求编号新增记录；匹配正式需求编号只补空字段，已有值包括 false 和 0 保留。确认异常回滚整批；已确认批次再次确认返回冲突。未匹配责任人是警告，不是阻断错误。
 
+## Gateway 运行配置与就绪状态
+
+管理员在 `/settings/gateway` 维护 AI 研发数据网关连接；`/settings/collections` 只显示 Gateway 状态摘要并链接到该页面。系统全局最多保存一个 Active 和一个 Draft。保存 Draft 不改变 Active；已有 Active 时 Token 留空表示沿用当前 Active Token，首次配置必须输入 Token。Token 按当前产品决策明文保存在 Radar 数据库，但 API、审计、CollectionRun、日志及浏览器初始化数据都不返回或记录 Token 值。生产 Gateway 地址必须使用 HTTPS。
+
+激活 Draft 时 Radar 必须重新实时请求 readiness；只有服务标识正确、状态为 `ready` 且 SemVer 主版本兼容，才能替换 Active。先前检测成功不能替代这次检查。人工保存、检测、激活和放弃草稿写入 Gateway 配置审计；审计对 Token 只记录 `token_changed`。
+
+Radar 只保留 Active 和 Draft 各自的最新健康观察，不建可用率历史。状态为 `UNCONFIGURED`、`UNKNOWN`、`CONNECTED`、`DEGRADED`、`UNREACHABLE`、`AUTH_FAILED`、`SERVICE_MISMATCH` 或 `PROTOCOL_INCOMPATIBLE`。认证、服务身份和协议错误一次生效；readiness 503 为 `DEGRADED`；网络连续失败 1–2 次为 `DEGRADED`，第 3 次为 `UNREACHABLE`。健康结果 90 秒后显示为过期；Radar 重启后先显示 `UNKNOWN` 和上次状态，直到即时检测完成。30 秒 Active 健康检查复用现有 APScheduler，周期检查不写审计。
+
 ## IR Gateway 采集
 
 IR 采集由 Radar 按团队独立编排 AI 研发数据网关调用，但线协议不发送团队名称。Radar 根据团队版本配置与本地产品层级生成产品名称和版本名称组合；版本化能力协议是双方共同消费的实现中立事实源。Radar 负责调度、字段/层级校验、暂存、人工确认和审计，Gateway 负责内部平台认证、按产品版本组合查询和字段翻译。每个团队有独立运行结果和暂存批次，团队失败不会阻断其他团队；版本映射为空时跳过，Gateway 返回空结果时不创建空批次。
 
 Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start_at, end_at)`。首版不分页、不异步轮询或自动重试；超限时管理员缩短窗口，失败按返回的 retryable 信息手动重跑。Radar 按产品名与版本名联合核对归属当前团队，再按该版本解析迭代名；响应超出请求产品版本范围时该行无效。Gateway 的 `business_module` 为 `null`、空字符串或纯空白时，Radar 在暂存前统一转换为 `通用模块`。任何无效行都阻止该团队批次整批确认。采集确认沿用导入的事务、只补空字段和 AI 字段来源记录，审计动作记为 `collector_confirm`。
 
+每次 CollectionRun 开始时读取一次 Active 配置，生成不可变 `GatewayRuntimeConfig` 并供所有团队共用；运行记录可以保存配置 ID 和 base URL，不保存 Token。无 Active 时运行失败并在 CollectionRun 记录一条全局错误，不向每个团队重复写相同错误。最新且未过期的认证、服务身份或协议错误可以 fail-fast；`UNKNOWN`、过期、`DEGRADED` 和 `UNREACHABLE` 仍尝试实际 IR 请求，以允许刚恢复的 Gateway 继续采集。
+
 调度按 `Asia/Shanghai` 配置为每小时、每日、每周或每月；IR 默认禁用。每小时、每日、每周和每月分别使用上一个完整小时、自然日、自然周和自然月。管理员可以不传窗口使用上一个完整配置周期，也可以手动指定带时区的合法窗口。
 
-完整能力语义与线协议见 [AI 研发数据网关能力协议](../contracts/ai-dev-data-gateway/README.md)。Gateway 地址、Bearer Token 和超时只来自服务端环境变量，不进入数据库或前端；生产地址必须使用 HTTPS。
+完整能力语义与线协议见 [AI 研发数据网关能力协议](../contracts/ai-dev-data-gateway/README.md)。Admin-only 管理 API 与配置审计不替代源数据审计。真实内部 Gateway 及 GDEMate、CodeHub、DTS 联调仍需部署环境另行验证；项目的 Mock Gateway E2E 只覆盖 L3。
 
 ## 指标与数据边界
 
@@ -54,6 +64,6 @@ Gateway 同步返回最多 10000 行，窗口为带时区的半开区间 `[start
 
 ## 实现与相关决策
 
-HTTP 编排见 `backend/app/data_api.py`，校验、文件解析和合并见 `data_management.py`，页面见 `frontend/src/dataManagement/` 和 `settings/`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/maturity`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。验收用 `backend/tests/test_data_management.py` 及前端对应测试。
+HTTP 编排见 `backend/app/data_api.py` 和 `gateway_api.py`，采集运行见 `source_collection.py`，配置生命周期与 readiness 分别见 `gateway_config.py`、`gateway_health.py`；页面见 `frontend/src/dataManagement/` 和 `frontend/src/settings/`。Gateway 页面为 `/settings/gateway`，采集计划仍在 `/settings/collections`。规范前端入口为 `/data/requirements/{ir|ar|sr}`、`/data/maturity`、`/data/issues`、`/data/mr` 和 `/data/code-review`；旧 IR/AR/SR/DTS/MR 路径重定向到新分类。测试分层见 [Testing Standards](../standards/testing.md)。
 
-相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)、[ADR-0009](../adr/0009-versioned-ai-engineering-data-gateway-protocol.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。
+相关决策：[ADR-0003](../adr/0003-source-data-first-metrics.md)、[ADR-0004](../adr/0004-staged-import-and-field-merge.md)、[ADR-0005](../adr/0005-team-owned-product-hierarchy.md)、[ADR-0007](../adr/0007-business-source-navigation.md)、[ADR-0009](../adr/0009-versioned-ai-engineering-data-gateway-protocol.md)、[ADR-0010](../adr/0010-database-managed-gateway-runtime.md)。详细实现见 [源数据模块](../architecture/modules/data-management.md)。

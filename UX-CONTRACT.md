@@ -15,6 +15,7 @@
 | Domain / scope | Authoritative source | Source type | Reviewed date |
 |---|---|---|---|
 | Permission model | `docs/business/data-management.md` | Business design | 2026-09-23 |
+| Gateway configuration and readiness | `docs/business/data-management.md`, ADR-0010, Gateway management API | Business design / ADR / API | 2026-09-24 |
 | Analytics and maturity semantics | `docs/business/analytics.md`, ADR-0006 | Business design / ADR | 2026-09-23 |
 | Source-data lifecycle | `docs/business/data-management.md`, ADR-0003/0004 | Business design / ADR | 2026-09-23 |
 | Data-management IA | ADR-0007 | ADR | 2026-09-23 |
@@ -44,6 +45,7 @@
 | Scrollbar | `frontend/src/design/design-system.css` | `DESIGN.md` | documented local geometry exceptions | computed style and overflow check |
 | Toast | Ant Design `App` feedback provider | Existing app ownership | success / warning / info / error | route-level workflow check |
 | CRUD | Existing route/API behavior | `docs/business/data-management.md` | return / stay according to sibling flow | full relevant route regression |
+| Gateway configuration | `/settings/gateway` and `/api/gateway` | `docs/business/data-management.md`, ADR-0010 | one Active plus one Draft; live readiness required at activation | browser Draft/check/activate and failure recovery |
 | Maturity batch review | `/data/maturity` | monthly draft table + explicit preview Drawer | copy previous month, confirm whole-month save, separately confirm clear | draft/preview/save and role-aware route checks |
 
 ## Component behavior
@@ -79,6 +81,7 @@
 - Team Drilldown KPI: each tile refers to one existing catalog metric or one boolean status, with that same metric's value, delta, and sparkline. Never average different catalog metrics into a synthetic penetration/efficiency KPI.
 - Metric Detail: Result → Comparison → Evidence keeps one-metric team distribution/ranking distinct from the trend; raw current-period facts remain on-demand. Selecting all periods shows the full trend and asks for a single period before claiming a current result or current-period evidence.
 - Sidebar/drawer transformation: 248px expanded / 64px collapsed desktop sidebar, 280px drawer at <=680px, with preserved focus restoration and local desktop preference.
+- `/settings/gateway` is admin-only in navigation and routing. `/settings/collections` shows a read-only Gateway status summary and links to that page.
 - Responsive table strategy: local horizontal scrolling only when needed; no page-level horizontal overflow.
 
 ## Operational workbench
@@ -97,6 +100,7 @@
 - Dialog primitive: Ant Design Drawer/Modal only; no browser dialogs.
 - Destructive confirmation levels: retain existing domain flows; new destructive operation requires domain-specific confirmation design.
 - Toast placement/duration/deduplication: Ant Design App provider is canonical; a toast never replaces an inline correction/error.
+- Gateway configuration uses a server-confirmed Draft save, masked Token input, and a right-side edit Drawer. The Token is never prefilled; an empty field reuses the current Active Token when one exists, and first configuration requires entry. Failed checks keep Active usable; activation performs a new readiness check. Stale status shows its last known result, and the audit list exposes actor, action, outcome, and Beijing time without Token values.
 - Unsaved-changes behavior: not globally implemented; do not claim coverage without route-level behavior.
 - Maturity maintenance keeps the existing monthly batch boundary: edit activity scores/notes in the table, review every draft value in a Drawer, then confirm one month save. Blank means not evaluated and 0 remains valid; copy-previous changes only the draft, while clear remains a separately confirmed action.
 

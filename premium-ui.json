@@ -7,10 +7,16 @@
     "Select/Listbox": "native",
     "Date": "native"
   },
-  "requiredCommands": ["unit", "build", "docs"],
+  "requiredCommands": ["unit", "build", "e2e", "docs", "gate"],
   "commands": {
     "unit": "npm --prefix frontend run test:unit",
     "build": "npm --prefix frontend run build",
-    "docs": "npm run check:docs"
+    "e2e": "npm run test:e2e:gateway",
+    "docs": "npm run check:docs",
+    "gate": "npm run gate"
+  },
+  "evidence": {
+    "crudFullFlow": "e2e/specs/gateway.e2e.spec.js",
+    "failurePaths": "e2e/specs/gateway.e2e.spec.js"
   }
 }

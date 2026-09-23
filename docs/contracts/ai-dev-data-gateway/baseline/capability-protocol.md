@@ -22,6 +22,19 @@ AI 研发数据网关（AI Engineering Data Gateway，`ai-dev-data-gateway`）�
 
 能力目录是静态发布清单，不提供运行时 `/v1/capabilities`。只有 `available` 能力可以被 Radar 假设存在；`planned` 只表达演进方向，不能据此实现调用或占位接口。
 
+## 健康端点
+
+Gateway 提供两个 service-level protocol operation 运行探针，不属于静态业务能力目录，也不需要 `x-capability-id`。OpenAPI 用 `x-protocol-operation` 区分它们与业务能力操作：
+
+| Method / path | Authentication | Success | Purpose |
+|---|---|---|---|
+| `GET /health/live` | None | `200 {"status":"alive"}` | 进程存活探针；Radar 不用它判断业务连接是否可用 |
+| `GET /v1/health/ready` | Bearer | `200 HealthReadyResponse` | Gateway 服务就绪及 v1 协议兼容性检查 |
+
+Readiness 成功响应必须包含 `service: "ai-dev-data-gateway"`、`status: "ready"` 和 SemVer `contract_version`。可选的 `upstreams` 只用于提供方诊断，Radar v1 不消费这些值；GDEMate、CodeHub 或 DTS 单个平台异常不得单独令 Gateway 整体 readiness 失败。认证失败返回标准 `GatewayError` 401/403，Gateway 未就绪返回 `GatewayError` 503。请求 ID 在 readiness 错误中由 Gateway 生成。
+
+Radar 仅接受合法的 v1 SemVer 协议版本；服务身份、ready 状态或协议版本不匹配都不能视为已连接。
+
 ## 职责边界
 
 Gateway 负责：
@@ -80,7 +93,7 @@ Gateway 返回最多 10000 条记录。v1 不提供分页、异步任务、轮�
 ## 传输与安全
 
 - 生产调用必须使用 HTTPS，认证方式为 HTTP Bearer。
-- Token 由部署环境提供，不持久化到 Radar 数据库，不发送到浏览器。
+- Radar 以 HTTP Bearer 发送由管理员管理的 Gateway 访问凭据。此线协议不规定 Radar 本地凭据存储方式；双方都不得把调用方凭据写入响应或日志，也不得发送到浏览器。
 - Gateway 不得在标准错误中返回上游 URL、凭据、调用栈或内部平台原始异常。
 - Gateway 不得跟随会把 Authorization 转发到未知主机的重定向；内部上游重定向策略属于 Gateway 实现，但必须保证凭据边界。
 - JSON 请求和响应禁止未声明字段；媒体类型为 `application/json`。

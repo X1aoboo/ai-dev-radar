@@ -10,7 +10,7 @@
 npm run setup
 ```
 
-该脚本会安装根目录和前端的 Node.js 依赖，创建或复用项目根目录下的 `.venv`，并将后端 Python 依赖安装到该虚拟环境中。Python 创建环境时支持 `python`、`python3`（macOS/Linux）或 `python`、`py -3`（Windows）。
+该脚本会安装根目录和前端的 Node.js 依赖、Playwright Chromium、项目根目录下的 `.venv` 及后端 Python 依赖。Python 创建环境时支持 `python`、`python3`（macOS/Linux）或 `python`、`py -3`（Windows）。
 
 脚本不会生成 `.env`，也不会初始化数据库。Python 相关命令会直接使用项目 `.venv`，不需要手动激活虚拟环境。初始化完成后直接执行：
 
@@ -19,6 +19,15 @@ npm run dev
 ```
 
 如果 `.venv` 不存在，先执行 `npm run setup`。
+
+运行质量门禁：
+
+```bash
+npm run test:e2e:gateway
+npm run gate
+```
+
+Gateway Project E2E 使用临时 SQLite、独立 Mock Gateway 进程、Radar 和 Chromium 浏览器，并通过真实本机 HTTP 验证管理员配置、连接诊断、激活及 IR 暂存。它是 L3 项目集成验证，不代表真实 Gateway 或内部平台的 L4 联调通过。
 
 ## 容器部署
 
@@ -41,9 +50,6 @@ npm run dev
 | `SESSION_MAX_AGE` | `28800` | session 有效期，单位秒。 |
 | `SESSION_HTTPS_ONLY` | `0` | 本地 HTTP 保持 `0`；HTTPS 反向代理部署应设为 `1`。 |
 | `COLLECTION_CRON` | `0 2 * * *` | 五字段 cron 表达式，调度旧 FactRecord 采集任务；数据域采集计划在“系统管理 / 数据采集”配置。 |
-| `COLLECTOR_GATEWAY_URL` | 空 | AI 研发数据网关的 base URL。生产环境必须使用 HTTPS；仅在启用 IR 采集时配置。 |
-| `COLLECTOR_GATEWAY_TOKEN` | 空 | Gateway Bearer Token，仅从运行环境读取，不写入数据库或前端。 |
-| `COLLECTOR_GATEWAY_TIMEOUT_SECONDS` | `30` | 同步 Gateway 请求超时秒数，必须大于零。 |
 | `APP_PORT` | `8000` | 宿主机映射端口，容器内端口固定为 `8000`。 |
 
 ### 数据初始化与重播种
@@ -83,6 +89,8 @@ docker compose run --rm app python -m app.seed
 当前首期完整实现 IR 数据域。IR 支持表格筛选、分页、手工编辑以及 CSV/XLSX
 导入预览；导入或采集结果先进入临时态，整批校验通过并确认后才写入正式数据。
 现有“配置”和“补录”入口仍保留作为兼容入口。
+
+Gateway URL、Bearer Token 和请求超时在“系统管理 / 数据网关”配置。保存修改先生成 Draft；检测通过后启用，启用前还会再次检查。数据采集页只显示 Gateway 状态摘要，不编辑连接配置。
 
 ## 成熟度总览
 

@@ -21,6 +21,8 @@ from .collector_contracts import (
 )
 from .collector_gateway import GatewayFailure, collect_ir_records, create_gateway_client
 from .db import SessionLocal
+from .gateway_config import active_runtime_config
+from .gateway_health import health_view
 from .ir_imports import IRImportRowInput, create_ir_import_batch
 from .models import (
     CollectionRun,
@@ -275,6 +277,7 @@ def run_ir_collection(
     if start_at >= end_at:
         raise HTTPException(status_code=422, detail="start_at must be earlier than end_at")
 
+    runtime_config = active_runtime_config(db)
     run = CollectionRun(
         domain="ir",
         trigger_type=trigger_type,
@@ -282,10 +285,39 @@ def run_ir_collection(
         started_by=started_by,
         window_start_at=start_at.isoformat(),
         window_end_at=end_at.isoformat(),
+        gateway_config_id=runtime_config.config_id if runtime_config else None,
+        gateway_base_url=runtime_config.base_url if runtime_config else None,
     )
     db.add(run)
     db.commit()
     run_id = run.id
+
+    if runtime_config is None:
+        run.status = "failed"
+        run.error_code = "gateway_not_configured"
+        run.message = "AI 研发数据网关尚未配置。"
+        run.retryable = False
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        return run
+
+    current_health = health_view(db, "active", runtime_config)
+    fast_failures = {
+        "AUTH_FAILED": ("gateway_auth_failed", "Gateway 认证失败，请检查当前配置。"),
+        "SERVICE_MISMATCH": ("gateway_service_mismatch", "Gateway 服务身份不匹配。"),
+        "PROTOCOL_INCOMPATIBLE": (
+            "gateway_protocol_incompatible",
+            "Gateway readiness 响应或协议版本不兼容。",
+        ),
+    }
+    if current_health["status"] in fast_failures:
+        run.status = "failed"
+        run.error_code, run.message = fast_failures[current_health["status"]]
+        run.retryable = False
+        run.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        return run
+
     teams = db.scalars(select(Team).order_by(Team.id)).all()
     gateway_client: httpx.Client | None = None
     team_results: list[dict] = []
@@ -322,7 +354,7 @@ def run_ir_collection(
             )
             if gateway_client is None:
                 gateway_client = create_gateway_client(
-                    request_id=request_id,
+                    runtime_config=runtime_config,
                     transport=transport,
                 )
             records = collect_ir_records(gateway_client, request)

@@ -1,5 +1,6 @@
 import React from 'react'
 import { act, create } from 'react-test-renderer'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
 const { fetchJson } = vi.hoisted(() => ({ fetchJson: vi.fn() }))
@@ -75,6 +76,8 @@ test('admin can save a weekly IR schedule and manually trigger an explicit Shang
   let runCompleted = false
   const runResult = { id: 9, domain: 'ir', trigger_type: 'manual', status: 'failed', started_by: 'admin', window_start_at: '2026-09-17T00:00:00+08:00', window_end_at: '2026-09-18T00:00:00+08:00', team_results: [{ team_id: 1, team_name: '团队A', status: 'failed', code: 'gateway_not_configured', message: 'Collector Gateway is not configured.', retryable: false }], started_at: '2026-09-18T00:00:00', completed_at: '2026-09-18T00:00:01' }
   fetchJson.mockImplementation(async (url, options) => {
+    if (url === '/api/gateway') return { active: null, draft: null }
+    if (url === '/api/gateway/audits?limit=50') return []
     if (url === '/api/collection-schedules/ir' && options?.method === 'PUT') {
       schedule = { ...schedule, ...JSON.parse(options.body), updated_by: 'admin' }
       return schedule
@@ -86,7 +89,7 @@ test('admin can save a weekly IR schedule and manually trigger an explicit Shang
     return { schedules: [schedule], recent_runs: runCompleted ? [runResult] : [] }
   })
   let renderer
-  await act(async () => { renderer = create(<CollectionsSettingsPage onSessionExpired={() => undefined} />) })
+  await act(async () => { renderer = create(<MemoryRouter><CollectionsSettingsPage onSessionExpired={() => undefined} /></MemoryRouter>) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
 
   await act(async () => renderer.root.findByProps({ 'aria-label': '采集周期' }).props.onChange({ target: { value: 'weekly' } }))

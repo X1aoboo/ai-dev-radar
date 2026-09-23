@@ -4,7 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator, model_validator
 
 from .models import ActivityKind, CollectMethod, FactSource, MetricType, UserRole
 
@@ -461,6 +461,11 @@ class CollectionRunOut(BaseModel):
     started_by: str
     window_start_at: str
     window_end_at: str
+    gateway_config_id: int | None
+    gateway_base_url: str | None
+    error_code: str | None
+    message: str | None
+    retryable: bool
     team_results: list[CollectionTeamResultOut]
     started_at: datetime
     completed_at: datetime | None
@@ -471,6 +476,86 @@ class CollectionScheduleListOut(BaseModel):
 
     schedules: list[CollectionScheduleOut]
     recent_runs: list[CollectionRunOut]
+
+
+GatewayReadinessState = Literal[
+    "UNCONFIGURED",
+    "UNKNOWN",
+    "CONNECTED",
+    "DEGRADED",
+    "UNREACHABLE",
+    "AUTH_FAILED",
+    "SERVICE_MISMATCH",
+    "PROTOCOL_INCOMPATIBLE",
+]
+
+
+class GatewayDraftIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    base_url: str = Field(min_length=1, max_length=2000)
+    bearer_token: SecretStr | None = None
+    request_timeout_seconds: float = Field(gt=0, allow_inf_nan=False)
+
+    @field_validator("base_url")
+    @classmethod
+    def trim_base_url(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("base_url is required")
+        return value
+
+
+class GatewayHealthOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: GatewayReadinessState
+    stale: bool = False
+    last_known_status: GatewayReadinessState | None = None
+    checked_at: datetime | None = None
+    last_success_at: datetime | None = None
+    latency_ms: int | None = None
+    service_id: str | None = None
+    contract_version: str | None = None
+    consecutive_network_failures: int = 0
+    error_code: str | None = None
+    error_message: str | None = None
+
+
+class GatewayConfigurationOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    slot: Literal["active", "draft"]
+    base_url: str
+    request_timeout_seconds: float
+    token_configured: bool
+    revision: int
+    created_by: str
+    updated_by: str
+    created_at: datetime
+    updated_at: datetime
+    health: GatewayHealthOut
+
+
+class GatewayStateOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    active: GatewayConfigurationOut | None
+    draft: GatewayConfigurationOut | None
+
+
+class GatewayConfigAuditOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int
+    action: str
+    actor: str
+    config_id: int | None
+    scope: Literal["active", "draft"]
+    changes: dict[str, Any]
+    result_status: str | None
+    created_at: datetime
 
 
 class DataMetricDefinitionIn(BaseModel):

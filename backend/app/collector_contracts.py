@@ -4,6 +4,8 @@ from datetime import date, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .gateway_contracts import GatewayError as CollectorIRError
+
 
 class ProductVersionRef(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
@@ -68,12 +70,3 @@ class CollectorIRResponse(BaseModel):
 
     request_id: str = Field(min_length=1, max_length=100)
     records: list[CollectorIRRecord] = Field(max_length=10000)
-
-
-class CollectorIRError(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True)
-
-    code: str = Field(min_length=1, max_length=100)
-    message: str = Field(min_length=1, max_length=500)
-    retryable: bool
-    request_id: str = Field(min_length=1, max_length=100)

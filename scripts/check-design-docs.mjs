@@ -147,11 +147,16 @@ function inspectGatewayContract(docs, errors) {
     for (const [method, operation] of Object.entries(pathItem ?? {})) {
       if (!httpMethods.has(method)) continue
       const capabilityId = operation?.['x-capability-id']
-      if (capabilityStatus.get(capabilityId) !== 'available') {
+      const protocolOperation = operation?.['x-protocol-operation']
+      if (typeof protocolOperation === 'string' && protocolOperation.trim()) {
+        if (capabilityId !== undefined) {
+          errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} cannot be both a protocol operation and a capability`)
+        }
+      } else if (capabilityStatus.get(capabilityId) !== 'available') {
         errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} must reference an available capability`)
       }
       const requestMedia = operation?.requestBody?.content?.['application/json']
-      if (!requestMedia?.example) {
+      if (operation?.requestBody && !requestMedia?.example) {
         errors.push(`${openapiPath}: ${method.toUpperCase()} ${path} is missing a request example`)
       }
       for (const [status, unresolvedResponse] of Object.entries(operation?.responses ?? {})) {

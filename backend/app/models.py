@@ -8,7 +8,7 @@
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -346,11 +346,84 @@ class CollectionRun(Base):
     started_by: Mapped[str] = mapped_column(String(100))
     window_start_at: Mapped[str] = mapped_column(String(50))
     window_end_at: Mapped[str] = mapped_column(String(50))
+    gateway_config_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    gateway_base_url: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    retryable: Mapped[bool] = mapped_column(Boolean, default=False)
     team_results: Mapped[list] = mapped_column(JSON, default=list)
     started_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )
     completed_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+
+class GatewayConfiguration(Base):
+    """At most one active and one draft client configuration."""
+
+    __tablename__ = "gateway_configurations"
+    __table_args__ = (
+        UniqueConstraint("slot", name="uq_gateway_configuration_slot"),
+        CheckConstraint("slot IN ('active', 'draft')", name="ck_gateway_configuration_slot"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    slot: Mapped[str] = mapped_column(String(10))
+    base_url: Mapped[str] = mapped_column(String(2000))
+    bearer_token: Mapped[str] = mapped_column(Text)
+    request_timeout_seconds: Mapped[float] = mapped_column(Float)
+    revision: Mapped[int] = mapped_column(Integer, default=1)
+    created_by: Mapped[str] = mapped_column(String(100))
+    updated_by: Mapped[str] = mapped_column(String(100))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+
+
+class GatewayHealthStatus(Base):
+    """Latest readiness observation per Gateway config scope."""
+
+    __tablename__ = "gateway_health_status"
+    __table_args__ = (
+        UniqueConstraint("scope", name="uq_gateway_health_scope"),
+        CheckConstraint("scope IN ('active', 'draft')", name="ck_gateway_health_scope"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(String(10))
+    config_id: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(30))
+    last_known_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    service_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contract_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    consecutive_network_failures: Mapped[int] = mapped_column(Integer, default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class GatewayConfigAudit(Base):
+    """Sanitized human operations on Gateway runtime configuration."""
+
+    __tablename__ = "gateway_config_audits"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    action: Mapped[str] = mapped_column(String(30))
+    actor: Mapped[str] = mapped_column(String(100))
+    config_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    scope: Mapped[str] = mapped_column(String(10))
+    changes: Mapped[dict] = mapped_column(JSON, default=dict)
+    result_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
 
 
 class DataMetricDefinition(Base):

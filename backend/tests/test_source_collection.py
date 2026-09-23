@@ -1,6 +1,6 @@
 """IR collection orchestration tests with a deterministic HTTPX MockTransport."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 import json
 from zoneinfo import ZoneInfo
 
@@ -9,11 +9,12 @@ from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker, selectinload
 from sqlalchemy.pool import StaticPool
 
-from app import config
 from app.db import Base
 from app.models import (
     CollectionRun,
     CollectionSchedule,
+    GatewayConfiguration,
+    GatewayHealthStatus,
     IRRequirement,
     ImportBatch,
     Iteration,
@@ -75,11 +76,19 @@ def gateway_record(source_id="IR-001", **overrides):
     }
 
 
-def configure_gateway(monkeypatch):
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_URL", "https://gateway.test")
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_TOKEN", "test-token")
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_TIMEOUT_SECONDS", 2)
-    monkeypatch.setattr(config, "APP_ENV", "test")
+def configure_gateway(db):
+    active = GatewayConfiguration(
+        slot="active",
+        base_url="https://gateway.test",
+        bearer_token="test-token",
+        request_timeout_seconds=2,
+        revision=1,
+        created_by="admin",
+        updated_by="admin",
+    )
+    db.add(active)
+    db.commit()
+    return active
 
 
 def run(db, transport):
@@ -93,9 +102,9 @@ def run(db, transport):
     )
 
 
-def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(monkeypatch):
-    configure_gateway(monkeypatch)
+def test_team_collection_maps_business_names_stages_batch_and_isolates_failure():
     db, engine = collection_session()
+    active = configure_gateway(db)
     team_a, product, version, iteration = add_team_with_ir_hierarchy(db, "团队A", "版本A")
     team_b, _, _, _ = add_team_with_ir_hierarchy(db, "团队B", "版本B")
     requests = []
@@ -103,6 +112,10 @@ def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(m
     def handle(request):
         body = json.loads(request.content)
         requests.append((request, body))
+        if len(requests) == 1:
+            active.base_url = "https://rotated.gateway.test"
+            active.bearer_token = "rotated-secret"
+            db.commit()
         if body["product_versions"][0]["product_name"] == "团队B product":
             return httpx.Response(503, json={
                 "code": "internal_unavailable",
@@ -117,9 +130,13 @@ def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(m
 
     run_result = run(db, httpx.MockTransport(handle))
     assert run_result.status == "partial"
+    assert run_result.gateway_config_id == active.id
+    assert run_result.gateway_base_url == "https://gateway.test"
+    assert "test-token" not in str(run_result.team_results)
     assert [item["status"] for item in run_result.team_results] == ["succeeded", "failed"]
     assert all("team_name" not in item[1] for item in requests)
     assert all(item[0].url.path == "/v1/collections/ir" for item in requests)
+    assert all(str(item[0].url).startswith("https://gateway.test/") for item in requests)
     assert all(item[0].headers["authorization"] == "Bearer test-token" for item in requests)
     assert requests[0][1]["product_versions"] == [
         {"product_name": "团队A product", "version_name": "版本A"}
@@ -153,9 +170,9 @@ def test_team_collection_maps_business_names_stages_batch_and_isolates_failure(m
     engine.dispose()
 
 
-def test_duplicate_ids_and_contract_errors_become_invalid_staging_rows(monkeypatch):
-    configure_gateway(monkeypatch)
+def test_duplicate_ids_and_contract_errors_become_invalid_staging_rows():
     db, engine = collection_session()
+    configure_gateway(db)
     _, product, _, _ = add_team_with_ir_hierarchy(db, "团队A", "版本A")
     records = [
         gateway_record("IR-DUP", estimated_workload="not-a-number", product_id=999),
@@ -180,9 +197,9 @@ def test_duplicate_ids_and_contract_errors_become_invalid_staging_rows(monkeypat
     engine.dispose()
 
 
-def test_unmatched_version_team_or_iteration_names_are_invalid_rows(monkeypatch):
-    configure_gateway(monkeypatch)
+def test_unmatched_version_team_or_iteration_names_are_invalid_rows():
     db, engine = collection_session()
+    configure_gateway(db)
     add_team_with_ir_hierarchy(db, "团队A", "版本A")
     add_team_with_ir_hierarchy(db, "团队B", "版本B")
     records = [
@@ -218,9 +235,9 @@ def test_unmatched_version_team_or_iteration_names_are_invalid_rows(monkeypatch)
     engine.dispose()
 
 
-def test_product_version_pairs_scope_records_and_empty_module_is_normalized(monkeypatch):
-    configure_gateway(monkeypatch)
+def test_product_version_pairs_scope_records_and_empty_module_is_normalized():
     db, engine = collection_session()
+    configure_gateway(db)
     team, product_a, version_a, iteration_a = add_team_with_ir_hierarchy(
         db, "团队A", "版本A"
     )
@@ -276,9 +293,9 @@ def test_product_version_pairs_scope_records_and_empty_module_is_normalized(monk
     engine.dispose()
 
 
-def test_empty_product_mapping_skips_gateway_and_empty_result_creates_no_batch(monkeypatch):
-    configure_gateway(monkeypatch)
+def test_empty_product_mapping_skips_gateway_and_empty_result_creates_no_batch():
     db, engine = collection_session()
+    configure_gateway(db)
     add_team_with_ir_hierarchy(db, "团队空映射", "版本空", mapped=False)
     add_team_with_ir_hierarchy(db, "团队无结果", "版本无结果")
     requests = []
@@ -292,6 +309,58 @@ def test_empty_product_mapping_skips_gateway_and_empty_result_creates_no_batch(m
     assert [item["status"] for item in result.team_results] == ["skipped", "succeeded"]
     assert all(item.get("batch_id") is None for item in result.team_results)
     assert db.scalars(select(ImportBatch)).all() == []
+    db.close()
+    engine.dispose()
+
+
+def test_missing_active_config_creates_one_run_level_error_without_team_results():
+    db, engine = collection_session()
+    add_team_with_ir_hierarchy(db, "团队A", "版本A")
+    requests = []
+    result = run(db, httpx.MockTransport(lambda request: requests.append(request)))
+    assert result.status == "failed"
+    assert result.error_code == "gateway_not_configured"
+    assert result.message == "AI 研发数据网关尚未配置。"
+    assert result.retryable is False
+    assert result.team_results == []
+    assert result.gateway_config_id is None
+    assert requests == []
+    db.close()
+    engine.dispose()
+
+
+def test_fresh_deterministic_health_error_fails_once_but_stale_health_attempts_collection():
+    db, engine = collection_session()
+    active = configure_gateway(db)
+    add_team_with_ir_hierarchy(db, "团队A", "版本A")
+    db.add(GatewayHealthStatus(
+        scope="active",
+        config_id=active.id,
+        status="AUTH_FAILED",
+        last_known_status="AUTH_FAILED",
+        checked_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        consecutive_network_failures=0,
+        error_code="gateway_auth_failed",
+    ))
+    db.commit()
+    requests = []
+    blocked = run(db, httpx.MockTransport(lambda request: requests.append(request)))
+    assert blocked.status == "failed"
+    assert blocked.error_code == "gateway_auth_failed"
+    assert blocked.team_results == []
+    assert requests == []
+
+    health = db.scalar(select(GatewayHealthStatus).where(GatewayHealthStatus.scope == "active"))
+    health.checked_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=91)
+    db.commit()
+    transport = httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(
+        200,
+        json={"request_id": json.loads(request.content)["request_id"], "records": []},
+    ))
+    retried = run(db, transport)
+    assert retried.status == "succeeded"
+    assert retried.team_results[0]["status"] == "succeeded"
+    assert len(requests) == 1
     db.close()
     engine.dispose()
 

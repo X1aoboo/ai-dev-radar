@@ -12,18 +12,24 @@ flowchart LR
     API --> Source[data_management 校验 合并 计算]
     API --> ORM[SQLAlchemy models 与 session]
     ORM --> DB[(SQLite)]
+    GatewaySettings[数据网关管理页] --> GatewayAPI[Gateway Management API]
+    GatewayAPI --> GatewayConfig[Gateway 配置 审计 健康快照]
+    GatewayConfig --> ORM
     Scheduler[进程内 APScheduler] --> Registry[旧事实采集注册表]
     Registry --> ORM
     Scheduler --> SourceCollection[IR 源数据采集与暂存]
+    Scheduler --> GatewayHealth[Gateway readiness 检查]
+    GatewayHealth --> GatewayConfig
+    GatewayHealth --> Gateway[AI 研发数据网关]
     Contract[版本化能力协议基线] --> SourceCollection
-    Contract --> Gateway[AI 研发数据网关]
+    Contract --> Gateway
     SourceCollection -->|Bearer HTTPS| Gateway
     Gateway --> SourceCollection
     SourceCollection --> ORM
     Static[Vite dist 静态托管] --> Browser
 ```
 
-路由查询数据库后交给计算函数，不由图表决定统计口径。源数据 API 编排校验、权限和事务。旧事实采集仍走 FactRecord 注册表；IR 源采集由 `source_collection.py` 经 AI 研发数据网关单独执行并写入暂存批次，不触碰正式 IR 或旧事实链路。协议工作区保存最新完整基线和逐版本变化，消费者固定发布 tag 或 commit。图中的 Gateway 关系代表 Radar 侧实现，不代表真实内部平台联调已通过。
+路由查询数据库后交给计算函数，不由图表决定统计口径。源数据 API 编排校验、权限和事务。旧事实采集仍走 FactRecord 注册表；IR 源采集由 `source_collection.py` 读取一次 Active 配置形成不可变快照，经 AI 研发数据网关执行并写入暂存批次，不触碰正式 IR 或旧事实链路。配置、最新健康状态和配置审计由 Gateway 管理模块持久化；健康检查与采集复用同一个进程内 APScheduler。协议工作区保存最新完整基线和逐版本变化，消费者固定发布 tag 或 commit。图中的 Gateway 关系代表 Radar 侧实现，不代表真实内部平台联调已通过。
 
 ## 核心模块与依赖方向
 
@@ -33,15 +39,17 @@ flowchart LR
 | `auth.py` | session、密码及角色/团队权限 | 后端授权，每次加载用户 |
 | `api.py` | 认证、目录、事实、成熟度 | 调用纯计算和 ORM |
 | `data_api.py` | 组织、IR、批次、源数据指标 | 复用 data_management 规则 |
-| `source_collection.py` / `collector_gateway.py` | IR 周期窗口、按团队运行、Gateway HTTPS 调用及暂存 | 同步调用；凭据只读环境变量；不自动重试 |
-| `collector_contracts.py` | Gateway v1 严格 Pydantic 消费端模型 | 与版本化 OpenAPI 基线做一致性测试 |
+| `gateway_api.py` / `gateway_config.py` | 管理 Active/Draft、实时激活、配置审计和 CollectionRun runtime snapshot | admin-only；Token 不进入读取响应、审计、run 或日志 |
+| `gateway_health.py` | readiness 状态转换、最新状态持久化、stale 判定及立即/周期检查 | 复用 APScheduler；每 30 秒检查 Active；不保留时序 |
+| `source_collection.py` / `collector_gateway.py` | IR 周期窗口、按团队运行、显式 runtime snapshot 的 Gateway HTTPS 调用及暂存 | 同一 CollectionRun 所有团队共用一份快照；不自动重试 |
+| `gateway_contracts.py` / `collector_contracts.py` | Readiness 与 IR 的严格 Pydantic 消费端模型 | 与版本化 OpenAPI 基线做一致性测试 |
 | `ir_imports.py` | 文件导入与采集共用 IR 行校验及批次创建 | 采集批次必须绑定团队 |
 | `compute.py` / `maturity.py` | 事实和评估计算 | 不依赖 HTTP 或数据库查询 |
 | `data_management.py` | IR 规范化、解析、差异、合并和指标 | 不承担 HTTP 编排 |
 | `models.py` / `db.py` / `migrations.py` | 实体、session、现有库增量 schema | 没有通用迁移框架 |
-| `collectors.py` / `scheduler.py` | 接口注册和定时事实采集 | 没有真实平台实现 |
+| `collectors.py` / `scheduler.py` | 接口注册、定时事实采集及配置化源数据采集 | Gateway 健康任务沿用同一个 Scheduler；没有真实平台实现 |
 
-客户端共用 `api.js` 的 `fetchJson` 携带 cookie 和统一 HTTP 异常；领域页面拆出逻辑和图表配置。当前路径由 `routing/routeMetadata.js` 定义：`/`、`/analytics/activities`、`/analytics/capabilities`、`/analytics/teams/:teamId`、`/analytics/metrics/:metricId`、`/data/requirements/:requirementType`、`/data/maturity`、`/data/{issues|mr|code-review}`、`/settings/*`（含管理员 `/settings/collections`）；旧数据管理路径重定向到新分类，旧 `/?category=key|general` 重定向到活动/能力页。
+客户端共用 `api.js` 的 `fetchJson` 携带 cookie 和统一 HTTP 异常；领域页面拆出逻辑和图表配置。当前路径由 `routing/routeMetadata.js` 定义：`/`、`/analytics/activities`、`/analytics/capabilities`、`/analytics/teams/:teamId`、`/analytics/metrics/:metricId`、`/data/requirements/:requirementType`、`/data/maturity`、`/data/{issues|mr|code-review}`、`/settings/*`（含管理员 `/settings/collections` 与 `/settings/gateway`）；旧数据管理路径重定向到新分类，旧 `/?category=key|general` 重定向到活动/能力页。
 
 AppShell 分别持有桌面折叠选择、matchMedia 窄屏状态与抽屉开关。localStorage 的 ai-dev-radar.sidebar-collapsed 只保存桌面布尔偏好；读取失败默认展开，写入失败不影响使用。监听 680px 断点，变化时关闭抽屉并恢复独立桌面选择。桌面 CSS 用同一自定义宽度变量同步 248px/64px 侧栏宽度与正文左偏移，并以 240ms cubic-bezier(.2,0,0,1) 过渡；首屏直接使用保存状态，连续切换由 CSS 从当前动画位置反向过渡，prefers-reduced-motion: reduce 时禁用新增过渡。Topbar 是 56px 的 Breadcrumb 与账户操作区，不承载路由页面标题。
 
@@ -65,10 +73,10 @@ TeamDrilldown 的 KPI 分别使用现有目录单指标（`cd-ar-pen`、`cd-eff`
 
 ## 运行与部署
 
-lifespan 依次建表、增量 schema、检查活动目录并在为空时播种，确保 IR 默认禁用的调度配置存在，再加载启用的源数据调度任务并启动调度器；关闭时等待调度器退出。旧 `COLLECTION_CRON` 任务继续处理 FactRecord。播种是否执行由目录是否为空决定，不能据此宣称所有缺失数据都会自动补齐。
+lifespan 依次建表、增量 schema、检查活动目录并在为空时播种，确保 IR 默认禁用的调度配置存在，把已有 Active 健康状态标记为 `UNKNOWN`，再加载启用的源数据调度任务和立即执行的 `gateway-health-check`，最后启动同一个 APScheduler；Gateway 检查之后每 30 秒运行一次。关闭时等待调度器退出。旧 `COLLECTION_CRON` 任务继续处理 FactRecord。播种是否执行由目录是否为空决定，不能据此宣称所有缺失数据都会自动补齐。
 
-本地 Vite 将 `/api` 代理到 8000 后端。Docker 多阶段构建 Vite，FastAPI 同源托管 dist，以单个 Uvicorn 进程启动，SQLite 放在 `/data` 卷。SPA fallback 仅处理无扩展名 GET 客户端路径，显式排除 `/api`，保留 API 404/405 语义。Gateway base URL、Bearer Token 和超时由 `COLLECTOR_GATEWAY_URL`、`COLLECTOR_GATEWAY_TOKEN`、`COLLECTOR_GATEWAY_TIMEOUT_SECONDS` 提供；生产拒绝非 HTTPS URL。环境变量详见 [README](../../README.md)。
+本地 Vite 将 `/api` 代理到 8000 后端。Docker 多阶段构建 Vite，FastAPI 同源托管 dist，以单个 Uvicorn 进程启动，SQLite 放在 `/data` 卷。SPA fallback 仅处理无扩展名 GET 客户端路径，显式排除 `/api`，保留 API 404/405 语义。Gateway URL、Bearer Token 和 timeout 通过 admin-only 数据网关页面管理并存于 Radar 数据库；Token 按决策明文存储但绝不返回或写入审计/run/log。生产 Gateway URL 必须使用 HTTPS。E2E 测试资产由 `.dockerignore` 排除且 Dockerfile 不复制到生产镜像。环境变量详见 [README](../../README.md)。
 
-进程内调度约束意味着扩展多 worker 会重复调度；当前部署采用单进程。生产配置拒绝默认密钥和种子密码，HTTPS 场景需启用 secure cookie。Docker 镜像、卷重启持久化、MySQL 与真实内部平台/Gateway 联调本次未运行验证，不应宣称已验收。
+进程内调度约束意味着扩展多 worker 会重复调度；当前部署采用单进程。生产配置拒绝默认密钥和种子密码，HTTPS 场景需启用 secure cookie。L3 Project E2E 只验证 Radar 与独立 Mock Gateway 的真实本机 HTTP 链路，不代表真实 Gateway 或内部平台联调通过。Docker 镜像、卷重启持久化、MySQL 与 L4 内网联调需部署验证，不从项目门禁推断。
 
 侧栏与抽屉使用 #F8FAFD 浅色表面及 #E0E3E7 边框；正文文字为 #3C4043，辅助文字为 #5F6368，选中项使用 #D3E3FD 背景和深蓝文字。导航明确 overflow-x: hidden、overflow-y: auto，并允许网格及导航项收缩；折叠链接移除文字间距和横向留白，在最多 40px 的导航行内居中，避免横向滚动导致图标偏移。纵向使用细滚动条，短视口保持导航滚动能力，折叠控制固定在非滚动品牌区。

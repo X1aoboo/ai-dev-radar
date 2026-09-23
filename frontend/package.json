@@ -11,7 +11,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test:routes": "vitest run src/routing/routeRendering.test.jsx src/overview/OverviewPage.test.jsx src/dataManagement/dataManagementRendering.test.jsx src/settings/settingsRendering.test.jsx",
-    "test:unit": "node --test src/overview/*.test.js src/drilldown/*.test.js src/metricDetail/*.test.js src/dataManagement/*.test.js src/routing/*.test.js && npm run test:routes"
+    "test:unit": "node --test src/overview/*.test.js src/drilldown/*.test.js src/metricDetail/*.test.js src/dataManagement/*.test.js src/routing/*.test.js src/settings/*.test.js && npm run test:routes"
   },
   "dependencies": {
     "@ant-design/icons": "^6.0.0",

@@ -5,8 +5,8 @@ from typing import Any
 import httpx
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from . import config
 from .collector_contracts import CollectorIRError, CollectorIRRequest
+from .gateway_config import GatewayConfigError, GatewayRuntimeConfig, validate_gateway_base_url
 
 
 class GatewayFailure(Exception):
@@ -35,51 +35,24 @@ class _CollectorIRResponseEnvelope(BaseModel):
 
 
 def create_gateway_client(
-    *, request_id: str, transport: httpx.BaseTransport | None = None
+    *,
+    runtime_config: GatewayRuntimeConfig,
+    transport: httpx.BaseTransport | None = None,
+    timeout_seconds: float | None = None,
 ) -> httpx.Client:
-    base_url = config.COLLECTOR_GATEWAY_URL
-    token = config.COLLECTOR_GATEWAY_TOKEN
-    if not base_url or not token:
-        raise GatewayFailure(
-            code="gateway_not_configured",
-            message="Collector Gateway is not configured.",
-            retryable=False,
-            request_id=request_id,
-        )
     try:
-        parsed_url = httpx.URL(base_url)
-    except Exception as exc:
+        base_url = validate_gateway_base_url(runtime_config.base_url)
+    except GatewayConfigError as exc:
         raise GatewayFailure(
-            code="gateway_configuration_error",
-            message="Collector Gateway configuration is invalid.",
-            retryable=False,
-            request_id=request_id,
-        ) from exc
-    if (
-        parsed_url.scheme not in {"http", "https"}
-        or not parsed_url.host
-        or parsed_url.username
-        or parsed_url.password
-        or parsed_url.query
-        or parsed_url.fragment
-    ):
-        raise GatewayFailure(
-            code="gateway_configuration_error",
-            message="Collector Gateway configuration is invalid.",
-            retryable=False,
-            request_id=request_id,
-        )
-    if config.APP_ENV in {"production", "prod"} and parsed_url.scheme != "https":
-        raise GatewayFailure(
-            code="gateway_https_required",
-            message="Collector Gateway must use HTTPS in production.",
+            code=exc.code,
+            message=exc.message,
             retryable=False,
             request_id="",
-        )
+        ) from exc
     return httpx.Client(
-        base_url=base_url.rstrip("/"),
-        headers={"Authorization": f"Bearer {token}"},
-        timeout=config.COLLECTOR_GATEWAY_TIMEOUT_SECONDS,
+        base_url=base_url,
+        headers={"Authorization": f"Bearer {runtime_config.bearer_token}"},
+        timeout=(timeout_seconds if timeout_seconds is not None else runtime_config.request_timeout_seconds),
         follow_redirects=False,
         transport=transport,
     )

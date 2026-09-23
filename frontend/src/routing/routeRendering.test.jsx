@@ -28,6 +28,7 @@ vi.mock('@ant-design/icons', () => {
   MenuFoldOutlined.displayName = 'MenuFoldOutlined'
   MenuOutlined.displayName = 'MenuOutlined'
   return {
+    ApiOutlined: Icon,
     AppstoreOutlined: Icon,
     BarChartOutlined: Icon,
     BugOutlined: Icon,
@@ -62,6 +63,7 @@ const routeComponents = {
   DataManagementPage: ({ section }) => <StubPage page={`data-${section}`}>{section}</StubPage>,
   UsersSettingsPage: () => <StubPage page="settings-users">用户与权限</StubPage>,
   CollectionsSettingsPage: () => <StubPage page="settings-collections">数据采集</StubPage>,
+  GatewaySettingsPage: () => <StubPage page="settings-gateway">数据网关</StubPage>,
 }
 
 function LocationProbe() {
@@ -137,7 +139,7 @@ function hasText(renderer, text) {
 }
 
 test('route metadata treats one or more trailing slashes like the canonical path', () => {
-  for (const pathname of ['/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/data/maturity', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections']) {
+  for (const pathname of ['/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/data/maturity', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections', '/settings/gateway']) {
     expect(getRouteMeta(`${pathname}/`)).toEqual(getRouteMeta(pathname))
   }
   expect(getRouteMeta('/')).toEqual(getRouteMeta('////'))
@@ -175,6 +177,7 @@ test('sidebar toggles reversibly without changing navigation contracts or fetchi
   expect(links().some(node => node.props['aria-current'] === 'page')).toBe(true)
   expect(links().some(node => node.props.href === '/settings/users')).toBe(false)
   expect(links().some(node => node.props.href === '/settings/collections')).toBe(false)
+  expect(links().some(node => node.props.href === '/settings/gateway')).toBe(false)
   expect(links().filter(node => ['需求', '问题单', 'MR', '代码检视'].includes(node.props['aria-label']))).toHaveLength(4)
   expect(globalThis.fetch.mock.calls.length).toBe(requests)
   await act(async () => toggle().props.onClick())
@@ -241,6 +244,7 @@ test('data sources are direct navigation entries for all roles', async () => {
 for (const [role, pathname, page] of [
   ['admin', '/settings/users', 'settings-users'],
   ['admin', '/settings/collections', 'settings-collections'],
+  ['admin', '/settings/gateway', 'settings-gateway'],
   ['admin', '/settings/teams', 'data-teams'],
   ['maintainer', '/settings/teams', 'data-teams'],
   ['viewer', '/settings/teams', 'data-teams'],
@@ -261,6 +265,8 @@ for (const [role, pathname] of [
   ['viewer', '/settings/users'],
   ['maintainer', '/settings/collections'],
   ['viewer', '/settings/collections'],
+  ['maintainer', '/settings/gateway'],
+  ['viewer', '/settings/gateway'],
 ]) {
   test(`${role} receives 403 for ${pathname}`, async () => {
     const renderer = await renderAt(pathname, role)
@@ -406,6 +412,7 @@ test('assigns a named content mode without changing route ownership', async () =
     ['/analytics/teams/2', 'analytics', 'viewer'],
     ['/data/requirements/ir', 'operational', 'viewer'],
     ['/settings/collections', 'readable', 'admin'],
+    ['/settings/gateway', 'readable', 'admin'],
   ]) {
     const renderer = await renderAt(path, role)
     expect(contentMode(renderer)).toContain(`app-shell__content--${mode}`)

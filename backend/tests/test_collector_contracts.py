@@ -2,11 +2,9 @@
 
 from datetime import datetime
 import json
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
-from jsonschema import Draft202012Validator, FormatChecker
 from jsonschema.exceptions import ValidationError as JSONSchemaValidationError
 import pytest
 from pydantic import ValidationError
@@ -24,34 +22,12 @@ from app.collector_gateway import (
     collect_ir_records,
     create_gateway_client,
 )
+from app.gateway_config import GatewayRuntimeConfig
+from app.gateway_contracts import HealthLiveResponse, HealthReadyResponse, is_compatible_contract_version
+from gateway_contract_utils import openapi_contract, resolve_local_refs, validate_openapi
 
 
 SHANGHAI = ZoneInfo("Asia/Shanghai")
-CONTRACT_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "docs/contracts/ai-dev-data-gateway/baseline/openapi.json"
-)
-
-
-def openapi_contract():
-    return json.loads(CONTRACT_PATH.read_text(encoding="utf-8"))
-
-
-def resolve_local_refs(value, root):
-    if isinstance(value, dict):
-        if set(value) == {"$ref"}:
-            ref = value["$ref"]
-            assert ref.startswith("#/"), ref
-            target = root
-            for part in ref[2:].split("/"):
-                target = target[part.replace("~1", "/").replace("~0", "~")]
-            return resolve_local_refs(target, root)
-        return {key: resolve_local_refs(item, root) for key, item in value.items()}
-    if isinstance(value, list):
-        return [resolve_local_refs(item, root) for item in value]
-    return value
-
-
 def normalized_schema(schema):
     if isinstance(schema, dict):
         return {
@@ -62,12 +38,6 @@ def normalized_schema(schema):
     if isinstance(schema, list):
         return [normalized_schema(item) for item in schema]
     return schema
-
-
-def validate_openapi(schema_name, instance):
-    contract = openapi_contract()
-    schema = resolve_local_refs(contract["components"]["schemas"][schema_name], contract)
-    Draft202012Validator(schema, format_checker=FormatChecker()).validate(instance)
 
 
 def request_payload(request_id="request-1"):
@@ -81,11 +51,25 @@ def request_payload(request_id="request-1"):
     )
 
 
-def configure_gateway(monkeypatch, *, url="https://gateway.test", token="test-token", env="test"):
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_URL", url)
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_TOKEN", token)
-    monkeypatch.setattr(config, "COLLECTOR_GATEWAY_TIMEOUT_SECONDS", 2)
+def configure_gateway(monkeypatch, *, env="test"):
     monkeypatch.setattr(config, "APP_ENV", env)
+
+
+def runtime_config(*, url="https://gateway.test", token="test-token", timeout=2):
+    return GatewayRuntimeConfig(
+        config_id=1,
+        revision=1,
+        base_url=url,
+        bearer_token=token,
+        request_timeout_seconds=timeout,
+    )
+
+
+def client(*, transport=None, runtime=None):
+    return create_gateway_client(
+        runtime_config=runtime or runtime_config(),
+        transport=transport,
+    )
 
 
 def test_openapi_is_the_versioned_wire_contract_and_models_conform():
@@ -105,11 +89,11 @@ def test_openapi_is_the_versioned_wire_contract_and_models_conform():
         ("CollectorIRRecord", CollectorIRRecord),
         ("CollectorIRResponse", CollectorIRResponse),
         ("GatewayError", CollectorIRError),
+        ("HealthLiveResponse", HealthLiveResponse),
+        ("HealthReadyResponse", HealthReadyResponse),
     )
     for schema_name, model in model_pairs:
-        protocol_schema = resolve_local_refs(
-            contract["components"]["schemas"][schema_name], contract
-        )
+        protocol_schema = resolve_local_refs(contract["components"]["schemas"][schema_name], contract)
         model_schema = model.model_json_schema()
         resolved_model_schema = resolve_local_refs(model_schema, model_schema)
         assert normalized_schema(protocol_schema) == normalized_schema(resolved_model_schema)
@@ -137,6 +121,13 @@ def test_openapi_is_the_versioned_wire_contract_and_models_conform():
         assert error_example["retryable"] is retryable
         validate_openapi("GatewayError", error_example)
         CollectorIRError.model_validate_json(json.dumps(error_example))
+
+    ready_example = contract["paths"]["/v1/health/ready"]["get"]["responses"]["200"]["content"]["application/json"]["example"]
+    live_example = contract["paths"]["/health/live"]["get"]["responses"]["200"]["content"]["application/json"]["example"]
+    validate_openapi("HealthReadyResponse", ready_example)
+    validate_openapi("HealthLiveResponse", live_example)
+    HealthReadyResponse.model_validate(ready_example)
+    HealthLiveResponse.model_validate(live_example)
 
 
 def test_contract_requires_timezone_and_forbids_undeclared_fields():
@@ -177,11 +168,11 @@ def test_gateway_client_uses_bearer_and_exact_ir_endpoint(monkeypatch):
         seen.append(request)
         return httpx.Response(200, json={"request_id": "request-1", "records": []})
 
-    client = create_gateway_client(transport=httpx.MockTransport(handle), request_id="request-1")
+    gateway_client = client(transport=httpx.MockTransport(handle))
     try:
-        assert collect_ir_records(client, request_payload()) == []
+        assert collect_ir_records(gateway_client, request_payload()) == []
     finally:
-        client.close()
+        gateway_client.close()
     assert seen[0].url == "https://gateway.test/v1/collections/ir"
     assert seen[0].headers["authorization"] == "Bearer test-token"
     body = json.loads(seen[0].content)
@@ -214,10 +205,18 @@ def test_contract_rejects_duplicate_product_version_pairs_and_accepts_empty_modu
     CollectorIRRecord.model_validate_json(json.dumps({**record, "business_module": "   "}))
 
 
+def test_readiness_compatibility_accepts_only_valid_v1_semver():
+    assert is_compatible_contract_version("1.0.0") is True
+    assert is_compatible_contract_version("1.4.2") is True
+    assert is_compatible_contract_version("2.0.0") is False
+    assert is_compatible_contract_version("1.0") is False
+    assert is_compatible_contract_version("01.0.0") is False
+
+
 def test_production_rejects_non_https_gateway_configuration(monkeypatch):
-    configure_gateway(monkeypatch, url="http://gateway.test", env="production")
+    configure_gateway(monkeypatch, env="production")
     with pytest.raises(GatewayFailure) as caught:
-        create_gateway_client(request_id="request-1")
+        create_gateway_client(runtime_config=runtime_config(url="http://gateway.test"))
     assert caught.value.code == "gateway_https_required"
 
 
@@ -227,12 +226,12 @@ def test_gateway_timeout_is_standardized_without_transport_details(monkeypatch):
     def handle(request):
         raise httpx.ReadTimeout("private host and token", request=request)
 
-    client = create_gateway_client(transport=httpx.MockTransport(handle), request_id="request-1")
+    gateway_client = client(transport=httpx.MockTransport(handle))
     try:
         with pytest.raises(GatewayFailure) as caught:
-            collect_ir_records(client, request_payload())
+            collect_ir_records(gateway_client, request_payload())
     finally:
-        client.close()
+        gateway_client.close()
     assert caught.value.code == "gateway_timeout"
     assert caught.value.retryable is True
     assert caught.value.request_id == "request-1"
@@ -248,12 +247,12 @@ def test_standard_gateway_error_is_checked_and_sanitized(monkeypatch):
         "retryable": True,
         "request_id": "request-1",
     }))
-    client = create_gateway_client(transport=transport, request_id="request-1")
+    gateway_client = client(transport=transport)
     try:
         with pytest.raises(GatewayFailure) as caught:
-            collect_ir_records(client, request_payload())
+            collect_ir_records(gateway_client, request_payload())
     finally:
-        client.close()
+        gateway_client.close()
     assert caught.value.code == "upstream_unavailable"
     assert caught.value.retryable is True
     assert caught.value.message == "Collector Gateway reported a collection error."
@@ -263,11 +262,10 @@ def test_standard_gateway_error_is_checked_and_sanitized(monkeypatch):
 
 def test_gateway_requires_request_id_echo_and_enforces_10000_record_limit(monkeypatch):
     configure_gateway(monkeypatch)
-    wrong_id_client = create_gateway_client(
+    wrong_id_client = client(
         transport=httpx.MockTransport(lambda request: httpx.Response(
             200, json={"request_id": "other", "records": []}
         )),
-        request_id="request-1",
     )
     try:
         with pytest.raises(GatewayFailure, match="request_id") as caught:
@@ -276,11 +274,10 @@ def test_gateway_requires_request_id_echo_and_enforces_10000_record_limit(monkey
     finally:
         wrong_id_client.close()
 
-    exact_limit_client = create_gateway_client(
+    exact_limit_client = client(
         transport=httpx.MockTransport(lambda request: httpx.Response(
             200, json={"request_id": "request-1", "records": [{}] * 10000}
         )),
-        request_id="request-1",
     )
     try:
         assert len(collect_ir_records(exact_limit_client, request_payload())) == 10000
@@ -290,11 +287,11 @@ def test_gateway_requires_request_id_echo_and_enforces_10000_record_limit(monkey
     def handle(request):
         return httpx.Response(200, json={"request_id": "request-1", "records": [{}] * 10001})
 
-    client = create_gateway_client(transport=httpx.MockTransport(handle), request_id="request-1")
+    gateway_client = client(transport=httpx.MockTransport(handle))
     try:
         with pytest.raises(GatewayFailure) as caught:
-            collect_ir_records(client, request_payload())
+            collect_ir_records(gateway_client, request_payload())
     finally:
-        client.close()
+        gateway_client.close()
     assert caught.value.code == "too_many_records"
     assert "10000" in caught.value.message

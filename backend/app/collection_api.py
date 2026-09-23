@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from .auth import get_current_user, require_roles
 from .db import get_db
+from .gateway_config import gateway_transport_for
 from .models import CollectionRun, CollectionSchedule, User, UserRole
 from .scheduler import apply_source_collection_schedule
 from .schemas import (
@@ -48,6 +49,11 @@ def _run_out(run: CollectionRun) -> CollectionRunOut:
         started_by=run.started_by,
         window_start_at=run.window_start_at,
         window_end_at=run.window_end_at,
+        gateway_config_id=run.gateway_config_id,
+        gateway_base_url=run.gateway_base_url,
+        error_code=run.error_code,
+        message=run.message,
+        retryable=run.retryable,
         team_results=run.team_results or [],
         started_at=run.started_at,
         completed_at=run.completed_at,
@@ -115,6 +121,7 @@ def update_collection_schedule(
 @router.post("/collection-schedules/{domain}/run", response_model=CollectionRunOut)
 def run_collection_now(
     domain: str,
+    request: Request,
     payload: CollectionRunIn | None = Body(default=None),
     current_user: User = Depends(ADMIN),
     db: Session = Depends(get_db),
@@ -130,5 +137,6 @@ def run_collection_now(
         end_at=end_at,
         started_by=current_user.username,
         trigger_type="manual",
+        transport=gateway_transport_for(request.app.state),
     )
     return _run_out(run)

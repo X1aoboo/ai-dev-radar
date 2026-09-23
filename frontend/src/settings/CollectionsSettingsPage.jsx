@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Spin, Tag, Typography } from 'antd'
+import { Link } from 'react-router'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
 import '../dataManagement/dataManagement.css'
+import { formatGatewayDate, gatewayStatusInfo } from './gatewayStatus'
 
 const { Text, Title } = Typography
 
@@ -34,8 +36,41 @@ function runStatusLabel(status) {
   return ({ succeeded: '成功', partial: '部分失败', failed: '失败', running: '运行中' })[status] ?? status
 }
 
+function GatewaySummary({ state, error }) {
+  if (error) return <Card title="AI 研发数据网关"><Alert type="error" showIcon message="无法读取 Gateway 状态" description={error} /></Card>
+  const active = state?.active
+  const health = active?.health
+  const info = gatewayStatusInfo(health?.status ?? 'UNCONFIGURED')
+  const statusLabel = health?.stale ? '状态已过期' : info.label
+  const note = !active
+    ? '尚未配置，IR 采集无法运行。'
+    : health?.status === 'CONNECTED'
+      ? null
+      : ['AUTH_FAILED', 'SERVICE_MISMATCH', 'PROTOCOL_INCOMPATIBLE', 'UNREACHABLE', 'DEGRADED'].includes(health?.status)
+        ? '当前采集可能无法执行。'
+        : health?.stale
+          ? `上次状态：${gatewayStatusInfo(health.last_known_status).label}；采集仍会尝试连接。`
+          : '当前状态未知；采集仍会尝试连接。'
+
+  return (
+    <Card className="workbench-section-gap gateway-summary" title="AI 研发数据网关" extra={<Tag color={info.color}>{statusLabel}</Tag>}>
+      {active ? <div className="gateway-summary__details">
+        <Text>地址：{active.base_url}</Text>
+        <Text>Token：{active.token_configured ? '已配置' : '未配置'}</Text>
+        {health?.latency_ms !== null && health?.latency_ms !== undefined && <Text>响应：{health.latency_ms} ms</Text>}
+        <Text>最近检测：{formatGatewayDate(health?.checked_at)}</Text>
+      </div> : <Text type="secondary">尚未配置 AI 研发数据网关。</Text>}
+      {note && <Text type={active ? 'warning' : 'secondary'}>{note}</Text>}
+      {health?.error_message && <Text type="secondary">{health.error_message}</Text>}
+      <Link to="/settings/gateway">查看数据网关 →</Link>
+    </Card>
+  )
+}
+
 export default function CollectionsSettingsPage({ onSessionExpired }) {
   const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE)
+  const [gatewayState, setGatewayState] = useState(null)
+  const [gatewayError, setGatewayError] = useState(null)
   const [runs, setRuns] = useState([])
   const [window, setWindow] = useState({ start_at: '', end_at: '' })
   const [loading, setLoading] = useState(true)
@@ -46,9 +81,21 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
   const load = useCallback(async ({ clearNotice = true } = {}) => {
     setLoading(true)
     try {
-      const data = await fetchJson('/api/collection-schedules')
+      const [scheduleResult, gatewayResult] = await Promise.allSettled([
+        fetchJson('/api/collection-schedules'),
+        fetchJson('/api/gateway'),
+      ])
+      if (scheduleResult.status === 'rejected') throw scheduleResult.reason
+      const data = scheduleResult.value
       setSchedule(data.schedules.find((item) => item.domain === 'ir') ?? DEFAULT_SCHEDULE)
       setRuns(data.recent_runs ?? [])
+      if (gatewayResult.status === 'fulfilled') {
+        setGatewayState(gatewayResult.value)
+        setGatewayError(null)
+      } else {
+        setGatewayError(gatewayResult.reason.message)
+        if (gatewayResult.reason.status === 401) onSessionExpired()
+      }
       if (clearNotice) setNotice(null)
     } catch (error) {
       setNotice({ type: 'error', text: error.message })
@@ -139,8 +186,9 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
 
   return (
     <div className="workbench-page collection-settings-page">
-      <PageHeader className="workbench-page-intro" eyebrow="系统管理 / 数据采集" title="数据采集" description="IR 采集先进入团队独立的待确认批次；确认后才写入正式 IR。" />
+      <PageHeader className="workbench-page-intro" title="数据采集" description="IR 采集先进入团队独立的待确认批次；确认后才写入正式 IR。" />
       {notice && <Alert className="workbench-notice" type={notice.type} showIcon message={notice.text} closable onClose={() => setNotice(null)} />}
+      <GatewaySummary state={gatewayState} error={gatewayError} />
       {loading ? <div className="workbench-state"><Spin size="small" /><Text type="secondary">加载采集配置…</Text></div> : <>
         <Card title="IR 定时计划" extra={<Tag color={schedule.enabled ? 'green' : 'default'}>{schedule.enabled ? '已启用' : '已禁用'}</Tag>}>
           <form noValidate aria-label="IR 定时计划" className="collection-form" onSubmit={saveSchedule}>
@@ -169,6 +217,7 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
           {runs.length === 0 ? <Text type="secondary">暂无采集运行记录。</Text> : <div className="collection-runs">
             {runs.map((run) => <section className="collection-run" key={run.id}>
               <div className="collection-run__heading"><Text strong>#{run.id} · {run.trigger_type === 'manual' ? '手动' : '定时'} · {runStatusLabel(run.status)}</Text><Text type="secondary">{run.window_start_at} → {run.window_end_at}</Text></div>
+              {run.error_code && <p className="collection-run__error"><Text type="danger">{run.message}</Text> <Text code>{run.error_code}</Text>{run.retryable && <Text type="warning">可重试</Text>}</p>}
               <ul>{run.team_results.map((result) => <li key={`${run.id}-${result.team_id}`}><Text>{result.team_name}</Text> <Tag color={result.status === 'failed' ? 'red' : result.status === 'skipped' ? 'default' : 'green'}>{result.status === 'failed' ? '失败' : result.status === 'skipped' ? '跳过' : '成功'}</Tag> <Text type="secondary">{result.message}</Text>{result.code && <Text code>{result.code}</Text>}{result.retryable && <Text type="warning">可重试</Text>}{result.batch_id && <Text type="secondary"> · 暂存批次 #{result.batch_id}（{result.record_count} 行）</Text>}</li>)}</ul>
             </section>)}
           </div>}

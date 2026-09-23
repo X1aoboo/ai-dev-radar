@@ -1,6 +1,7 @@
 # Completed Changes
 
 - [Data Workbench Operational Console UX](data-workbench-operational-console.md)：完成 Phase 3 IR、成熟度及待定义数据域的操作型工作台整改。
+- [Gateway Runtime Configuration, Readiness and Project E2E Gate](gateway-runtime-configuration.md)：完成数据库托管配置、健康诊断、采集快照与真实 HTTP 浏览器门禁。
 - [Analytics UX Gate 整改](analytics-ux-remediation.md)：完成 Design Foundation 与五个 Analytics 页面的滚动、信息层级、响应式布局和真实浏览器 Gate。
 - [Dashboard 三页分析重构](dashboard-three-page-analytics.md)：拆分研发总览、研发活动、研发能力与成熟度维护，并增加日粒度事实分析。
 - [研发总览 Insight 驾驶舱优化](overview-insight-cockpit.md)：总览趋势卡、关键活动矩阵和 Signal 抽屉优化。

@@ -86,6 +86,15 @@ _Avoid_: 平均线、基准值
 Radar 与公司内部研发平台之间的防腐服务，对外提供版本化的标准源数据能力；服务标识为 `ai-dev-data-gateway`。
 _Avoid_: Collector Gateway、IR Gateway、平台代理
 
+**网关运行配置（Gateway Runtime Configuration）**:
+Radar 调用 AI 研发数据网关所使用的 base URL、Bearer Token 和请求超时。全局最多保留一个 Active 和一个 Draft；Token 由服务端管理，不通过读取接口或浏览器初始化数据返回。
+
+**网关就绪状态（Gateway Readiness Status）**:
+Radar 对配置对应 Gateway 的最近连接诊断，状态包括 UNCONFIGURED、UNKNOWN、CONNECTED、DEGRADED、UNREACHABLE、AUTH_FAILED、SERVICE_MISMATCH 和 PROTOCOL_INCOMPATIBLE。状态会过期；它不是历史可用率或服务等级指标。
+
+**网关配置审计（Gateway Configuration Audit）**:
+记录管理员保存、检测、激活或放弃 Gateway 配置的操作人与结果。审计只记录是否修改 Token，不保存 Token 值；它与源数据记录的 Audit Log 分开。
+
 **能力协议（Capability Protocol）**:
 Radar 与 AI 研发数据网关共同遵守的实现中立约定，由业务能力语义和 HTTP 线协议共同构成；双方代码都是协议消费者。
 _Avoid_: Radar 接口定义、Pydantic 契约

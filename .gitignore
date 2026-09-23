@@ -10,3 +10,4 @@ output/
 .playwright-cli/
 .scratch/
 .agents/
+e2e-results/

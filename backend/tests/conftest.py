@@ -11,7 +11,9 @@ from pathlib import Path
 
 # 保证 backend/ 在 sys.path 中（从仓库根跑 pytest 时需要）
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+TESTS_DIR = BACKEND_DIR / "tests"
 sys.path.insert(0, str(BACKEND_DIR))
+sys.path.insert(0, str(TESTS_DIR))
 
 _TEST_DB = Path(tempfile.gettempdir()) / "ai-dev-radar-test.db"
 _TEST_DB.unlink(missing_ok=True)

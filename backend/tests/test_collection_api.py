@@ -104,7 +104,7 @@ def test_collection_schedule_is_admin_only_and_reschedules_running_job(client):
     schedule = next(item for item in listing.json()["schedules"] if item["domain"] == "ir")
     assert schedule["enabled"] is False
     assert schedule["timezone"] == "Asia/Shanghai"
-    assert "COLLECTOR_GATEWAY" not in listing.text
+    assert "bearer_token" not in listing.text
 
     hourly = client.put("/api/collection-schedules/ir", json={
         "enabled": True,

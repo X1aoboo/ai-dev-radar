@@ -12,11 +12,6 @@ STATIC_DIR = Path(
 COLLECTION_CRON = os.environ.get("COLLECTION_CRON", "0 2 * * *").strip()
 
 APP_ENV = os.environ.get("APP_ENV", "production").lower()
-COLLECTOR_GATEWAY_URL = os.environ.get("COLLECTOR_GATEWAY_URL", "").strip()
-COLLECTOR_GATEWAY_TOKEN = os.environ.get("COLLECTOR_GATEWAY_TOKEN", "")
-COLLECTOR_GATEWAY_TIMEOUT_SECONDS = float(
-    os.environ.get("COLLECTOR_GATEWAY_TIMEOUT_SECONDS", "30")
-)
 _DEFAULT_SESSION_SECRET = "ai-dev-radar-local-session-secret-change-me"
 _DEFAULT_SEED_PASSWORD = "dev-password"
 
@@ -32,8 +27,6 @@ SEED_PASSWORD = os.environ.get("SEED_PASSWORD", _DEFAULT_SEED_PASSWORD)
 
 if SESSION_MAX_AGE <= 0:
     raise ValueError("SESSION_MAX_AGE must be greater than zero")
-if COLLECTOR_GATEWAY_TIMEOUT_SECONDS <= 0:
-    raise ValueError("COLLECTOR_GATEWAY_TIMEOUT_SECONDS must be greater than zero")
 if APP_ENV in {"production", "prod"}:
     if SESSION_SECRET == _DEFAULT_SESSION_SECRET:
         raise RuntimeError("SESSION_SECRET must be set outside development")
