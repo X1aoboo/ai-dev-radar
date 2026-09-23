@@ -48,6 +48,7 @@ export default function MaturityRadar({ activities = [], series = [], ariaLabel 
   const height = 320
   const count = activities.length
   if (!count) return <div className="maturity-radar maturity-radar--empty">暂无可用成熟度轴。</div>
+  if (!series.some((entry) => entry.values.some(numeric))) return <div className="maturity-radar maturity-radar--empty">当前月暂无已评估成熟度；未评估值保持为空。</div>
 
   return (
     <div className="maturity-radar">

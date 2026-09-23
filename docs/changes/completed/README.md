@@ -7,6 +7,7 @@
 - [AI 研发数据网关版本化能力协议](ai-dev-data-gateway-contract.md)：建立版本化协议，并在首发前完成产品版本联合标识和空业务模块规范化。
 - [IR 采集 Gateway 防腐层 v1](ir-collector-gateway.md)：为 IR 增加严格同步 Gateway 契约、团队级采集暂存、可配置调度和人工确认。
 - [Design Knowledge Bootstrap](design-knowledge-bootstrap.md)：基线与维护机制 Task 1–9。
+- [UX/UI Design System and Phased Rebuild](ui-ux-design-system-rebuild.md)：完成 Design System、全站分析/数据工作台/系统设置分期重构及响应式与无障碍收尾。
 - [Collapsible Sidebar](collapsible-sidebar.md)：真实开发验证 Task 10。
 - [统一项目设计资产维护机制](unify-design-maintenance.md)：旧项目协议退役，统一新机制入口。
 

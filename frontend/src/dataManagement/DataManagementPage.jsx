@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
-  Button,
+  Button as AntButton,
   Card,
   Collapse,
   Descriptions,
   Divider,
   Drawer,
   Empty,
-  Form,
+  Form as AntForm,
   Input,
   InputNumber,
   Popconfirm,
@@ -32,6 +32,8 @@ import {
 } from '@ant-design/icons'
 
 import { fetchJson } from '../api'
+import FilterToolbar from '../components/FilterToolbar'
+import PageHeader from '../components/PageHeader'
 import { currentMonthId, formatMetricValue, isValidMonth } from '../overview/overviewLogic'
 import { maturitySavePayload, useMaturityRecords } from '../overview/maturityData'
 import {
@@ -109,25 +111,7 @@ function ReferenceError({ error }) {
 }
 
 function PageIntro({ eyebrow, title, description, action }) {
-  return (
-    <div className="workbench-page-intro">
-      <div>
-        <Text className="workbench-eyebrow">{eyebrow}</Text>
-        <Title level={2}>{title}</Title>
-        <Text type="secondary">{description}</Text>
-      </div>
-      {action && <Space wrap>{action}</Space>}
-    </div>
-  )
-}
-
-function CardHeading({ title, caption, extra }) {
-  return (
-    <div className="workbench-card-heading">
-      <div><Title level={4}>{title}</Title>{caption && <Text type="secondary">{caption}</Text>}</div>
-      {extra}
-    </div>
-  )
+  return <PageHeader className="workbench-page-intro" eyebrow={eyebrow} title={title} description={description} actions={action && <Space wrap>{action}</Space>} />
 }
 
 function ReadOnlyHint() {
@@ -188,7 +172,7 @@ function useReferenceData(onSessionExpired, user) {
 }
 
 function TeamEditorDrawer({ editor, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => {
     if (editor) form.setFieldsValue(editor)
   }, [editor, form])
@@ -199,19 +183,19 @@ function TeamEditorDrawer({ editor, onClose, onSubmit, submitting }) {
       size={480}
       onClose={onClose}
       destroyOnClose
-      footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存团队</Button></Space>}
+      footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存团队</AntButton></Space>}
     >
-      <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item name="name" label="团队名称" rules={[{ required: true, message: '请输入团队名称' }]}><Input /></Form.Item>
-        <Form.Item name="productVersions" label="产品版本映射"><Input.TextArea rows={3} placeholder="可用逗号或换行分隔" /></Form.Item>
-        <Form.Item name="repos" label="代码仓地址"><Input.TextArea rows={3} placeholder="可用逗号或换行分隔" /></Form.Item>
-      </Form>
+      <AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}>
+        <AntForm.Item name="name" label="团队名称" rules={[{ required: true, message: '请输入团队名称' }]}><Input /></AntForm.Item>
+        <AntForm.Item name="productVersions" label="产品版本映射"><Input.TextArea rows={3} placeholder="可用逗号或换行分隔" /></AntForm.Item>
+        <AntForm.Item name="repos" label="代码仓地址"><Input.TextArea rows={3} placeholder="可用逗号或换行分隔" /></AntForm.Item>
+      </AntForm>
     </Drawer>
   )
 }
 
 function MemberEditorDrawer({ editor, teams, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => {
     if (editor) form.setFieldsValue(editor)
   }, [editor, form])
@@ -222,14 +206,14 @@ function MemberEditorDrawer({ editor, teams, onClose, onSubmit, submitting }) {
       size={480}
       onClose={onClose}
       destroyOnClose
-      footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存成员</Button></Space>}
+      footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存成员</AntButton></Space>}
     >
-      <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <Form.Item name="team_id" label="所属团队" rules={[{ required: true, message: '请选择团队' }]}><Select options={teams.map((team) => ({ value: String(team.id), label: team.name }))} /></Form.Item>
-        <Form.Item name="employee_id" label="工号" rules={[{ required: true, message: '请输入工号' }]}><Input /></Form.Item>
-        <Form.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}><Input /></Form.Item>
-        <Form.Item name="role" label="角色" rules={[{ required: true, message: '请输入人员角色' }]}><Input placeholder="研发工程师" /></Form.Item>
-      </Form>
+      <AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}>
+        <AntForm.Item name="team_id" label="所属团队" rules={[{ required: true, message: '请选择团队' }]}><Select options={teams.map((team) => ({ value: String(team.id), label: team.name }))} /></AntForm.Item>
+        <AntForm.Item name="employee_id" label="工号" rules={[{ required: true, message: '请输入工号' }]}><Input /></AntForm.Item>
+        <AntForm.Item name="name" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}><Input /></AntForm.Item>
+        <AntForm.Item name="role" label="角色" rules={[{ required: true, message: '请输入人员角色' }]}><Input placeholder="研发工程师" /></AntForm.Item>
+      </AntForm>
     </Drawer>
   )
 }
@@ -314,25 +298,25 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
   }
 
   const teamColumns = [
-    { title: '团队', dataIndex: 'name', render: (name) => <Text strong>{name}</Text> },
-    { title: '版本映射', render: (_, team) => team.source_mapping?.product_versions?.length ?? 0 },
-    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 220 : 80, render: (_, team) => <Space size={0}><Button type="link" size="small" aria-label={`查看团队 ${team.name}`} aria-pressed={team.id === selectedTeamId} onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id) }}>查看</Button>{canEdit && <><Button type="link" size="small" icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setTeamEditor({ id: team.id, name: team.name, productVersions: team.source_mapping?.product_versions?.join('\n') || '', repos: team.source_mapping?.repos?.join('\n') || '' }) }}>编辑</Button><Popconfirm title={`确定删除团队“${team.name}”？`} description="有关联数据或维护者时可能无法删除。" onConfirm={() => removeTeam(team)}><Button type="link" danger size="small" aria-label={`删除团队 ${team.name}`} icon={<DeleteOutlined />}>删除</Button></Popconfirm></>}</Space> },
+    { title: '团队', dataIndex: 'name', width: 100, render: (name) => <Text strong>{name}</Text> },
+    { title: '版本映射', width: 90, align: 'right', render: (_, team) => team.source_mapping?.product_versions?.length ?? 0 },
+    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 180 : 72, render: (_, team) => <Space size={0}><AntButton type="link" size="small" aria-label={`查看团队 ${team.name}`} aria-pressed={team.id === selectedTeamId} onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id) }}>查看</AntButton>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑团队 ${team.name}`} icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setTeamEditor({ id: team.id, name: team.name, productVersions: team.source_mapping?.product_versions?.join('\n') || '', repos: team.source_mapping?.repos?.join('\n') || '' }) }}>编辑</AntButton><Popconfirm title={`确定删除团队“${team.name}”？`} description="有关联数据或维护者时可能无法删除。" onConfirm={() => removeTeam(team)}><AntButton type="link" danger size="small" aria-label={`删除团队 ${team.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></>}</Space> },
   ]
   const memberColumns = [
     { title: '工号', dataIndex: 'employee_id', render: (value) => <Text code>{value}</Text> },
     { title: '姓名', dataIndex: 'name' },
     { title: '角色', dataIndex: 'role' },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, member) => canEdit && <Space size={0}><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setMemberEditor({ ...member, team_id: String(member.team_id) })}>编辑</Button><Popconfirm title={`确定删除成员“${member.name}”？`} onConfirm={() => removeMember(member)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, member) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`编辑团队成员 ${member.name}`} icon={<EditOutlined />} onClick={() => setMemberEditor({ ...member, team_id: String(member.team_id) })}>编辑</AntButton><Popconfirm title={`确定删除成员“${member.name}”？`} onConfirm={() => removeMember(member)}><AntButton type="link" danger size="small" aria-label={`删除团队成员 ${member.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="系统管理 / 主数据" title="团队与人员" description="团队是当前看板的统计和权限归属单位；成员工号用于关联源数据责任人。" action={canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setTeamEditor(EMPTY_TEAM_FORM)}>新增团队</Button>} />
+      <PageIntro eyebrow="系统管理 / 主数据" title="团队与人员" description="团队是当前看板的统计和权限归属单位；成员工号用于关联源数据责任人。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setTeamEditor(EMPTY_TEAM_FORM)}>新增团队</AntButton>} />
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
       <div className="workbench-master-detail">
-        <Card title="团队" extra={<Text type="secondary">{refs.teams.length} 个</Text>}><Table rowKey="id" size="small" columns={teamColumns} dataSource={refs.teams} pagination={false} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} /></Card>
-        <Card title={selectedTeam ? `${selectedTeam.name} · 团队详情` : '团队详情'} extra={canEdit && selectedTeam && <Button size="small" icon={<PlusOutlined />} onClick={() => setMemberEditor({ ...EMPTY_MEMBER_FORM, team_id: String(selectedTeam.id) })}>新增成员</Button>}>
+        <Card title="团队" extra={<Text type="secondary">{refs.teams.length} 个</Text>}><Table rowKey="id" size="small" columns={teamColumns} dataSource={refs.teams} pagination={false} scroll={{ x: canEdit ? 370 : 262 }} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} /></Card>
+        <Card title={selectedTeam ? `${selectedTeam.name} · 团队详情` : '团队详情'} extra={canEdit && selectedTeam && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setMemberEditor({ ...EMPTY_MEMBER_FORM, team_id: String(selectedTeam.id) })}>新增成员</AntButton>}>
           {selectedTeam ? <><Descriptions size="small" column={1} items={[{ key: 'mapping', label: '数据源映射', children: <Space wrap>{(selectedTeam.source_mapping?.product_versions ?? []).map((value) => <Tag key={value}>{value}</Tag>)}{(selectedTeam.source_mapping?.repos ?? []).map((value) => <Tag key={value} color="blue">{value}</Tag>)}{!selectedTeam.source_mapping?.product_versions?.length && !selectedTeam.source_mapping?.repos?.length && <Text type="secondary">未配置</Text>}</Space> }]} /><Divider titlePlacement="left" plain>团队成员</Divider><Table rowKey="id" size="small" columns={memberColumns} dataSource={members} pagination={false} locale={{ emptyText: <EmptyState>暂无团队成员。</EmptyState> }} /></> : <EmptyState>请选择团队查看详情。 </EmptyState>}
         </Card>
       </div>
@@ -343,21 +327,21 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
 }
 
 function ProductEditorDrawer({ editor, teams, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑产品' : '新增产品'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存产品</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="team_id" label="所属团队" rules={[{ required: true, message: '请选择团队' }]}><Select options={teams.map((team) => ({ value: String(team.id), label: team.name }))} /></Form.Item><Form.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}><Input /></Form.Item></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑产品' : '新增产品'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存产品</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="team_id" label="所属团队" rules={[{ required: true, message: '请选择团队' }]}><Select options={teams.map((team) => ({ value: String(team.id), label: team.name }))} /></AntForm.Item><AntForm.Item name="name" label="产品名称" rules={[{ required: true, message: '请输入产品名称' }]}><Input /></AntForm.Item></AntForm></Drawer>
 }
 
 function VersionEditorDrawer({ editor, products, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑产品版本' : '新增产品版本'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存版本</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="product_id" label="所属产品" rules={[{ required: true, message: '请选择产品' }]}><Select options={products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></Form.Item><Form.Item name="name" label="版本名称" rules={[{ required: true, message: '请输入版本名称' }]}><Input placeholder="SCC 27.1.RC1" /></Form.Item></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑产品版本' : '新增产品版本'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存版本</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="product_id" label="所属产品" rules={[{ required: true, message: '请选择产品' }]}><Select options={products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></AntForm.Item><AntForm.Item name="name" label="版本名称" rules={[{ required: true, message: '请输入版本名称' }]}><Input placeholder="SCC 27.1.RC1" /></AntForm.Item></AntForm></Drawer>
 }
 
 function IterationEditorDrawer({ editor, versions, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑开发迭代期' : '新增开发迭代期'} open={Boolean(editor)} size={480} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存迭代</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="version_id" label="所属版本" rules={[{ required: true, message: '请选择版本' }]}><Select options={versions.map((version) => ({ value: String(version.id), label: `${version.product_name} / ${version.name}` }))} /></Form.Item><Form.Item name="name" label="迭代名称" rules={[{ required: true, message: '请输入迭代名称' }]}><Input /></Form.Item><Space.Compact block><Form.Item className="workbench-compact-item" name="start_date" label="开始日期" rules={[{ required: true, message: '请选择开始日期' }]}><Input type="date" /></Form.Item><Form.Item className="workbench-compact-item" name="end_date" label="结束日期" rules={[{ required: true, message: '请选择结束日期' }]}><Input type="date" /></Form.Item></Space.Compact></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑开发迭代期' : '新增开发迭代期'} open={Boolean(editor)} size={480} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存迭代</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="version_id" label="所属版本" rules={[{ required: true, message: '请选择版本' }]}><Select options={versions.map((version) => ({ value: String(version.id), label: `${version.product_name} / ${version.name}` }))} /></AntForm.Item><AntForm.Item name="name" label="迭代名称" rules={[{ required: true, message: '请输入迭代名称' }]}><Input /></AntForm.Item><Space.Compact block><AntForm.Item className="workbench-compact-item" name="start_date" label="开始日期" rules={[{ required: true, message: '请选择开始日期' }]}><Input type="date" /></AntForm.Item><AntForm.Item className="workbench-compact-item" name="end_date" label="结束日期" rules={[{ required: true, message: '请选择结束日期' }]}><Input type="date" /></AntForm.Item></Space.Compact></AntForm></Drawer>
 }
 
 function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
@@ -387,25 +371,25 @@ function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
   }
 
   const productColumns = [
-    { title: '产品', dataIndex: 'name', render: (name) => <Text strong>{name}</Text> },
-    { title: '团队', dataIndex: 'team_name' },
-    { title: '版本数', render: (_, product) => product.versions?.length ?? 0 },
-    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 210 : 80, render: (_, product) => <Space size={0}><Button type="link" size="small" aria-label={`查看产品 ${product.name}`} aria-pressed={product.id === selectedProductId} onClick={(event) => { event.stopPropagation(); setSelectedProductId(product.id) }}>查看</Button>{canEdit && <><Button type="link" size="small" aria-label={`编辑产品 ${product.name}`} icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setProductEditor({ id: product.id, team_id: String(product.team_id), name: product.name }) }}>编辑</Button><Popconfirm title={`确定删除产品“${product.name}”？`} description="仅未被版本或 IR 数据引用的产品可删除。" onConfirm={() => remove(`/api/products/${product.id}`, `产品“${product.name}”`)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></>}</Space> },
+    { title: '产品', dataIndex: 'name', width: 120, render: (name) => <Text strong>{name}</Text> },
+    { title: '团队', dataIndex: 'team_name', width: 95 },
+    { title: '版本数', width: 70, align: 'right', render: (_, product) => product.versions?.length ?? 0 },
+    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 190 : 72, render: (_, product) => <Space size={0}><AntButton type="link" size="small" aria-label={`查看产品 ${product.name}`} aria-pressed={product.id === selectedProductId} onClick={(event) => { event.stopPropagation(); setSelectedProductId(product.id) }}>查看</AntButton>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑产品 ${product.name}`} icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setProductEditor({ id: product.id, team_id: String(product.team_id), name: product.name }) }}>编辑</AntButton><Popconfirm title={`确定删除产品“${product.name}”？`} description="仅未被版本或 IR 数据引用的产品可删除。" onConfirm={() => remove(`/api/products/${product.id}`, `产品“${product.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除产品 ${product.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></>}</Space> },
   ]
   const versionColumns = [
     { title: '版本', dataIndex: 'name', render: (name) => <Text strong>{name}</Text> },
-    { title: '迭代', render: (_, version) => <Space wrap>{(version.iterations ?? []).map((iteration) => <Tag key={iteration.id} color="blue"><Space size={4}><span>{iteration.name}</span>{canEdit && <><Button type="link" size="small" aria-label={`编辑迭代 ${iteration.name}`} icon={<EditOutlined />} onClick={() => setIterationEditor({ id: iteration.id, version_id: String(version.id), name: iteration.name, start_date: iteration.start_date, end_date: iteration.end_date })} /><Popconfirm title={`确定删除迭代“${iteration.name}”？`} onConfirm={() => remove(`/api/iterations/${iteration.id}`, `迭代“${iteration.name}”`)}><Button type="link" danger size="small" aria-label={`删除迭代 ${iteration.name}`} icon={<DeleteOutlined />} /></Popconfirm></>}</Space></Tag>)}</Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 220, render: (_, version) => canEdit && <Space size={0}><Button type="link" size="small" icon={<PlusOutlined />} onClick={() => setIterationEditor({ id: null, version_id: String(version.id), name: '', start_date: '', end_date: '' })}>新增迭代</Button><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setVersionEditor({ id: version.id, product_id: String(version.product_id), name: version.name })}>编辑</Button><Popconfirm title={`确定删除版本“${version.name}”？`} onConfirm={() => remove(`/api/versions/${version.id}`, `版本“${version.name}”`)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> },
+    { title: '迭代', render: (_, version) => <Space wrap>{(version.iterations ?? []).map((iteration) => <Tag key={iteration.id} color="blue"><Space size={4}><span>{iteration.name}</span>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑迭代 ${iteration.name}`} icon={<EditOutlined />} onClick={() => setIterationEditor({ id: iteration.id, version_id: String(version.id), name: iteration.name, start_date: iteration.start_date, end_date: iteration.end_date })} /><Popconfirm title={`确定删除迭代“${iteration.name}”？`} onConfirm={() => remove(`/api/iterations/${iteration.id}`, `迭代“${iteration.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除迭代 ${iteration.name}`} icon={<DeleteOutlined />} /></Popconfirm></>}</Space></Tag>)}</Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 220, render: (_, version) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`为版本 ${version.name} 新增迭代`} icon={<PlusOutlined />} onClick={() => setIterationEditor({ id: null, version_id: String(version.id), name: '', start_date: '', end_date: '' })}>新增迭代</AntButton><AntButton type="link" size="small" aria-label={`编辑版本 ${version.name}`} icon={<EditOutlined />} onClick={() => setVersionEditor({ id: version.id, product_id: String(version.product_id), name: version.name })}>编辑</AntButton><Popconfirm title={`确定删除版本“${version.name}”？`} onConfirm={() => remove(`/api/versions/${version.id}`, `版本“${version.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除版本 ${version.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="系统管理 / 主数据" title="产品、版本与开发迭代期" description="产品属于团队，版本属于产品，迭代属于版本；使用主从布局维护层级关系。" action={canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setProductEditor({ id: null, team_id: '', name: '' })}>新增产品</Button>} />
+      <PageIntro eyebrow="系统管理 / 主数据" title="产品、版本与开发迭代期" description="产品属于团队，版本属于产品，迭代属于版本；使用主从布局维护层级关系。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setProductEditor({ id: null, team_id: '', name: '' })}>新增产品</AntButton>} />
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
       <div className="workbench-master-detail">
-        <Card title="产品" extra={<Text type="secondary">{refs.products.length} 个</Text>}><Table rowKey="id" size="small" columns={productColumns} dataSource={refs.products} pagination={false} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} /></Card>
-        <Card title={selectedProduct ? `${selectedProduct.name} · 层级详情` : '产品详情'} extra={canEdit && selectedProduct && <Button size="small" icon={<PlusOutlined />} onClick={() => setVersionEditor({ id: null, product_id: String(selectedProduct.id), name: '' })}>新增版本</Button>}>
+        <Card title="产品" extra={<Text type="secondary">{refs.products.length} 个</Text>}><Table rowKey="id" size="small" columns={productColumns} dataSource={refs.products} pagination={false} scroll={{ x: canEdit ? 475 : 357 }} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} /></Card>
+        <Card title={selectedProduct ? `${selectedProduct.name} · 层级详情` : '产品详情'} extra={canEdit && selectedProduct && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setVersionEditor({ id: null, product_id: String(selectedProduct.id), name: '' })}>新增版本</AntButton>}>
           {selectedProduct ? <><Descriptions size="small" column={2} items={[{ key: 'team', label: '负责团队', children: selectedProduct.team_name }, { key: 'versions', label: '版本数量', children: versions.length }]} /><Divider titlePlacement="left" plain>产品版本与迭代</Divider><Table rowKey="id" size="small" columns={versionColumns} dataSource={versions} pagination={false} locale={{ emptyText: <EmptyState>暂无产品版本。</EmptyState> }} /></> : <EmptyState>请选择产品查看层级。</EmptyState>}
         </Card>
       </div>
@@ -417,19 +401,19 @@ function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
 }
 
 function IRRecordDrawer({ editor, refs, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
-  const productId = Form.useWatch('product_id', form)
-  const versionId = Form.useWatch('version_id', form)
+  const [form] = AntForm.useForm()
+  const productId = AntForm.useWatch('product_id', form)
+  const versionId = AntForm.useWatch('version_id', form)
   const versions = refs.versions.filter((version) => version.product_id === Number(productId))
   const selectedVersion = refs.versions.find((version) => String(version.id) === String(versionId))
   useEffect(() => { if (editor) form.setFieldsValue(editor.form) }, [editor, form])
   return (
-    <Drawer title={editor?.record ? '编辑 IR 需求' : '新增 IR 需求'} open={Boolean(editor)} size={760} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存需求</Button></Space>}>
-      <Form form={form} layout="vertical" onFinish={onSubmit}>
-        <div className="workbench-form-grid two"><Form.Item name="requirement_no" label="需求编号" rules={[{ required: true, message: '请输入需求编号' }]}><Input disabled={Boolean(editor?.record)} /></Form.Item><Form.Item name="requirement_name" label="需求名称" rules={[{ required: true, message: '请输入需求名称' }]}><Input /></Form.Item><Form.Item name="responsible_employee_id" label="责任人工号"><Input /></Form.Item><Form.Item name="parent_requirement_no" label="父需求编号"><Input /></Form.Item><Form.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}><Select onChange={() => form.setFieldsValue({ version_id: '', iteration_id: '' })} options={refs.products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></Form.Item><Form.Item name="version_id" label="版本" rules={[{ required: true, message: '请选择版本' }]}><Select onChange={() => form.setFieldsValue({ iteration_id: '' })} options={versions.map((version) => ({ value: String(version.id), label: version.name }))} /></Form.Item><Form.Item name="iteration_id" label="迭代" rules={[{ required: true, message: '请选择迭代' }]}><Select options={(selectedVersion?.iterations ?? []).map((iteration) => ({ value: String(iteration.id), label: iteration.name }))} /></Form.Item><Form.Item name="completed_at" label="完成时间" rules={[{ required: true, message: '请选择完成时间' }]}><Input type="date" /></Form.Item><Form.Item name="business_module" label="业务模块" rules={[{ required: true, message: '请输入业务模块' }]}><Input /></Form.Item><Form.Item name="requirement_scenario" label="需求场景" rules={[{ required: true, message: '请输入需求场景' }]}><Input /></Form.Item></div>
+    <Drawer title={editor?.record ? '编辑 IR 需求' : '新增 IR 需求'} open={Boolean(editor)} size={760} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存需求</AntButton></Space>}>
+      <AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}>
+        <div className="workbench-form-grid two"><AntForm.Item name="requirement_no" label="需求编号" rules={[{ required: true, message: '请输入需求编号' }]}><Input disabled={Boolean(editor?.record)} /></AntForm.Item><AntForm.Item name="requirement_name" label="需求名称" rules={[{ required: true, message: '请输入需求名称' }]}><Input /></AntForm.Item><AntForm.Item name="responsible_employee_id" label="责任人工号"><Input /></AntForm.Item><AntForm.Item name="parent_requirement_no" label="父需求编号"><Input /></AntForm.Item><AntForm.Item name="product_id" label="产品" rules={[{ required: true, message: '请选择产品' }]}><Select onChange={() => form.setFieldsValue({ version_id: '', iteration_id: '' })} options={refs.products.map((product) => ({ value: String(product.id), label: `${product.team_name} / ${product.name}` }))} /></AntForm.Item><AntForm.Item name="version_id" label="版本" rules={[{ required: true, message: '请选择版本' }]}><Select onChange={() => form.setFieldsValue({ iteration_id: '' })} options={versions.map((version) => ({ value: String(version.id), label: version.name }))} /></AntForm.Item><AntForm.Item name="iteration_id" label="迭代" rules={[{ required: true, message: '请选择迭代' }]}><Select options={(selectedVersion?.iterations ?? []).map((iteration) => ({ value: String(iteration.id), label: iteration.name }))} /></AntForm.Item><AntForm.Item name="completed_at" label="完成时间" rules={[{ required: true, message: '请选择完成时间' }]}><Input type="date" /></AntForm.Item><AntForm.Item name="business_module" label="业务模块" rules={[{ required: true, message: '请输入业务模块' }]}><Input /></AntForm.Item><AntForm.Item name="requirement_scenario" label="需求场景" rules={[{ required: true, message: '请输入需求场景' }]}><Input /></AntForm.Item></div>
         <Divider titlePlacement="left" plain>工作量与 AI 属性</Divider>
-        <div className="workbench-form-grid three"><Form.Item name="estimated_workload" label="总预估（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item><Form.Item name="actual_workload" label="总实际（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item><Form.Item name="ai_assisted" label="是否使用 AI"><Select options={[{ value: '', label: '待维护' }, { value: 'true', label: '是' }, { value: 'false', label: '否' }]} /></Form.Item><Form.Item name="sa_estimated_workload" label="SA 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item><Form.Item name="sa_actual_workload" label="SA 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item><Form.Item name="se_estimated_workload" label="SE 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item><Form.Item name="se_actual_workload" label="SE 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></Form.Item></div>
-      </Form>
+        <div className="workbench-form-grid three"><AntForm.Item name="estimated_workload" label="总预估（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="actual_workload" label="总实际（人天）"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="ai_assisted" label="是否使用 AI"><Select options={[{ value: '', label: '待维护' }, { value: 'true', label: '是' }, { value: 'false', label: '否' }]} /></AntForm.Item><AntForm.Item name="sa_estimated_workload" label="SA 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="sa_actual_workload" label="SA 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="se_estimated_workload" label="SE 预估"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item><AntForm.Item name="se_actual_workload" label="SE 实际"><InputNumber min={0} step="any" style={{ width: '100%' }} /></AntForm.Item></div>
+      </AntForm>
     </Drawer>
   )
 }
@@ -444,7 +428,7 @@ function ImportPreviewDrawer({ batch, teamName, onClose, onConfirm, submitting }
     { title: '差异', dataIndex: 'diff', render: (diff = {}) => <Space orientation="vertical" size={0}>{Object.entries(diff).filter(([, value]) => value.action !== 'unchanged').slice(0, 5).map(([field, value]) => <Text key={field} type={value.action === 'keep' ? 'secondary' : undefined}>{field}：{value.action === 'keep' ? '保留正式值' : `→ ${String(value.to)}`}</Text>)}</Space> },
     { title: '校验', key: 'validation', render: (_, row) => <Space orientation="vertical" size={0}>{row.errors?.map((error) => <Text key={error} type="danger">{error}</Text>)}{row.warnings?.map((warning) => <Text key={warning} type="warning">{warning}</Text>)}{!row.errors?.length && !row.warnings?.length && <Tag color="green">通过</Tag>}</Space> },
   ]
-  return <Drawer title={collectorBatch ? `采集批次预览 · ${teamName ?? `团队 #${batch.team_id}`}` : `导入预览 · ${batch.filename ?? '数据文件'}`} open size={1080} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>关闭</Button><Button type="primary" disabled={batch.invalid_rows > 0 || batch.status !== 'pending'} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : batch.status !== 'pending' ? '批次已确认' : collectorBatch ? '确认采集批次' : '确认写入正式数据'}</Button></Space>}><Steps current={1} size="small" items={[{ title: collectorBatch ? '采集' : '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} /><div className="workbench-import-summary"><Tag>总行数 {batch.total_rows}</Tag><Tag color="green">可确认 {batch.valid_rows}</Tag><Tag color={batch.invalid_rows ? 'red' : 'default'}>错误行 {batch.invalid_rows}</Tag></div>{batch.invalid_rows ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。" /> : <Alert type="success" showIcon message="全部行校验通过；正式数据中的已有非空字段会保留。" />}<Table className="workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={batch.rows} pagination={false} scroll={{ x: 900, y: 420 }} /></Drawer>
+  return <Drawer title={collectorBatch ? `采集批次预览 · ${teamName ?? `团队 #${batch.team_id}`}` : `导入预览 · ${batch.filename ?? '数据文件'}`} open size={1080} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>关闭</AntButton><AntButton type="primary" disabled={batch.invalid_rows > 0 || batch.status !== 'pending'} loading={submitting} onClick={onConfirm}>{batch.invalid_rows ? '存在错误，不能确认' : batch.status !== 'pending' ? '批次已确认' : collectorBatch ? '确认采集批次' : '确认写入正式数据'}</AntButton></Space>}><Steps current={1} size="small" items={[{ title: collectorBatch ? '采集' : '上传' }, { title: '预览与校验' }, { title: '整批确认' }]} /><div className="workbench-import-summary"><Tag>总行数 {batch.total_rows}</Tag><Tag color="green">可确认 {batch.valid_rows}</Tag><Tag color={batch.invalid_rows ? 'red' : 'default'}>错误行 {batch.invalid_rows}</Tag></div>{batch.invalid_rows ? <Alert type="error" showIcon message="存在错误行，整批数据不能确认。" /> : <Alert type="success" showIcon message="全部行校验通过；正式数据中的已有非空字段会保留。" />}<Table className="workbench-import-table" rowKey="row_number" size="small" columns={columns} dataSource={batch.rows} pagination={false} scroll={{ x: 900, y: 420 }} /></Drawer>
 }
 
 function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
@@ -531,26 +515,26 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
     { title: 'AI 属性', dataIndex: 'ai_assisted', width: 100, render: (value) => <Tag color={value === true ? 'green' : value === false ? 'default' : 'gold'}>{value === true ? '是' : value === false ? '否' : '待维护'}</Tag> },
     { title: '工作量', key: 'workload', width: 180, render: (_, record) => <Space orientation="vertical" size={0}><Text>总计 {record.estimated_workload ?? '—'} / {record.actual_workload ?? '—'}</Text><Text type="secondary">SA {record.sa_estimated_workload ?? '—'} / {record.sa_actual_workload ?? '—'} · SE {record.se_estimated_workload ?? '—'} / {record.se_actual_workload ?? '—'}</Text></Space> },
     { title: '来源', key: 'source', width: 100, render: (_, record) => <Space orientation="vertical" size={0}><Tag>{RECORD_SOURCE_LABELS[record.record_source] ?? record.record_source}</Tag><Text type="secondary">{record.updated_by}</Text></Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 80, render: (_, record) => canEdit && <Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ record, form: irFormFromRecord(record) })}>编辑</Button> },
+    { title: '操作', key: 'action', fixed: 'right', width: 80, render: (_, record) => canEdit && <AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ record, form: irFormFromRecord(record) })}>编辑</AntButton> },
   ]
   const collectorBatchColumns = [
     { title: '团队', dataIndex: 'team_id', render: (teamId) => refs.teams.find((team) => team.id === teamId)?.name ?? `团队 #${teamId}` },
     { title: '生成时间', dataIndex: 'created_at' },
     { title: '行数', render: (_, batch) => `${batch.valid_rows} / ${batch.total_rows} 可确认${batch.invalid_rows ? `，${batch.invalid_rows} 行错误` : ''}` },
-    { title: '操作', key: 'action', render: (_, batch) => <Button type="link" size="small" loading={busy} onClick={() => openCollectorBatch(batch)}>查看批次</Button> },
+    { title: '操作', key: 'action', render: (_, batch) => <AntButton type="link" size="small" loading={busy} onClick={() => openCollectorBatch(batch)}>查看批次</AntButton> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="数据管理 / IR" title="IR 需求数据" description="按团队、产品、版本、迭代、责任人和完成时间管理正式源数据；保存后保持当前筛选和页码。" action={canEdit && <Space><Upload accept=".csv,.xlsx" showUploadList={false} beforeUpload={(file) => { previewFile(file); return false }}><Button icon={<UploadOutlined />} loading={busy}>导入 CSV / Excel</Button></Upload><Button type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null, form: { ...EMPTY_IR_FORM, product_id: availableProducts[0]?.id ? String(availableProducts[0].id) : '' } })}>新增 IR</Button></Space>} />
+      <PageIntro eyebrow="数据管理 / IR" title="IR 需求数据" description="按团队、产品、版本、迭代、责任人和完成时间管理正式源数据；保存后保持当前筛选和页码。" action={canEdit && <Space><Upload accept=".csv,.xlsx" showUploadList={false} beforeUpload={(file) => { previewFile(file); return false }}><AntButton icon={<UploadOutlined />} loading={busy}>导入 CSV / Excel</AntButton></Upload><AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null, form: { ...EMPTY_IR_FORM, product_id: availableProducts[0]?.id ? String(availableProducts[0].id) : '' } })}>新增 IR</AntButton></Space>} />
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
-      <Card className="workbench-filter-card" title={<Space><Text strong>常用筛选</Text><Text type="secondary">只展示已确认的有效记录</Text></Space>} extra={<Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => setFilters(initialFilters)}>重置筛选</Button>}>
+      <FilterToolbar className="workbench-filter-toolbar" label="常用筛选" actions={<AntButton type="text" size="small" icon={<ReloadOutlined />} onClick={() => setFilters(initialFilters)}>重置筛选</AntButton>}>
         <div className="workbench-filter-row"><SelectField label="团队" value={filters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => updateFilter('team_id', value)} options={refs.teams.map((team) => [team.id, team.name])} /><SelectField label="产品" value={filters.product_id} onChange={(value) => updateFilter('product_id', value)} options={availableProducts.map((product) => [product.id, product.name])} /><SelectField label="版本" value={filters.version_id} onChange={(value) => updateFilter('version_id', value)} options={availableVersions.map((version) => [version.id, version.name])} /><SelectField label="迭代" value={filters.iteration_id} onChange={(value) => updateFilter('iteration_id', value)} options={availableIterations.map((iteration) => [iteration.id, iteration.name])} /><InputField label="需求编号" value={filters.requirement_no} onChange={(value) => updateFilter('requirement_no', value)} /></div>
         <Collapse ghost items={[{ key: 'advanced', label: '高级筛选', children: <div className="workbench-filter-row"><InputField label="责任人工号" value={filters.responsible_employee_id} onChange={(value) => updateFilter('responsible_employee_id', value)} /><InputField label="业务模块" value={filters.business_module} onChange={(value) => updateFilter('business_module', value)} /><InputField label="需求场景" value={filters.requirement_scenario} onChange={(value) => updateFilter('requirement_scenario', value)} /><InputField label="完成时间起" type="date" value={filters.completed_from} onChange={(value) => updateFilter('completed_from', value)} /><InputField label="完成时间止" type="date" value={filters.completed_to} onChange={(value) => updateFilter('completed_to', value)} /><SelectField label="AI 辅助" value={filters.ai_assisted} onChange={(value) => updateFilter('ai_assisted', value)} options={[['true', '是'], ['false', '否']]} /></div> }]} />
-      </Card>
+      </FilterToolbar>
       {canEdit && <Card className="workbench-section-gap" title="待确认采集批次"><Table rowKey="id" size="small" columns={collectorBatchColumns} dataSource={collectorBatches} loading={collectorBatchesLoading} pagination={false} locale={{ emptyText: <EmptyState>暂无待确认的 IR 采集批次。</EmptyState> }} /></Card>}
-      <Card className="workbench-table-card" title={<Space><Text strong>IR 正式数据</Text><Text type="secondary">{data.total} 条记录</Text></Space>}><Table rowKey="id" size="small" columns={columns} dataSource={data.items} loading={loading} scroll={{ x: 1500 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 条`, onChange: (page) => setFilters((current) => ({ ...current, page })) }} locale={{ emptyText: <EmptyState>当前筛选条件下没有 IR 正式数据。</EmptyState> }} /></Card>
+      <Card className="workbench-table-card" title={<Space><Text strong>IR 正式数据</Text><Text type="secondary">{data.total} 条记录</Text></Space>}><Table rowKey="id" size="small" sticky columns={columns} dataSource={data.items} loading={loading} scroll={{ x: 1500 }} pagination={{ current: filters.page, pageSize: filters.page_size, total: data.total, showSizeChanger: false, showTotal: (total) => `共 ${total} 条`, onChange: (page) => setFilters((current) => ({ ...current, page })) }} locale={{ emptyText: <EmptyState>当前筛选条件下没有 IR 正式数据。</EmptyState> }} /></Card>
       <IRRecordDrawer editor={editor} refs={refs} onClose={() => setEditor(null)} onSubmit={saveRecord} submitting={busy} />
       {importBatch && <ImportPreviewDrawer batch={importBatch} teamName={refs.teams.find((team) => team.id === importBatch.team_id)?.name} onClose={() => setImportBatch(null)} onConfirm={confirmImport} submitting={busy} />}
     </div>
@@ -568,15 +552,15 @@ function RequirementManagement({ requirementType, onRequirementTypeChange, ...pr
 }
 
 function ActivityEditorDrawer({ editor, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑研发活动' : '新增研发活动'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存活动</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="code" label="活动代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></Form.Item><Form.Item name="name" label="活动名称" rules={[{ required: true, message: '请输入活动名称' }]}><Input /></Form.Item><Form.Item name="kind" label="活动类别" rules={[{ required: true }]}><Select options={ACTIVITY_KINDS} /></Form.Item></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑研发活动' : '新增研发活动'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存活动</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="code" label="活动代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></AntForm.Item><AntForm.Item name="name" label="活动名称" rules={[{ required: true, message: '请输入活动名称' }]}><Input /></AntForm.Item><AntForm.Item name="kind" label="活动类别" rules={[{ required: true }]}><Select options={ACTIVITY_KINDS} /></AntForm.Item></AntForm></Drawer>
 }
 
 function DashboardMetricEditorDrawer({ editor, catalog, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑看板指标' : '新增看板指标'} open={Boolean(editor)} size={520} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存指标</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="activity_id" label="所属活动" rules={[{ required: true, message: '请选择活动' }]}><Select options={catalog.map((activity) => ({ value: String(activity.id), label: activity.name }))} /></Form.Item><Form.Item name="code" label="指标代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></Form.Item><Form.Item name="name" label="指标名称" rules={[{ required: true, message: '请输入指标名称' }]}><Input /></Form.Item><Form.Item name="type" label="指标类型" rules={[{ required: true }]}><Select options={DASHBOARD_METRIC_TYPES} /></Form.Item><Form.Item name="numerator_semantic" label="分子语义" rules={[{ required: true, message: '请输入分子语义' }]}><Input /></Form.Item><Form.Item name="denominator_semantic" label="分母语义"><Input /></Form.Item><Alert type="info" showIcon message="首期所有指标采集方式为仅补录。" /></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑看板指标' : '新增看板指标'} open={Boolean(editor)} size={520} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存指标</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="activity_id" label="所属活动" rules={[{ required: true, message: '请选择活动' }]}><Select options={catalog.map((activity) => ({ value: String(activity.id), label: activity.name }))} /></AntForm.Item><AntForm.Item name="code" label="指标代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></AntForm.Item><AntForm.Item name="name" label="指标名称" rules={[{ required: true, message: '请输入指标名称' }]}><Input /></AntForm.Item><AntForm.Item name="type" label="指标类型" rules={[{ required: true }]}><Select options={DASHBOARD_METRIC_TYPES} /></AntForm.Item><AntForm.Item name="numerator_semantic" label="分子语义" rules={[{ required: true, message: '请输入分子语义' }]}><Input /></AntForm.Item><AntForm.Item name="denominator_semantic" label="分母语义"><Input /></AntForm.Item><Alert type="info" showIcon message="首期所有指标采集方式为仅补录。" /></AntForm></Drawer>
 }
 
 function DashboardCatalogTab({ user, catalog, loading, onReload, onSessionExpired }) {
@@ -595,7 +579,7 @@ function DashboardCatalogTab({ user, catalog, loading, onReload, onSessionExpire
   const columns = [
     { title: '活动', dataIndex: 'name', render: (name, activity) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text type="secondary">{activity.kind === 'key' ? '关键研发活动' : '通用研发能力'}</Text></Space> },
     { title: '指标目录', key: 'metrics', render: (_, activity) => <Space wrap>{activity.metrics.map((metric) => <Tag key={metric.id} color={metric.type === 'boolean' ? 'gold' : 'blue'}>{metric.name} · {metricValueLabel(metric.type)}</Tag>)}</Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 250, render: (_, activity) => canEdit && <Space><Button type="link" size="small" icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: String(activity.id), code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</Button><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setActivityEditor({ id: activity.id, code: activity.code, name: activity.name, kind: activity.kind })}>编辑活动</Button><Popconfirm title={`确定删除活动“${activity.name}”？`} description="仍包含指标或事实记录的活动不能删除。" onConfirm={() => remove(`/api/activities/${activity.id}`, `活动“${activity.name}”`)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 250, render: (_, activity) => canEdit && <Space><AntButton type="link" size="small" icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: String(activity.id), code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setActivityEditor({ id: activity.id, code: activity.code, name: activity.name, kind: activity.kind })}>编辑活动</AntButton><Popconfirm title={`确定删除活动“${activity.name}”？`} description="仍包含指标或事实记录的活动不能删除。" onConfirm={() => remove(`/api/activities/${activity.id}`, `活动“${activity.name}”`)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
   const metrics = catalog.flatMap((activity) => activity.metrics.map((metric) => ({ ...metric, activity_name: activity.name })))
   const metricColumns = [
@@ -603,16 +587,16 @@ function DashboardCatalogTab({ user, catalog, loading, onReload, onSessionExpire
     { title: '所属活动', dataIndex: 'activity_name' },
     { title: '类型', dataIndex: 'type', render: (type) => metricValueLabel(type) },
     { title: '分子 / 分母', key: 'semantics', render: (_, metric) => `${metric.numerator_semantic} / ${metric.denominator_semantic ?? '—'}` },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setMetricEditor({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '', collect_method: metric.collect_method ?? 'manual_only' })}>编辑</Button><Popconfirm title={`确定删除指标“${metric.name}”？`} onConfirm={() => remove(`/api/metrics/${metric.id}`, `指标“${metric.name}”`)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setMetricEditor({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '', collect_method: metric.collect_method ?? 'manual_only' })}>编辑</AntButton><Popconfirm title={`确定删除指标“${metric.name}”？`} onConfirm={() => remove(`/api/metrics/${metric.id}`, `指标“${metric.name}”`)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
-  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板活动</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space>{canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</Button>}{canEdit && <Button icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</Button>}</Space></div><Notice notice={notice} /><Card title="研发活动目录"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} /></Card><Card className="workbench-section-gap" title="指标明细"><Table rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} /></Card><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板活动</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</AntButton>}{canEdit && <AntButton icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton>}</Space></div><Notice notice={notice} /><Card title="研发活动目录"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} /></Card><Card className="workbench-section-gap" title="指标明细"><Table rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} /></Card><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
 }
 
 function DataMetricEditorDrawer({ editor, onClose, onSubmit, submitting }) {
-  const [form] = Form.useForm()
+  const [form] = AntForm.useForm()
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
-  return <Drawer title={editor?.id ? '编辑源数据指标规则' : '新增源数据指标规则'} open={Boolean(editor)} size={560} onClose={onClose} destroyOnClose footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存规则</Button></Space>}><Form form={form} layout="vertical" onFinish={onSubmit}><Form.Item name="code" label="规则代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></Form.Item><Form.Item name="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]}><Input /></Form.Item><div className="workbench-form-grid two"><Form.Item name="metric_type" label="指标类型" rules={[{ required: true }]}><Select options={DATA_METRIC_TYPES} /></Form.Item><Form.Item name="activity_code" label="活动代码"><Input placeholder="sa / se" /></Form.Item><Form.Item name="numerator_field" label="分子字段" rules={[{ required: true }]}><Input /></Form.Item><Form.Item name="denominator_field" label="分母字段"><Input /></Form.Item></div><Form.Item name="filter_definition" label="筛选条件 JSON"><Input.TextArea rows={4} /></Form.Item><Form.Item name="active" label="状态" rules={[{ required: true }]}><Select options={[{ value: true, label: '启用' }, { value: false, label: '停用' }]} /></Form.Item></Form></Drawer>
+  return <Drawer title={editor?.id ? '编辑源数据指标规则' : '新增源数据指标规则'} open={Boolean(editor)} size={560} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>保存规则</AntButton></Space>}><AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}><AntForm.Item name="code" label="规则代码" rules={[{ required: true, pattern: /^[a-z0-9-]+$/, message: '使用小写字母、数字和短横线' }]}><Input /></AntForm.Item><AntForm.Item name="name" label="规则名称" rules={[{ required: true, message: '请输入规则名称' }]}><Input /></AntForm.Item><div className="workbench-form-grid two"><AntForm.Item name="metric_type" label="指标类型" rules={[{ required: true }]}><Select options={DATA_METRIC_TYPES} /></AntForm.Item><AntForm.Item name="activity_code" label="活动代码"><Input placeholder="sa / se" /></AntForm.Item><AntForm.Item name="numerator_field" label="分子字段" rules={[{ required: true }]}><Input /></AntForm.Item><AntForm.Item name="denominator_field" label="分母字段"><Input /></AntForm.Item></div><AntForm.Item name="filter_definition" label="筛选条件 JSON"><Input.TextArea rows={4} /></AntForm.Item><AntForm.Item name="active" label="状态" rules={[{ required: true }]}><Select options={[{ value: true, label: '启用' }, { value: false, label: '停用' }]} /></AntForm.Item></AntForm></Drawer>
 }
 
 function DataMetricTab({ user, refs, onSessionExpired }) {
@@ -644,13 +628,13 @@ function DataMetricTab({ user, refs, onSessionExpired }) {
     { title: '类型', dataIndex: 'metric_type', render: (type) => metricValueLabel(type) },
     { title: '字段', key: 'fields', render: (_, metric) => `${metric.numerator_field} / ${metric.denominator_field ?? '—'}` },
     { title: '状态', dataIndex: 'active', render: (active) => <Tag color={active ? 'green' : 'default'}>{active ? '启用' : '停用'}</Tag> },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><Button type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ ...metric, filter_definition: JSON.stringify(metric.filter_definition ?? {}, null, 2) })}>编辑</Button><Popconfirm title={`确定删除规则“${metric.name}”？`} onConfirm={() => remove(metric)}><Button type="link" danger size="small" icon={<DeleteOutlined />}>删除</Button></Popconfirm></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ ...metric, filter_definition: JSON.stringify(metric.filter_definition ?? {}, null, 2) })}>编辑</AntButton><Popconfirm title={`确定删除规则“${metric.name}”？`} onConfirm={() => remove(metric)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
   const selectedMetric = metrics.find((metric) => metric.code === selectedCode)
   const formattedResult = result?.value === null || result?.value === undefined
     ? '—'
     : formatMetricValue({ type: selectedMetric?.metric_type }, result.value)
-  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</Button>}</div><Notice notice={notice} /><div className="workbench-two-column"><Card title="源数据指标规则"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} onRow={(record) => ({ onClick: () => { setSelectedCode(record.code); setResult(null) } })} /></Card><Card title="结果查询"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><Button type="primary" disabled={!selectedCode} onClick={compute}>计算当前结果</Button></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</Card></div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</AntButton>}</div><Notice notice={notice} /><div className="workbench-two-column"><Card title="源数据指标规则"><Table rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} onRow={(record) => ({ onClick: () => { setSelectedCode(record.code); setResult(null) } })} /></Card><Card title="结果查询"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><AntButton type="primary" disabled={!selectedCode} onClick={compute}>计算当前结果</AntButton></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</Card></div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
 }
 
 function MetricManagement({ user, refs, onSessionExpired }) {
@@ -708,7 +692,7 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
       const record = previous.get(entry.activity_id)
       return record ? { ...entry, score: record.score_raw, note: record.note ?? '' } : entry
     }))
-    setMessage(recordsState.previousRecords.length ? `已载入上月 ${recordsState.previousRecords.length} 条已有评估，请预览确认后保存。` : '上月没有已评估值，当前月仍保持未评估。')
+    setMessage({ type: 'info', text: `已载入上月 ${recordsState.previousRecords.length} 条已有评估，请预览确认后保存。` })
   }
 
   async function save() {
@@ -716,11 +700,11 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
     setMessage(null)
     try {
       await fetchJson(`/api/maturity/teams/${teamId}/months/${month}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(maturitySavePayload(draft)) })
-      setMessage('成熟度已保存。')
+      setMessage({ type: 'success', text: '成熟度已保存。' })
       setPreview(false)
       onSaved?.()
     } catch (error) {
-      setMessage(error.message)
+      setMessage({ type: 'error', text: error.message })
       if (error.status === 401) onSessionExpired()
     } finally {
       setSaving(false)
@@ -738,7 +722,7 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
       setMessage('本月成熟度已清空。')
       onSaved?.()
     } catch (error) {
-      setMessage(error.message)
+      setMessage({ type: 'error', text: error.message })
       if (error.status === 401) onSessionExpired()
     } finally {
       setClearing(false)
@@ -748,8 +732,21 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
   if (!teamId) return <Empty description="先选择可维护团队。" />
   if (recordsState.loading) return <LoadingState text="加载当前月和上月评估…" />
   if (recordsState.error) return <ReferenceError error={recordsState.error} />
-  const grouped = ['key', 'general'].map((kind) => ({ kind, items: draft.filter((entry) => entry.kind === kind) }))
-  return <div className="maturity-editor">{grouped.map(({ kind, items }) => <section key={kind} className="maturity-editor__group"><h3>{kind === 'key' ? '关键研发活动' : '通用研发能力'}</h3>{items.map((entry) => <div key={entry.activity_id} className="maturity-editor__row"><label><span>{entry.activity_name} 分值</span><input aria-label={`${entry.activity_name}成熟度分值`} type="number" min="0" max="5" step="0.01" value={entry.score} onChange={(event) => updateEntry(entry.activity_id, { score: event.target.value })} placeholder="未评估" /></label><label><span>说明</span><Input.TextArea aria-label={`${entry.activity_name}说明`} rows={2} value={entry.note} onChange={(event) => updateEntry(entry.activity_id, { note: event.target.value })} placeholder="可选" /></label></div>)}</section>)}{message && <Alert type="info" message={message} showIcon />}{preview && <Card size="small" title="保存预览"><Table rowKey="activity_id" size="small" pagination={false} dataSource={draft} columns={[{ title: '能力点', dataIndex: 'activity_name' }, { title: '分值', dataIndex: 'score', render: (value) => value || '—' }, { title: '说明', dataIndex: 'note', render: (value) => value || '—' }]} /></Card>}<Space wrap><Button onClick={copyPrevious} disabled={!recordsState.previousRecords.length || saving || clearing}>复制上月已有值</Button>{preview ? <><Button type="primary" onClick={save} loading={saving}>确认保存</Button><Button onClick={() => setPreview(false)} disabled={saving}>返回编辑</Button></> : <Button type="primary" onClick={() => setPreview(true)}>预览保存</Button>}<Button danger onClick={clear} loading={clearing}>{clearArmed ? '再次确认清空' : '清空本月评估'}</Button></Space></div>
+  const columns = [
+    { title: '活动', dataIndex: 'activity_name', render: (name, entry) => <Space wrap><Text strong>{name}</Text><Tag>{entry.kind === 'key' ? '关键研发活动' : '通用研发能力'}</Tag></Space> },
+    { title: '成熟度分值（0–5）', dataIndex: 'score', width: 190, render: (value, entry) => <InputNumber aria-label={`${entry.activity_name}成熟度分值`} min={0} max={5} step={0.01} value={value === '' ? null : Number(value)} onChange={(nextValue) => updateEntry(entry.activity_id, { score: nextValue === null ? '' : String(nextValue) })} placeholder="未评估" style={{ width: 132 }} /> },
+    { title: '说明（可选）', dataIndex: 'note', width: 360, render: (value, entry) => <Input.TextArea aria-label={`${entry.activity_name}说明`} autoSize={{ minRows: 1, maxRows: 3 }} value={value} onChange={(event) => updateEntry(entry.activity_id, { note: event.target.value })} placeholder="补充评估依据" /> },
+  ]
+  return <div className="maturity-editor">
+    <div className="maturity-editor__heading"><Text strong>评估项</Text><Text type="secondary">空值表示未评估；0 是有效分值。</Text></div>
+    {message && <Alert type={message.type} message={message.text} showIcon />}
+    <div className="maturity-editor__actions"><Space wrap><AntButton onClick={copyPrevious} disabled={!recordsState.previousRecords.length || saving || clearing}>复制上月已有值</AntButton><AntButton type="primary" onClick={() => setPreview(true)} disabled={saving || clearing}>预览保存</AntButton><AntButton danger onClick={clear} loading={clearing} disabled={saving}>{clearArmed ? '再次确认清空' : '清空本月评估'}</AntButton></Space></div>
+    <Table rowKey="activity_id" className="maturity-editor__table" size="small" sticky columns={columns} dataSource={draft} pagination={false} scroll={{ x: 780 }} locale={{ emptyText: <EmptyState>当前没有可评估活动。</EmptyState> }} />
+    <Drawer title={`保存预览 · ${month}`} open={preview} width="min(640px, 100vw)" onClose={() => setPreview(false)} destroyOnClose footer={<Space><AntButton onClick={() => setPreview(false)} disabled={saving}>返回编辑</AntButton><AntButton type="primary" onClick={save} loading={saving}>确认保存</AntButton></Space>}>
+      <p className="maturity-preview-drawer__description">请核对 {draft.length} 个评估项。未评估项保持为空，不会按 0 保存。</p>
+      <Table rowKey="activity_id" size="small" pagination={false} dataSource={draft} columns={[{ title: '活动', dataIndex: 'activity_name' }, { title: '分值', dataIndex: 'score', render: (value) => value === '' ? '未评估' : value }, { title: '说明', dataIndex: 'note', render: (value) => value || '—' }]} />
+    </Drawer>
+  </div>
 }
 
 function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
@@ -757,15 +754,23 @@ function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
   const [teamId, setTeamId] = useState(user.role === 'maintainer' ? String(user.maintainer_team_id) : '')
   const [catalog, setCatalog] = useState([])
   const [loading, setLoading] = useState(true)
+  const [catalogError, setCatalogError] = useState(null)
   const [savedAt, setSavedAt] = useState(0)
   const canEdit = user.role === 'admin' || user.role === 'maintainer'
   useEffect(() => {
     let active = true
-    fetchJson('/api/catalog').then((data) => { if (active) setCatalog(data) }).catch((error) => { if (error.status === 401) onSessionExpired() }).finally(() => { if (active) setLoading(false) })
+    fetchJson('/api/catalog').then((data) => { if (active) { setCatalog(data); setCatalogError(null) } }).catch((error) => { if (active) setCatalogError(error); if (error.status === 401) onSessionExpired() }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [onSessionExpired])
   const selectedTeam = refs.teams.find((team) => String(team.id) === String(teamId))
-  return <div className="workbench-page maturity-management"><PageIntro eyebrow="数据管理 / 成熟度评估" title="成熟度评估" description="按团队和自然月维护人工成熟度；分析页只读展示，不在这里之外写入。" /><div className="workbench-toolbar maturity-management__toolbar"><label className="workbench-filter-control"><span>评估月份</span><Input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>{canEdit && <label className="workbench-filter-control"><span>维护团队</span><Select aria-label="维护团队" value={teamId || undefined} disabled={user.role === 'maintainer'} placeholder="选择团队" onChange={setTeamId} options={refs.teams.map((team) => ({ value: String(team.id), label: team.name }))} /></label>}</div>{loading ? <LoadingState text="加载成熟度目录…" /> : canEdit ? <Card title={selectedTeam ? `${selectedTeam.name} · ${month}` : '选择团队后编辑'}><MaturityEditor key={`${teamId}-${month}-${savedAt}`} teamId={teamId} month={month} catalog={catalog} onSessionExpired={onSessionExpired} onSaved={() => setSavedAt((value) => value + 1)} /></Card> : <MaturityReadOnly month={month} onSessionExpired={onSessionExpired} />}</div>
+  return <div className="workbench-page maturity-management">
+    <PageIntro eyebrow="数据管理 / 成熟度评估" title="成熟度评估" description="按团队和自然月维护人工成熟度；分析页只读展示，不在这里之外写入。" />
+    <FilterToolbar className="maturity-management__toolbar" label="评估范围">
+      <label className="workbench-filter-control"><span>评估月份</span><Input aria-label="评估月份" type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>
+      {canEdit && <label className="workbench-filter-control"><span>维护团队</span><Select aria-label="维护团队" value={teamId || undefined} disabled={user.role === 'maintainer'} placeholder="选择团队" onChange={setTeamId} options={refs.teams.map((team) => ({ value: String(team.id), label: team.name }))} /></label>}
+    </FilterToolbar>
+    {loading ? <LoadingState text="加载成熟度目录…" /> : catalogError ? <ReferenceError error={catalogError} /> : canEdit ? <MaturityEditor key={`${teamId}-${month}-${savedAt}`} teamId={teamId} month={month} catalog={catalog} onSessionExpired={onSessionExpired} onSaved={() => setSavedAt((value) => value + 1)} /> : <MaturityReadOnly month={month} onSessionExpired={onSessionExpired} />}
+  </div>
 }
 
 export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', initialMonth, onRequirementTypeChange, user, onSessionExpired }) {

@@ -142,7 +142,7 @@ test('normalizes filter query values and serializes only supported state', () =>
   const versions = [{ id: 2 }]
   const periods = [{ id: 'p2' }]
   const parsed = filterFromSearchParams(
-    new URLSearchParams('dimension=iteration&granularity=invalid&version=2&period=p2'),
+    new URLSearchParams('dimension=iteration&granularity=invalid&version=2&period=p2&metric=901'),
     { versions, periods },
   )
 
@@ -151,11 +151,12 @@ test('normalizes filter query values and serializes only supported state', () =>
     granularity: 'month',
     versionId: '2',
     periodId: 'p2',
+    metricId: '901',
   })
-  assert.equal(filterToSearchParams(parsed).toString(), 'dimension=iteration&version=2&period=p2')
+  assert.equal(filterToSearchParams(parsed).toString(), 'dimension=iteration&version=2&period=p2&metric=901')
   assert.deepEqual(
     normalizeFilter({ dimension: 'broken', granularity: 'day', versionId: '99', periodId: 'missing' }, { versions, periods }),
-    { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null },
+    { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null, metricId: 'all' },
   )
   assert.equal(filtersEqual(parsed, { ...parsed }), true)
 })
@@ -166,7 +167,7 @@ test('forces month granularity whenever the dimension is iteration', () => {
       versions: [{ id: 2 }],
       periods: [{ id: 'p2' }],
     }),
-    { dimension: 'iteration', granularity: 'month', versionId: '2', periodId: 'p2' },
+    { dimension: 'iteration', granularity: 'month', versionId: '2', periodId: 'p2', metricId: 'all' },
   )
 })
 

@@ -10,6 +10,19 @@ export function teamAccentColor(teamId, teamIds = [teamId], previousSlots = {}) 
   return assigned.colors[String(teamId)] ?? null
 }
 
+export function maturityProfileSeries({ activities = [], records = [], teamName, teamColor, domainColor }) {
+  const recordsByActivity = new Map(records.map((record) => [
+    String(record.activity_id),
+    record.score_raw !== null && record.score_raw !== undefined && record.score_raw !== '' && Number.isFinite(Number(record.score_raw))
+      ? Number(record.score_raw)
+      : null,
+  ]))
+  return [
+    { id: 'team', name: teamName, color: teamColor, values: activities.map((activity) => recordsByActivity.get(String(activity.activity_id)) ?? null) },
+    { id: 'domain', name: '领域平均', color: domainColor, dashed: true, values: activities.map((activity) => Number.isFinite(activity.score) ? activity.score : null) },
+  ]
+}
+
 export function mergePeriods(dataList = []) {
   const periodsById = new Map()
   for (const data of dataList) {

@@ -12,6 +12,8 @@ import {
   TEAM_COLOR_STORAGE_KEY,
 } from '../overview/overviewLogic'
 import { booleanStatusRows } from './metricDetailLogic'
+import PageHeader from '../components/PageHeader'
+import { currentSnapshot, formatFactSummary, formatMetricValue } from '../overview/overviewLogic'
 
 function currentFilterDescription(filter, versions, periods, fallback) {
   const dimension = filter.dimension === 'iteration'
@@ -94,22 +96,16 @@ function MetricDetailContent({
   }, [teamIdsKey])
 
   const booleanRows = useMemo(
-    () => metric.type === 'boolean' ? booleanStatusRows(data, teams) : undefined,
-    [data, metric.type, teams],
+    () => metric.type === 'boolean' ? booleanStatusRows(data, teams, filter.periodId) : undefined,
+    [data, filter.periodId, metric.type, teams],
   )
+  const snapshot = currentSnapshot(data, filter.periodId)
+  const evidenceRows = snapshot?.teams ?? []
+  const currentValue = snapshot?.company?.value
   return (
-    <div className="overview-shell">
-      <div className="overview-page-head">
-        <div>
-          <button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>← 返回总览</button>
-          <p className="overview-eyebrow">研发效能 · 跨团队指标对比</p>
-          <h1>指标详情 · {metric.name}</h1>
-          <p className="overview-metric-name">所属活动：{activity.name} · {activity.kind === 'key' ? '关键研发活动' : '通用研发能力'}</p>
-        </div>
-        <p className="overview-slice-description">
-          当前切片：{currentFilterDescription(filter, versions, periods, fallback)}
-        </p>
-      </div>
+    <div className="metric-detail-page analytics-page">
+      <button type="button" className="drilldown-back-button" onClick={() => onNavigate('/')}>← 返回总览</button>
+      <PageHeader eyebrow="Metric detail" title={`指标详情 · ${metric.name}`} description={`所属活动：${activity.name} · ${activity.kind === 'key' ? '关键研发活动' : '通用研发能力'}`} />
 
       <FilterBar
         filter={filter}
@@ -119,23 +115,20 @@ function MetricDetailContent({
         loading={computed.loading}
       />
 
-      <TrendCard
-        activity={activity}
-        metric={metric}
-        data={data}
-        error={computed.errors[metric.id]}
-        loading={computed.loading}
-        teams={teams}
-        teamColors={teamColors}
-        periodId={filter.periodId}
-        fallback={fallback}
-        onNavigate={onNavigate}
-        showMetricPills={false}
-        showMetricDetailLink={false}
-        booleanTable={metric.type === 'boolean'}
-        booleanRows={booleanRows}
-        countAsBars
-      />
+      <section className="metric-detail-section">
+        <header><p className="analytics-eyebrow">Result</p><h2>当前结果</h2><p>{currentFilterDescription(filter, versions, periods, fallback)}</p></header>
+        <div className="metric-detail-result"><span>全公司均值</span><strong>{computed.loading ? '—' : formatMetricValue(metric, currentValue)}</strong><small>{snapshot ? `${snapshot.teams.filter((team) => team.point?.value !== null && team.point?.value !== undefined).length} / ${teams.length} 团队有当前事实` : '当前切片暂无可汇总的事实。'}</small></div>
+      </section>
+
+      <section className="metric-detail-section">
+        <header><p className="analytics-eyebrow">Comparison</p><h2>团队比较与趋势</h2><p>团队系列与全公司均值仅在同一指标内比较。</p></header>
+        <TrendCard activity={activity} metric={metric} data={data} error={computed.errors[metric.id]} loading={computed.loading} teams={teams} teamColors={teamColors} periodId={filter.periodId} fallback={fallback} onNavigate={onNavigate} showMetricPills={false} showMetricDetailLink={false} booleanTable={metric.type === 'boolean'} booleanRows={booleanRows} countAsBars />
+      </section>
+
+      <section className="metric-detail-section">
+        <header><p className="analytics-eyebrow">Evidence</p><h2>当前周期原始事实</h2><p>按需展开；没有事实时不把分子或分母补为零。</p></header>
+        <details className="metric-detail-evidence"><summary>查看团队原始事实</summary>{evidenceRows.length ? <div className="analytics-detail-table-wrap"><table className="analytics-detail-table"><thead><tr><th scope="col">团队</th><th scope="col">当前值</th><th scope="col">原始事实</th></tr></thead><tbody>{evidenceRows.map((team) => <tr key={team.team_id}><th scope="row">{team.team_name}</th><td>{formatMetricValue(metric, team.point?.value)}</td><td>{team.point ? formatFactSummary(metric, team.point) : '暂无事实数据'}</td></tr>)}</tbody></table></div> : <p className="analytics-muted">当前筛选切片暂无可展示的原始事实。</p>}</details>
+      </section>
     </div>
   )
 }

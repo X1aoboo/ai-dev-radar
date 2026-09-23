@@ -30,14 +30,14 @@ function MockTable({ columns = [], dataSource = [], rowKey = 'key', pagination, 
 }
 
 function MockForm({ children, onFinish }) {
-  return <form data-form-submit={onFinish} onSubmit={(event) => { event.preventDefault(); onFinish?.({}) }}>{children}</form>
+  return <form noValidate data-form-submit={onFinish} onSubmit={(event) => { event.preventDefault(); onFinish?.({}) }}>{children}</form>
 }
 function mockUseForm() { return [{ setFieldsValue: vi.fn(), submit: vi.fn() }] }
 function mockUseWatch() { return undefined }
 function MockFormItem({ children, label }) { return typeof children === 'function' ? children({ getFieldValue: () => 'viewer' }) : <label>{label}{children}</label> }
 
 function MockInput(props) { return <input {...props} /> }
-function MockInputTextArea(props) { return <textarea {...props} /> }
+function MockInputTextArea(props) { return <textarea {...props} className={`resize-none ${props.className ?? ''}`.trim()} style={{ resize: 'none', ...props.style }} /> }
 function MockInputPassword(props) { return <input type="password" {...props} /> }
 
 function MockSelect({ options = [], value, onChange, ...props }) {
@@ -59,7 +59,10 @@ function MockTypographyTitle({ children, level = 2 }) { return React.createEleme
 function MockUpload({ children, beforeUpload }) { return <div data-upload data-before-upload={beforeUpload}>{children}</div> }
 function MockTag({ children }) { return <span>{children}</span> }
 function MockPopconfirm({ children, onConfirm, title, description }) { return <span data-popconfirm data-on-confirm={onConfirm} data-title={title} data-description={description}>{children}</span> }
-function MockCollapse({ items = [] }) { return <div>{items.map((item) => <section key={item.key}><button type="button">{item.label}</button>{item.children}</section>)}</div> }
+function MockCollapse({ items = [] }) {
+  const [expanded, setExpanded] = React.useState({})
+  return <div>{items.map((item) => <section key={item.key}><button type="button" aria-expanded={Boolean(expanded[item.key])} onClick={() => setExpanded((current) => ({ ...current, [item.key]: !current[item.key] }))}>{item.label}</button>{expanded[item.key] && item.children}</section>)}</div>
+}
 function MockTabs({ items = [], activeKey, onChange }) { return <div data-tabs data-active-key={activeKey}>{items.map((item) => <section key={item.key}><h3>{item.label}</h3><button type="button" aria-label={`切换到 ${item.label}`} onClick={() => onChange?.(item.key)}>切换</button>{item.children}</section>)}</div> }
 function MockDescriptions({ items = [] }) { return <dl>{items.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.children}</dd></div>)}</dl> }
 function MockDivider({ children }) { return <hr data-divider aria-label={children} /> }
@@ -112,6 +115,7 @@ const member = { id: 40, team_id: 1, employee_id: 'A001', name: '成员一', rol
 const irRecord = { id: 50, requirement_no: 'IR-001', requirement_name: '需求一', team_id: 1, team_name: '团队A', product_id: 10, product_name: '产品A', version_id: 20, version_name: '版本A', iteration_id: 30, iteration_name: '迭代一', completed_at: '2026-08-20', business_module: 'CNAE', requirement_scenario: '场景一', ai_assisted: false, estimated_workload: 2, actual_workload: 1, sa_estimated_workload: 1, sa_actual_workload: 1, se_estimated_workload: 1, se_actual_workload: 0, responsible_employee_id: 'A001', responsible_employee_pending: false, record_source: 'manual', updated_by: 'admin', valid: true }
 const catalog = [{ id: 1, code: 'sa', name: 'SA设计', kind: 'key', metrics: [{ id: 100, activity_id: 1, code: 'sa-pen', name: 'IR需求渗透率', type: 'penetration', numerator_semantic: 'AI数', denominator_semantic: '总数', collect_method: 'manual_only' }] }]
 const dataMetric = { id: 200, domain: 'ir', code: 'ir-ai-penetration', name: 'IR AI渗透率', metric_type: 'penetration', activity_code: 'sa', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: {}, active: true }
+const maturityRecord = { team_id: 1, month: '2026-08', activity_id: 1, score_raw: '0', note: '零分是有效评估' }
 const collectorBatchSummary = { id: 301, domain: 'ir', source_kind: 'collector', team_id: 1, status: 'pending', created_by: 'scheduled-collector', created_at: '2026-09-18T01:00:00', total_rows: 1, valid_rows: 1, invalid_rows: 0 }
 const collectorBatchDetails = { ...collectorBatchSummary, filename: null, confirmed_at: null, rows: [{ id: 1, row_number: 1, source_id: 'IR-COLLECTED', source_system: 'internal-ir', operation: 'insert', diff: {}, errors: [], warnings: [], status: 'valid', target_id: null, payload: { requirement_no: 'IR-COLLECTED' } }] }
 
@@ -121,6 +125,10 @@ function responseFor(url) {
   if (url.startsWith('/api/versions')) return [version, versionB]
   if (url.startsWith('/api/team-members')) return [member]
   if (url.startsWith('/api/catalog')) return catalog
+  if (url.startsWith('/api/maturity/records?') && url.includes('month=2026-08')) return [maturityRecord]
+  if (url.startsWith('/api/maturity/records?') && url.includes('month=2026-07')) return [{ ...maturityRecord, month: '2026-07', score_raw: '3', note: '上月评估' }]
+  if (url.startsWith('/api/maturity/records?')) return []
+  if (url.startsWith('/api/maturity/overview?')) return { kind: 'key', team_count: 2, activities: [{ activity_id: 1, activity_name: 'SA设计', score_display: '3.00', level: 'L3', assessed_team_count: 1 }] }
   if (url.startsWith('/api/data/ir?')) return { items: [irRecord], total: 101 }
   if (url === '/api/data-metrics?domain=ir') return [dataMetric]
   if (url.startsWith('/api/data-metrics/compute')) return { metric_code: dataMetric.code, metric_name: dataMetric.name, numerator: 1, denominator: 2, value: 0.5, record_count: 2 }
@@ -132,10 +140,10 @@ function responseFor(url) {
   return {}
 }
 
-async function render(section, user = { id: 1, username: 'admin', role: 'admin' }) {
-  fetchJson.mockImplementation(async (url) => responseFor(String(url)))
+async function render(section, user = { id: 1, username: 'admin', role: 'admin' }, initialMonth, respond = responseFor) {
+  fetchJson.mockImplementation(async (url) => respond(String(url)))
   let renderer
-  await act(async () => { renderer = create(<DataManagementPage section={section} user={user} onSessionExpired={() => undefined} />) })
+  await act(async () => { renderer = create(<DataManagementPage section={section} user={user} initialMonth={initialMonth} onSessionExpired={() => undefined} />) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
   return renderer
 }
@@ -164,6 +172,53 @@ describe('data management workbench rendering', () => {
     expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toEqual(expect.arrayContaining(['IR', 'AR', 'SR']))
     await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 SR' }).props.onClick() })
     expect(onRequirementTypeChange).toHaveBeenCalledWith('sr')
+    renderer.unmount()
+  })
+
+  test('maturity maintenance edits in a table, previews in a drawer, and preserves a zero score', async () => {
+    const renderer = await render('maturity', { id: 2, username: 'maintainer', role: 'maintainer', maintainer_team_id: 1 }, '2026-08')
+    const score = renderer.root.findByProps({ 'aria-label': 'SA设计成熟度分值' })
+    expect(score.props.value).toBe(0)
+    expect(renderer.root.findAllByProps({ className: 'maturity-management__toolbar' })).toHaveLength(1)
+
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('预览保存')).props.onClick())
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('0')
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('零分是有效评估')
+
+    const saveButton = renderer.root.findAllByType('button').find((button) => button.children.includes('确认保存'))
+    await act(async () => saveButton.props.onClick())
+    const saveCall = fetchJson.mock.calls.find(([url, options]) => url.includes('/api/maturity/teams/1/months/2026-08') && options?.method === 'PUT')
+    expect(JSON.parse(saveCall[1].body)).toEqual({ entries: [{ activity_id: 1, score: '0', note: '零分是有效评估' }] })
+    renderer.unmount()
+  })
+
+  test('maturity copy stays a draft and clear requires its existing second confirmation', async () => {
+    const renderer = await render('maturity', { id: 2, username: 'maintainer', role: 'maintainer', maintainer_team_id: 1 }, '2026-08')
+    const copyButton = renderer.root.findAllByType('button').find((button) => button.children.includes('复制上月已有值'))
+    expect(copyButton.props.disabled).toBeFalsy()
+    await act(async () => copyButton.props.onClick())
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('预览保存')).props.onClick())
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('3')
+    expect(renderText(renderer.root.findByProps({ 'data-drawer': true }))).toContain('上月评估')
+    expect(fetchJson.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(false)
+
+    await act(async () => renderer.root.findAllByType('button').find((button) => button.children.includes('返回编辑')).props.onClick())
+    const clearButton = renderer.root.findAllByType('button').find((button) => button.children.includes('清空本月评估'))
+    await act(async () => clearButton.props.onClick())
+    expect(fetchJson.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+    const confirmClear = renderer.root.findAllByType('button').find((button) => button.children.includes('再次确认清空'))
+    await act(async () => confirmClear.props.onClick())
+    expect(fetchJson.mock.calls.some(([url, options]) => url.includes('/api/maturity/teams/1/months/2026-08') && options?.method === 'DELETE')).toBe(true)
+    renderer.unmount()
+  })
+
+  test('maturity catalog failure renders an error instead of an empty assessment table', async () => {
+    const renderer = await render('maturity', { id: 1, username: 'admin', role: 'admin' }, '2026-08', (url) => {
+      if (url === '/api/catalog') throw new Error('catalog unavailable')
+      return responseFor(url)
+    })
+    expect(renderText(renderer.toJSON())).toContain('catalog unavailable')
+    expect(renderer.root.findAllByProps({ 'data-table': true })).toHaveLength(0)
     renderer.unmount()
   })
 
@@ -236,6 +291,11 @@ describe('data management workbench rendering', () => {
 
   test('master-detail selection uses focusable view buttons without row click coupling', async () => {
     const teamRenderer = await render('teams')
+    const teamList = teamRenderer.root.findAllByType(MockTable)[0]
+    expect(teamList.props.scroll.x).toBe(370)
+    expect(teamList.props.columns.map(({ width }) => width)).toEqual([100, 90, 180])
+    expect(teamRenderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '编辑团队 团队A')).toBe(true)
+    expect(teamRenderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '编辑团队成员 成员一')).toBe(true)
     const teamView = teamRenderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看团队 团队B')
     expect(teamView.type).toBe('button')
     const teamStopPropagation = vi.fn()
@@ -245,6 +305,9 @@ describe('data management workbench rendering', () => {
     teamRenderer.unmount()
 
     const productRenderer = await render('products')
+    const productList = productRenderer.root.findAllByType(MockTable)[0]
+    expect(productList.props.scroll.x).toBe(475)
+    expect(productList.props.columns.map(({ width }) => width)).toEqual([120, 95, 70, 190])
     const productView = productRenderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看产品 产品B')
     expect(productView.type).toBe('button')
     await act(async () => { productView.props.onClick({ stopPropagation: vi.fn() }) })
@@ -253,6 +316,7 @@ describe('data management workbench rendering', () => {
     await act(async () => { productEdit.props.onClick({ stopPropagation: vi.fn() }) })
     expect(productRenderer.root.findByProps({ 'data-drawer': true }).props['aria-label']).toBe('编辑产品')
     expect(renderText(productRenderer.toJSON())).toContain('产品B · 层级详情')
+    expect(productRenderer.root.findByProps({ 'aria-label': '编辑版本 版本B' })).toBeDefined()
     productRenderer.unmount()
   })
 

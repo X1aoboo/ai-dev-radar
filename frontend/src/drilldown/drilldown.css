@@ -29,23 +29,30 @@
   margin: 0 0 1.25rem;
 }
 
+.drilldown-maturity { border-top: 1px solid var(--color-border-default); margin: 0 0 1.25rem; padding-top: 1rem; }
+.drilldown-maturity > header h2 { color: var(--color-text-primary); font-size: var(--font-size-section-title); margin: 0; }
+.drilldown-maturity > header p:not(.analytics-eyebrow) { color: var(--color-text-secondary); font-size: var(--font-size-secondary); margin: .25rem 0 .75rem; }
+.drilldown-maturity__grid { display: grid; gap: var(--space-5); grid-template-columns: repeat(2, minmax(0, 1fr)); margin-inline: auto; max-width: 1200px; }
+.drilldown-maturity__profile { min-width: 0; }
+.drilldown-maturity__profile h3 { color: var(--color-text-primary); font-size: var(--font-size-card-title); margin: 0 0 var(--space-2); }
+
 .drilldown-kpi-tile {
-  background: var(--overview-surface);
-  border: 1px solid var(--overview-border);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
   border-radius: 0.65rem;
   min-width: 0;
   padding: 0.75rem 0.85rem;
 }
 
 .drilldown-kpi-label {
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   font-size: 0.72rem;
   line-height: 1.35;
   min-height: 2.1em;
 }
 
 .drilldown-kpi-value {
-  color: var(--overview-ink);
+  color: var(--color-text-primary);
   font-size: 1.75rem;
   font-variant-numeric: tabular-nums;
   font-weight: 650;
@@ -59,7 +66,7 @@
 
 .drilldown-kpi-footer {
   align-items: center;
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   display: flex;
   font-size: 0.68rem;
   gap: 0.45rem;
@@ -78,7 +85,7 @@
 }
 
 .drilldown-sparkline {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   flex: 0 0 auto;
 }
 
@@ -96,19 +103,19 @@
 }
 
 .drilldown-directory {
-  background: var(--overview-surface);
-  border: 1px solid var(--overview-border);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
   border-radius: 0.65rem;
   position: sticky;
   top: calc(var(--app-topbar-height, 72px) + 16px);
 }
 
 .drilldown-directory section + section {
-  border-top: 1px solid var(--overview-grid);
+  border-top: 1px solid var(--color-data-grid);
 }
 
 .drilldown-directory h2 {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   font-size: 0.68rem;
   font-weight: 500;
   margin: 0;
@@ -120,7 +127,7 @@
   background: transparent;
   border: 0;
   border-left: 3px solid transparent;
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   display: flex;
   font: inherit;
@@ -134,9 +141,9 @@
 
 .drilldown-directory button:hover,
 .drilldown-directory button:focus-visible {
-  background: #f0efec;
+  background: var(--color-bg-subtle);
   border-left-color: var(--drilldown-accent);
-  color: var(--overview-ink);
+  color: var(--color-text-primary);
   outline: none;
 }
 
@@ -147,7 +154,7 @@
 }
 
 .drilldown-directory button small {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   flex: 0 0 auto;
   font-size: 0.62rem;
 }
@@ -175,8 +182,8 @@
 }
 
 .drilldown-activity-card {
-  background: var(--overview-surface);
-  border: 1px solid var(--overview-border);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
   border-radius: 0.65rem;
   min-width: 0;
   padding: 0.75rem 0.85rem 0.8rem;
@@ -207,9 +214,9 @@
 }
 
 .drilldown-activity-title span {
-  background: #f0efec;
+  background: var(--color-bg-subtle);
   border-radius: 0.35rem;
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   font-size: 0.68rem;
   padding: 0.15rem 0.45rem;
 }
@@ -231,9 +238,9 @@
 .drilldown-metric-pills button,
 .drilldown-detail-button {
   background: transparent;
-  border: 1px solid var(--overview-grid);
+  border: 1px solid var(--color-data-grid);
   border-radius: 0.4rem;
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   font: inherit;
   font-size: 0.7rem;
@@ -244,7 +251,7 @@
 .drilldown-metric-pills button:focus-visible,
 .drilldown-detail-button:hover,
 .drilldown-detail-button:focus-visible {
-  background: #f0efec;
+  background: var(--color-bg-subtle);
   outline: none;
 }
 
@@ -252,11 +259,11 @@
 .drilldown-detail-button.is-active {
   background: var(--drilldown-accent);
   border-color: var(--drilldown-accent);
-  color: #fff;
+  color: var(--color-text-on-brand);
 }
 
 .drilldown-metric-name {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   font-size: 0.72rem;
   margin: 0.35rem 0 0;
 }
@@ -265,7 +272,7 @@
 .drilldown-detail-loading,
 .drilldown-detail-empty {
   align-items: center;
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   display: flex;
   font-size: 0.78rem;
   justify-content: center;
@@ -274,7 +281,7 @@
 }
 
 .drilldown-error {
-  color: #b91c1c;
+  color: var(--color-danger);
 }
 
 .drilldown-boolean-status {
@@ -289,26 +296,26 @@
 }
 
 .drilldown-fact-note {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   font-size: 0.7rem;
   line-height: 1.45;
   margin: 0.1rem 0 0;
 }
 
 .drilldown-details {
-  border-top: 1px solid var(--overview-grid);
+  border-top: 1px solid var(--color-data-grid);
   margin-top: 0.55rem;
   padding-top: 0.15rem;
 }
 
 .drilldown-detail-section + .drilldown-detail-section {
-  border-top: 1px solid var(--overview-grid);
+  border-top: 1px solid var(--color-data-grid);
   margin-top: 0.55rem;
   padding-top: 0.15rem;
 }
 
 .drilldown-detail-section h4 {
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   font-size: 0.76rem;
   font-weight: 600;
   margin: 0.65rem 0 0.15rem;
@@ -327,14 +334,14 @@
 
 .drilldown-fact-table th,
 .drilldown-fact-table td {
-  border-bottom: 1px solid var(--overview-grid);
+  border-bottom: 1px solid var(--color-data-grid);
   padding: 0.38rem 0.45rem;
   text-align: left;
   white-space: nowrap;
 }
 
 .drilldown-fact-table thead th {
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   font-size: 0.66rem;
   font-weight: 500;
 }
@@ -345,18 +352,18 @@
 }
 
 .drilldown-fact-table tbody th {
-  color: var(--overview-secondary);
+  color: var(--color-text-secondary);
   font-weight: 500;
 }
 
 .drilldown-source {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.64rem;
 }
 
 .drilldown-source.is-manual {
-  color: #925700;
+  color: var(--color-text-warning);
 }
 
 .drilldown-source.is-auto {
@@ -364,13 +371,15 @@
 }
 
 .drilldown-muted {
-  color: var(--overview-muted);
+  color: var(--color-text-tertiary);
 }
 
 @media (max-width: 900px) {
   .drilldown-kpi-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .drilldown-maturity__grid { grid-template-columns: 1fr; }
 }
 
 @media (max-width: 700px) {

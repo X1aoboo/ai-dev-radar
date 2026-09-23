@@ -1,13 +1,7 @@
 import { DATAVIZ_COLORS } from './overviewLogic.js'
+import { chartTheme } from '../charts/chartTheme.js'
 
-export const MATURITY_LEVEL_COLORS = [
-  '#98A2B3',
-  '#D0D5DD',
-  '#FEC84B',
-  '#FDB022',
-  '#12B76A',
-  '#039855',
-]
+export const MATURITY_LEVEL_COLORS = chartTheme.maturity
 
 function scoreValue(summary) {
   return typeof summary?.score === 'number' && Number.isFinite(summary.score)

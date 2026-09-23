@@ -322,6 +322,32 @@ test('unknown paths render the unified 404 state', async () => {
   renderer.unmount()
 })
 
+test('login validation and authentication failures are app-owned and associated with both fields', async () => {
+  globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ detail: 'Unauthorized' }), {
+    status: 401,
+    headers: { 'content-type': 'application/json' },
+  }))
+  let renderer
+  await act(async () => { renderer = create(<MemoryRouter initialEntries={['/login']}><App /></MemoryRouter>) })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+
+  const form = renderer.root.findByProps({ className: 'auth-card' })
+  const username = renderer.root.findByProps({ autoComplete: 'username' })
+  const password = renderer.root.findByProps({ autoComplete: 'current-password' })
+  await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }))
+  expect(renderer.root.findByProps({ id: 'login-error' }).props.children).toBe('请输入账号和密码。')
+  expect(username.props['aria-invalid']).toBe(true)
+  expect(password.props['aria-describedby']).toBe('login-error')
+  expect(globalThis.fetch.mock.calls.some(([url]) => url === '/api/auth/login')).toBe(false)
+
+  await act(async () => username.props.onChange({ target: { value: 'admin' } }))
+  await act(async () => password.props.onChange({ target: { value: 'example-password' } }))
+  await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }))
+  expect(renderer.root.findByProps({ id: 'login-error' }).props.children).toBe('账号或密码错误。')
+  expect(globalThis.fetch.mock.calls.some(([url]) => url === '/api/auth/login')).toBe(true)
+  await act(async () => renderer.unmount())
+})
+
 test('hydrates the analysis slice from URL query parameters', async () => {
   const renderer = await renderAt('/?dimension=iteration&granularity=week&version=2&period=p2', 'admin')
   expect(hasText(renderer, 'iteration|month|2|p2')).toBe(true)

@@ -1,10 +1,10 @@
 import { iterationPeriods, latestPeriodId } from './overviewLogic'
+import FilterToolbar from '../components/FilterToolbar'
 
 function SegmentedControl({ label, options, value, onChange }) {
   return (
-    <div className="overview-filter-control">
-      <span className="overview-filter-label">{label}</span>
-      <span className="overview-segmented" role="group" aria-label={label}>
+    <div className="analytics-granularity" role="group" aria-label={label}>
+      <span>{label}</span>
         {options.map((option) => (
           <button
             key={String(option.value)}
@@ -16,12 +16,11 @@ function SegmentedControl({ label, options, value, onChange }) {
             {option.label}
           </button>
         ))}
-      </span>
     </div>
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading }) {
+export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions }) {
   const isIteration = filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
@@ -60,7 +59,10 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   }
 
   return (
-    <div className="overview-filterbar" aria-label="总览筛选">
+    <FilterToolbar className="analytics-filter-toolbar" label="分析筛选">
+      <div className="analytics-page-controls">
+      {month && onMonthChange && <label><span>成熟度月份</span><input aria-label="成熟度月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
+      {metricOptions && <label><span>指标</span><select aria-label="指标" value={filter.metricId ?? 'all'} onChange={(event) => onChange({ ...filter, metricId: event.target.value, periodId: null }, { history: 'push' })}><option value="all">全部指标</option>{metricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
       <SegmentedControl
         label="统计维度"
         options={[
@@ -72,10 +74,9 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
       />
 
       {isIteration ? (
-        <label className="overview-filter-control">
-          <span className="overview-filter-label">版本</span>
+        <label>
+          <span>版本</span>
           <select
-            className="overview-select"
             aria-label="版本"
             value={filter.versionId}
             onChange={(event) => changeVersion(event.target.value)}
@@ -99,10 +100,9 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         />
       )}
 
-      <label className="overview-filter-control">
-        <span className="overview-filter-label">周期</span>
+      <label>
+        <span>周期</span>
         <select
-          className="overview-select overview-period-select"
           aria-label="周期"
           value={periodValue}
           onChange={(event) => onChange({ ...filter, periodId: event.target.value }, { history: 'push' })}
@@ -115,7 +115,8 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
           ))}
         </select>
       </label>
+      </div>
 
-    </div>
+    </FilterToolbar>
   )
 }

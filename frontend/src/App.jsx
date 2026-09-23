@@ -16,6 +16,7 @@ import {
 
 import { fetchJson } from './api'
 import './app.css'
+import { appTheme } from './design/theme'
 import { findMetric } from './metricDetail/metricDetailLogic'
 import {
   filterFromSearchParams,
@@ -42,37 +43,21 @@ const DataManagementPage = lazy(() => import('./dataManagement/DataManagementPag
 const UsersSettingsPage = lazy(() => import('./settings/UsersSettingsPage'))
 const CollectionsSettingsPage = lazy(() => import('./settings/CollectionsSettingsPage'))
 
-const APP_THEME = {
-  token: {
-    colorPrimary: '#2563EB',
-    colorBgLayout: '#F5F7FA',
-    colorBgContainer: '#FFFFFF',
-    colorText: '#172033',
-    colorTextSecondary: '#667085',
-    borderRadius: 6,
-    controlHeight: 32,
-    paddingXXS: 4,
-    paddingXS: 8,
-    paddingSM: 12,
-    padding: 16,
-    paddingLG: 24,
-    paddingXL: 32,
-    fontFamily: 'ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif',
-  },
-  components: {
-    Button: { borderRadius: 6, controlHeight: 32 },
-    Breadcrumb: { fontSize: 12 },
-  },
-}
 const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
 
 function LoginPage({ onLogin, error }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [validationError, setValidationError] = useState(null)
 
   async function submit(event) {
     event.preventDefault()
+    if (!username.trim() || !password) {
+      setValidationError('请输入账号和密码。')
+      return
+    }
+    setValidationError(null)
     setSubmitting(true)
     try {
       await onLogin({ username, password })
@@ -85,15 +70,15 @@ function LoginPage({ onLogin, error }) {
 
   return (
     <main className="auth-page">
-      <form onSubmit={submit} className="auth-card">
+      <form noValidate onSubmit={submit} className="auth-card">
         <div className="auth-card__brand">
           <img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" />
           <div><h1>ai-dev-radar</h1><p>Enterprise Analytics</p></div>
         </div>
         <p className="auth-card__intro">登录后查看研发团队的 AI 研发效能分析。</p>
-        <label className="auth-field">账号<input autoComplete="username" value={username} onChange={(event) => setUsername(event.target.value)} required /></label>
-        <label className="auth-field">密码<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
-        {error && <p role="alert" className="auth-error">{error}</p>}
+        <label className="auth-field">账号<input autoComplete="username" value={username} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setUsername(event.target.value); setValidationError(null) }} required /></label>
+        <label className="auth-field">密码<input type="password" autoComplete="current-password" value={password} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setPassword(event.target.value); setValidationError(null) }} required /></label>
+        {(validationError || error) && <p id="login-error" role="alert" className="auth-error">{validationError || error}</p>}
         <Button type="primary" htmlType="submit" block loading={submitting}>登录</Button>
       </form>
     </main>
@@ -256,11 +241,11 @@ function AppShell({ user, onLogout }) {
     <div className={`app-shell${!narrow && collapsed ? ' app-shell--collapsed' : ''}`}>
       <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
       {!narrow && <AppSidebar user={user} collapsed={collapsed} onToggle={toggleSidebar} />}
-      {narrow && <Drawer title="导航" placement="left" size={280} open={drawerOpen} onClose={() => setDrawerOpen(false)} afterOpenChange={(open) => { if (!open) navigationButton.current?.focus() }} styles={{ body: { padding: 0 } }}>
+      {narrow && <Drawer title="导航" placement="left" size={280} open={drawerOpen} onClose={() => setDrawerOpen(false)} destroyOnHidden afterOpenChange={(open) => { if (!open) window.requestAnimationFrame(() => navigationButton.current?.focus()) }} styles={{ body: { padding: 0 } }}>
         <AppSidebar user={user} onNavigate={() => setDrawerOpen(false)} />
       </Drawer>}
       <div className="app-shell__body">
-        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /><p className="app-topbar__title">{meta.title}</p></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
         <div id="main-content" className={`app-shell__content${location.pathname === '/' ? ' app-shell__content--overview' : ''}`} role="main" tabIndex={-1}><Outlet /></div>
       </div>
     </div>
@@ -436,6 +421,12 @@ export default function App() {
   navigateRef.current = navigate
 
   useEffect(() => {
+    if (typeof document === 'undefined') return
+    const title = location.pathname === '/login' ? '登录' : getRouteMeta(location.pathname).title
+    document.title = `${title} | ai-dev-radar`
+  }, [location.pathname])
+
+  useEffect(() => {
     authMounted.current = true
     if (!authBootstrapPromise.current) {
       authBootstrapPromise.current = fetchJson('/api/auth/me')
@@ -492,5 +483,5 @@ export default function App() {
     content = location.pathname === '/login' ? <LoginPage onLogin={login} error={authError} /> : <Navigate to="/login" replace />
   } else content = <ApplicationRoutes user={user} onLogout={logout} onSessionExpired={sessionExpired} />
 
-  return <ConfigProvider theme={APP_THEME}><AntdApp>{content}</AntdApp></ConfigProvider>
+  return <ConfigProvider theme={appTheme}><AntdApp>{content}</AntdApp></ConfigProvider>
 }

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Card, Spin, Tag, Typography } from 'antd'
 
 import { fetchJson } from '../api'
+import PageHeader from '../components/PageHeader'
 import '../dataManagement/dataManagement.css'
 
 const { Text, Title } = Typography
@@ -137,14 +138,12 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
     : `${String(schedule.hour ?? 0).padStart(2, '0')}:${String(schedule.minute ?? 0).padStart(2, '0')}`
 
   return (
-    <div className="workbench-page">
-      <div className="workbench-page-intro">
-        <div><Text className="workbench-eyebrow">系统管理 / 数据采集</Text><Title level={2}>数据采集</Title><Text type="secondary">IR 采集先进入团队独立的待确认批次；确认后才写入正式 IR。</Text></div>
-      </div>
+    <div className="workbench-page collection-settings-page">
+      <PageHeader className="workbench-page-intro" eyebrow="系统管理 / 数据采集" title="数据采集" description="IR 采集先进入团队独立的待确认批次；确认后才写入正式 IR。" />
       {notice && <Alert className="workbench-notice" type={notice.type} showIcon message={notice.text} closable onClose={() => setNotice(null)} />}
       {loading ? <div className="workbench-state"><Spin size="small" /><Text type="secondary">加载采集配置…</Text></div> : <>
         <Card title="IR 定时计划" extra={<Tag color={schedule.enabled ? 'green' : 'default'}>{schedule.enabled ? '已启用' : '已禁用'}</Tag>}>
-          <form aria-label="IR 定时计划" className="collection-form" onSubmit={saveSchedule}>
+          <form noValidate aria-label="IR 定时计划" className="collection-form" onSubmit={saveSchedule}>
             <label className="collection-toggle"><input aria-label="启用 IR 定时采集" type="checkbox" checked={schedule.enabled} onChange={(event) => setSchedule((current) => ({ ...current, enabled: event.target.checked }))} />启用 IR 定时采集</label>
             <label>采集周期<select aria-label="采集周期" value={schedule.cadence} onChange={(event) => updateCadence(event.target.value)}>{CADENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
             {schedule.cadence === 'hourly' ? <label>每小时第几分钟<input aria-label="每小时第几分钟" type="number" min="0" max="59" value={schedule.minute} onChange={(event) => setSchedule((current) => ({ ...current, minute: event.target.value === '' ? '' : Number(event.target.value) }))} /></label> : <label>执行时间<input aria-label="执行时间" type="time" value={scheduledTime} onChange={(event) => updateTime(event.target.value)} /></label>}
@@ -156,7 +155,7 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
         </Card>
 
         <Card className="workbench-section-gap" title="手动触发 IR 采集">
-          <form aria-label="手动触发 IR 采集" className="collection-form" onSubmit={runNow}>
+          <form noValidate aria-label="手动触发 IR 采集" className="collection-form" onSubmit={runNow}>
             <Text type="secondary">留空使用上一个完整调度周期；也可指定带时区的半开时间段 [开始, 结束)。单次最多 10000 条，超量时请缩短窗口。</Text>
             <div className="collection-window-fields">
               <label>开始时间（Asia/Shanghai）<input aria-label="开始时间" type="datetime-local" value={window.start_at} onChange={(event) => setWindow((current) => ({ ...current, start_at: event.target.value }))} /></label>

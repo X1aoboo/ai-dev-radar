@@ -37,3 +37,15 @@ test('booleanStatusRows keeps team order and exposes unknown data explicitly', (
     { team: teams[2], value: null, state: 'unknown' },
   ])
 })
+
+test('booleanStatusRows uses the selected period and does not fill its gaps from a later snapshot', () => {
+  const teams = [{ id: 1, name: '团队A' }, { id: 2, name: '团队B' }]
+  const data = { series: [
+    { team_id: 1, snapshot: false, values: [{ period_id: 'p1', value: true }] },
+    { team_id: 2, snapshot: true, values: [] },
+  ] }
+  assert.deepEqual(booleanStatusRows(data, teams, 'p1'), [
+    { team: teams[0], value: true, state: 'yes' },
+    { team: teams[1], value: null, state: 'unknown' },
+  ])
+})

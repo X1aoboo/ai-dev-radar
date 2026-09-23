@@ -7,14 +7,15 @@ export function findMetric(catalog, metricId) {
   return null
 }
 
-export function booleanStatusRows(data, teams = []) {
-  const snapshots = new Map(
-    (data?.series ?? []).map((series) => [String(series.team_id), series.snapshot]),
-  )
+export function booleanStatusRows(data, teams = [], periodId = null) {
+  const seriesByTeam = new Map((data?.series ?? []).map((series) => [String(series.team_id), series]))
 
   return teams.map((team) => {
-    const snapshot = snapshots.get(String(team.id))
-    const value = snapshot === null || snapshot === undefined ? null : Boolean(snapshot)
+    const series = seriesByTeam.get(String(team.id))
+    const selected = periodId !== null && periodId !== undefined && periodId !== 'all'
+      ? series?.values?.find((point) => String(point.period_id) === String(periodId))?.value
+      : series?.snapshot
+    const value = selected === null || selected === undefined ? null : Boolean(selected)
     return {
       team,
       value,

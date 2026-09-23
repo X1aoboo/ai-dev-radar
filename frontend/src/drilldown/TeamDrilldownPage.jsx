@@ -4,11 +4,15 @@ import { fetchJson } from '../api'
 import EChart from '../components/EChart'
 import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
+import { maturityOverviewUrl, maturityRecordsUrl } from '../overview/maturityData'
+import MaturityRadar from '../overview/MaturityRadar'
 import {
+  currentMonthId,
   formatMetricValue,
   DATAVIZ_COLORS,
   INITIAL_FILTER,
   isGeneralIterationFallback,
+  isValidMonth,
   iterationPeriods,
   latestPeriodId,
 } from '../overview/overviewLogic'
@@ -16,6 +20,7 @@ import { buildIterationCompareOption, buildTeamTrendOption } from './chartOption
 import {
   averageMetricValues,
   deltaForSelection,
+  maturityProfileSeries,
   mergePeriods,
   pointForSelection,
   previousPeriodId,
@@ -118,7 +123,7 @@ function Sparkline({ values = [] }) {
   return (
     <svg className="drilldown-sparkline" width={width} height={height} aria-hidden="true">
       <path d={path} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={x(last)} cy={y(last.value)} r="2.7" fill="var(--drilldown-accent)" stroke="var(--overview-surface)" strokeWidth="1.5" />
+      <circle cx={x(last)} cy={y(last.value)} r="2.7" fill="var(--drilldown-accent)" stroke="var(--color-bg-surface)" strokeWidth="1.5" />
     </svg>
   )
 }
@@ -170,6 +175,55 @@ function ActivityDirectory({ groups }) {
         </section>
       ))}
     </aside>
+  )
+}
+
+function useTeamMaturity(teamId, month, onSessionExpired) {
+  const [state, setState] = useState({ loading: true, records: [], key: null, general: null, error: null })
+  const sessionExpiredRef = useRef(onSessionExpired)
+  sessionExpiredRef.current = onSessionExpired
+
+  useEffect(() => {
+    const controller = new AbortController()
+    let active = true
+    setState({ loading: true, records: [], key: null, general: null, error: null })
+    Promise.all([
+      fetchJson(maturityRecordsUrl(teamId, month), { signal: controller.signal }),
+      fetchJson(maturityOverviewUrl(month, 'key'), { signal: controller.signal }),
+      fetchJson(maturityOverviewUrl(month, 'general'), { signal: controller.signal }),
+    ])
+      .then(([records, key, general]) => { if (active) setState({ loading: false, records, key, general, error: null }) })
+      .catch((error) => {
+        if (!active || error.name === 'AbortError') return
+        setState({ loading: false, records: [], key: null, general: null, error })
+        if (error.status === 401) sessionExpiredRef.current?.()
+      })
+    return () => { active = false; controller.abort() }
+  }, [teamId, month])
+
+  return state
+}
+
+function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor }) {
+  const maturity = useTeamMaturity(team.id, month, onSessionExpired)
+
+  function profile(kind, overview, label) {
+    const activities = overview?.activities ?? catalog
+      .filter((activity) => activity.kind === kind)
+      .map((activity) => ({ activity_id: activity.id, activity_name: activity.name, score: null }))
+    return (
+      <section className="drilldown-maturity__profile" key={kind}>
+        <h3>{label}</h3>
+        {maturity.loading ? <div className="drilldown-empty">加载成熟度画像…</div> : maturity.error ? <div className="drilldown-empty drilldown-error" role="alert">成熟度画像加载失败：{maturity.error.message}</div> : <MaturityRadar activities={activities} series={maturityProfileSeries({ activities, records: maturity.records, teamName: team.name, teamColor, domainColor: DATAVIZ_COLORS.companyAverage })} ariaLabel={`${team.name}${label}与领域平均成熟度对比`} />}
+      </section>
+    )
+  }
+
+  return (
+    <section className="drilldown-maturity" aria-labelledby="team-maturity-title">
+      <header><div><p className="analytics-eyebrow">Capability profile</p><h2 id="team-maturity-title">成熟度画像</h2><p>团队与领域平均按相同活动、相同评估月比较；未评估不补零。</p></div></header>
+      <div className="drilldown-maturity__grid">{profile('key', maturity.key, '关键研发活动')}{profile('general', maturity.general, '通用研发能力')}</div>
+    </section>
   )
 }
 
@@ -462,6 +516,7 @@ function TeamDrilldownContent({
     metric.code === 'mrr-rate' || (activity.name === 'MR代码检视' && ['penetration', 'ratio'].includes(metric.type))
   ))
   const booleanEntry = metricEntry(entries, (metric) => metric.type === 'boolean')
+  const maturityMonth = filter.dimension === 'time' && isValidMonth(filter.periodId) ? filter.periodId : currentMonthId()
 
   const timePeriods = useMemo(() => {
     for (const activity of catalog) {
@@ -596,6 +651,8 @@ function TeamDrilldownContent({
           ))}
         </div>
       </div>
+
+      <TeamMaturityProfile catalog={catalog} month={maturityMonth} onSessionExpired={onSessionExpired} team={team} teamColor={accent} />
     </div>
   )
 }

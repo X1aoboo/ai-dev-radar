@@ -115,7 +115,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
       boundaryGap: countMetric,
       axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
     },
     yAxis: {
       type: 'value',

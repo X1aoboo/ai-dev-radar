@@ -1,0 +1,16 @@
+{
+  "profile": "product-admin",
+  "sourceRoots": ["frontend/src"],
+  "locale": "zh-CN",
+  "canonicalMap": "UX-CONTRACT.md",
+  "ownership": {
+    "Select/Listbox": "native",
+    "Date": "native"
+  },
+  "requiredCommands": ["unit", "build", "docs"],
+  "commands": {
+    "unit": "npm --prefix frontend run test:unit",
+    "build": "npm --prefix frontend run build",
+    "docs": "npm run check:docs"
+  }
+}

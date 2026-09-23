@@ -5,6 +5,7 @@ import {
   averageMetricValues,
   deltaForSelection,
   mergePeriods,
+  maturityProfileSeries,
   sourceForPeriod,
   teamAccentColor,
   valueForSelection,
@@ -101,6 +102,21 @@ test('maps fact sources to a period and prefers manual when both sources exist',
 test('keeps a directly opened team on the same fixed color slot as the overview', () => {
   assert.equal(teamAccentColor(2, [1, 2, 3, 4]), '#eb6834')
   assert.equal(teamAccentColor(2, [1, 2, 3, 4], { 2: 1 }), '#eb6834')
+})
+
+test('team maturity profile preserves evaluated zero and leaves unevaluated points missing', () => {
+  const series = maturityProfileSeries({
+    activities: [
+      { activity_id: 1, score: 2.5 },
+      { activity_id: 2, score: null },
+    ],
+    records: [{ activity_id: 1, score_raw: '0.00' }, { activity_id: 2, score_raw: null }],
+    teamName: '团队A',
+    teamColor: '#2a78d6',
+    domainColor: '#98a2b3',
+  })
+  assert.deepEqual(series.map(({ values }) => values), [[0, null], [2.5, null]])
+  assert.equal(series[1].dashed, true)
 })
 
 test('merges and orders all periods represented by an activity metrics set', () => {

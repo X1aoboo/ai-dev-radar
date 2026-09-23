@@ -1,0 +1,73 @@
+:root {
+  /* Semantic tokens are the product's runtime source for light mode. */
+  --color-bg-page: #f7f8fa;
+  --color-bg-surface: #ffffff;
+  --color-bg-subtle: #f2f4f7;
+  --color-bg-raised: #ffffff;
+  --color-bg-brand-subtle: #eff4ff;
+  --color-bg-warning-subtle: #fffcf5;
+  --color-text-primary: #182230;
+  --color-text-secondary: #475467;
+  --color-text-tertiary: #667085;
+  --color-text-on-brand: #ffffff;
+  --color-border-default: #e4e7ec;
+  --color-border-strong: #d0d5dd;
+  --color-border-brand: #b2ddff;
+  --color-border-danger: #fda29b;
+  --color-border-warning: #f5c97a;
+  --color-brand-primary: #155eef;
+  --color-brand-hover: #004eeb;
+  --color-success: #039855;
+  --color-warning: #dc6803;
+  --color-danger: #d92d20;
+  --color-text-warning: #8a5a00;
+  --color-info: #155eef;
+  --color-sidebar: #f8fafd;
+  --color-sidebar-text: #3c4043;
+  --color-sidebar-muted: #5f6368;
+  --color-sidebar-border: #e0e3e7;
+  --color-sidebar-hover: #f1f3f4;
+  --color-sidebar-pressed: #dadce0;
+  --color-sidebar-active: #d3e3fd;
+  --color-sidebar-selected: #0842a0;
+  --color-bg-danger-subtle: #fff1f0;
+  --color-border-danger-subtle: #fecdca;
+  --color-bg-success-subtle: #ecfdf3;
+  --color-border-success: #abefc6;
+
+  --color-data-team-1: #2a78d6;
+  --color-data-team-2: #eb6834;
+  --color-data-team-3: #1baf7a;
+  --color-data-team-4: #eda100;
+  --color-data-average: #98a2b3;
+  --color-data-target: #98a2b3;
+  --color-data-grid: #eaecf0;
+  --color-data-axis: #d0d5dd;
+
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-size-label: 12px;
+  --font-size-secondary: 13px;
+  --font-size-body: 14px;
+  --font-size-card-title: 16px;
+  --font-size-section-title: 20px;
+  --font-size-page-title: 28px;
+  --font-size-kpi: 32px;
+  --line-height-body: 1.5;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 40px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .05);
+  --duration-fast: 160ms;
+  --duration-base: 240ms;
+  --easing-standard: cubic-bezier(.2, 0, 0, 1);
+  --size-topbar: 56px;
+  --size-sidebar: 248px;
+}

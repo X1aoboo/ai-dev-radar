@@ -75,7 +75,7 @@ export function buildTeamTrendOption({ data, metric, teamId, selectedPeriodId, a
       boundaryGap: false,
       axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
     },
     yAxis: yAxis(metric),
     series: [
@@ -131,7 +131,7 @@ export function buildIterationCompareOption({ data, metric, teamId, accent }) {
       data: (data?.periods ?? []).map((period) => period.label),
       axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true, alignMinLabel: 'left', alignMaxLabel: 'right' },
     },
     yAxis: yAxis(metric),
     series: [

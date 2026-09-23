@@ -1,13 +1,15 @@
+import { chartTheme } from '../charts/chartTheme.js'
+
 // Dataviz category colors are intentionally separate from the application primary.
 export const DATAVIZ_COLORS = {
-  team: ['#2a78d6', '#eb6834', '#1baf7a', '#eda100'],
-  companyAverage: '#98a2b3',
-  grid: '#eaecf0',
-  axis: '#d0d5dd',
-  inkSecondary: '#475467',
-  muted: '#667085',
-  positive: '#067647',
-  negative: '#b42318',
+  team: chartTheme.team,
+  companyAverage: chartTheme.domainAverage,
+  grid: chartTheme.grid,
+  axis: chartTheme.axis,
+  inkSecondary: chartTheme.inkSecondary,
+  muted: chartTheme.muted,
+  positive: chartTheme.positive,
+  negative: chartTheme.negative,
 }
 
 export const TEAM_COLORS = DATAVIZ_COLORS.team
@@ -18,6 +20,7 @@ export const INITIAL_FILTER = {
   granularity: 'month',
   versionId: 'all',
   periodId: null,
+  metricId: 'all',
 }
 
 export const FILTER_QUERY_KEYS = {
@@ -25,6 +28,7 @@ export const FILTER_QUERY_KEYS = {
   granularity: 'granularity',
   versionId: 'version',
   periodId: 'period',
+  metricId: 'metric',
 }
 
 export const MATURITY_QUERY_KEYS = {
@@ -48,10 +52,7 @@ export const ANALYSIS_GRANULARITIES = ['month', 'week', 'day']
 
 const EXTENDED_TEAM_COLORS = [
   ...TEAM_COLORS,
-  '#8256a1',
-  '#607d8b',
-  '#d14d72',
-  '#8c6d3f',
+  ...chartTheme.extendedTeam,
 ]
 
 function idKey(value) {
@@ -163,8 +164,9 @@ export function normalizeFilter(input = {}, { versions = [], periods = [] } = {}
   const periodId = input.periodId === 'all'
     ? 'all'
     : validIdOrDefault(input.periodId, periods, null)
+  const metricId = input.metricId && input.metricId !== 'all' ? idKey(input.metricId) : 'all'
 
-  return { dimension, granularity, versionId, periodId }
+  return { dimension, granularity, versionId, periodId, metricId }
 }
 
 export function filtersEqual(left, right) {
@@ -172,6 +174,7 @@ export function filtersEqual(left, right) {
     && left?.granularity === right?.granularity
     && left?.versionId === right?.versionId
     && left?.periodId === right?.periodId
+    && (left?.metricId ?? 'all') === (right?.metricId ?? 'all')
 }
 
 export function filterFromSearchParams(searchParams, options) {
@@ -180,6 +183,7 @@ export function filterFromSearchParams(searchParams, options) {
     granularity: searchParams.get(FILTER_QUERY_KEYS.granularity),
     versionId: searchParams.get(FILTER_QUERY_KEYS.versionId),
     periodId: searchParams.get(FILTER_QUERY_KEYS.periodId),
+    metricId: searchParams.get(FILTER_QUERY_KEYS.metricId),
   }, options)
 }
 
@@ -194,6 +198,9 @@ export function filterToSearchParams(filter) {
   }
   if (filter.periodId !== null && filter.periodId !== undefined) {
     params.set(FILTER_QUERY_KEYS.periodId, String(filter.periodId))
+  }
+  if (filter.metricId && filter.metricId !== 'all') {
+    params.set(FILTER_QUERY_KEYS.metricId, String(filter.metricId))
   }
   return params
 }

@@ -5,7 +5,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 const { fetchJson } = vi.hoisted(() => ({ fetchJson: vi.fn() }))
 vi.mock('../api', () => ({ fetchJson }))
 
-function MockForm({ children, onFinish }) { return <form onSubmit={(event) => { event.preventDefault(); onFinish?.({}) }}>{children}</form> }
+function MockForm({ children, onFinish }) { return <form noValidate onSubmit={(event) => { event.preventDefault(); onFinish?.({}) }}>{children}</form> }
 function mockUseForm() { return [{ setFieldsValue: vi.fn(), submit: vi.fn() }] }
 function MockFormItem({ children, label }) { return typeof children === 'function' ? children({ getFieldValue: () => 'viewer' }) : <label>{label}{children}</label> }
 function MockInput(props) { return <input {...props} /> }
@@ -60,6 +60,8 @@ test('renders localized role labels in the user table and opens a Drawer for new
   const rendered = renderText(renderer.toJSON())
   expect(rendered).toContain('管理员 · admin')
   expect(rendered).toContain('维护者 · maintainer')
+  expect(renderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '编辑账号 admin 角色')).toBe(true)
+  expect(renderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '删除账号 maintainer.团队A')).toBe(true)
 
   const newUserButton = renderer.root.findAllByType('button').find((button) => button.children.includes('新增账号'))
   await act(async () => { newUserButton.props.onClick() })

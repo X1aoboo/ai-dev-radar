@@ -31,6 +31,8 @@ test('trend option uses a crosshair and de-emphasized company average', () => {
   assert.equal(option.series[1].lineStyle.type, 'dashed')
   assert.equal(option.series[0].data[1].symbol, 'circle')
   assert.equal(option.series[0].data[0].symbol, 'none')
+  assert.equal(option.xAxis.axisLabel.alignMinLabel, 'left')
+  assert.equal(option.xAxis.axisLabel.alignMaxLabel, 'right')
 })
 
 test('count metrics use grouped bars instead of trend lines', () => {
