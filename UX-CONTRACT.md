@@ -14,11 +14,11 @@
 
 | Domain / scope | Authoritative source | Source type | Reviewed date |
 |---|---|---|---|
-| Permission model | `docs/business/data-management.md` | Business design | 2026-09-23 |
+| Permission model | `docs/business/data-management.md` | Business design | 2026-09-24 |
 | Gateway configuration and readiness | `docs/business/data-management.md`, ADR-0010, Gateway management API | Business design / ADR / API | 2026-09-24 |
 | Analytics and maturity semantics | `docs/business/analytics.md`, ADR-0006 | Business design / ADR | 2026-09-23 |
-| Source-data lifecycle | `docs/business/data-management.md`, ADR-0003/0004 | Business design / ADR | 2026-09-23 |
-| Data-management IA | ADR-0007 | ADR | 2026-09-23 |
+| Source-data lifecycle | `docs/business/data-management.md`, ADR-0003/0004 | Business design / ADR | 2026-09-24 |
+| Data-management IA | ADR-0007 | ADR | 2026-09-24 |
 | Market/content conventions | `CONTEXT.md` | Terminology source | 2026-09-23 |
 
 ## Visual contract
@@ -44,6 +44,10 @@
 | Batch review | `ImportPreviewDrawer` | Existing import/collector batch APIs | file import / staged collector | source context, valid/invalid/warning rows, explicit confirm |
 | Scrollbar | `frontend/src/design/design-system.css` | `DESIGN.md` | documented local geometry exceptions | computed style and overflow check |
 | Toast | Ant Design `App` feedback provider | Existing app ownership | success / warning / info / error | route-level workflow check |
+| Global status | `frontend/src/components/StatusPage.jsx` | This UX contract | forbidden / not-found / pending / error | accessible title, description, action, shared layout |
+| Content loading | `ContentLoadingState` in `StatusPage.jsx` | This UX contract | route / page content | stable geometry, status announcement, authenticated shell retained |
+| Settings workspace | `.settings-master-detail`, `.settings-workspace`, `.settings-section` | `frontend/src/design/design-system.css` | master/detail / table-first sections | relationship scan, selected state, responsive stacking |
+| Collection run history | expandable `Table` in `CollectionsSettingsPage.jsx` | `/api/collection-schedules` response | compact team outcome detail | status/message/code/retryable text, no invented retry action |
 | CRUD | Existing route/API behavior | `docs/business/data-management.md` | return / stay according to sibling flow | full relevant route regression |
 | Gateway configuration | `/settings/gateway` and `/api/gateway` | `docs/business/data-management.md`, ADR-0010 | one Active plus one Draft; live readiness required at activation | browser Draft/check/activate and failure recovery |
 | Maturity batch review | `/data/maturity` | monthly draft table + explicit preview Drawer | copy previous month, confirm whole-month save, separately confirm clear | draft/preview/save and role-aware route checks |
@@ -71,7 +75,7 @@
 ## Navigation and responsive behavior
 
 - Route document title policy: `App.jsx` sets a localized route title from route metadata with the `ai-dev-radar` product suffix; loading and not-found behavior must not leave an unrelated page title.
-- Route error / 403 page behavior: existing `Result` pages return users to overview where appropriate.
+- Route error / 403 page behavior: shared `StatusPage` explains access denial or not-found and returns to the overview where appropriate. Pending capabilities use the same compact status grammar with neutral copy.
 - Breadcrumb/tab/route-state policy: Breadcrumb in Topbar; page title/action in content; data source root IA remains unchanged.
 - Analytics scroll ownership: the browser document is the vertical scroll owner. Main content may clip horizontal spill only; it must not establish an unused vertical scroll ancestor that breaks sticky section navigation. Activities and Team Drilldown directories are sticky section navigation with a visible current item; their anchors do not create nested scrollers.
 - Activities: `/analytics/activities` has one anchor for each of the eight current key activities. Each section is flat, maturity is compact, and metric cards use a compact empty state when no history exists. Time trends use lines for rate, efficiency, and count metrics; selected-period comparisons remain within one metric.
@@ -94,6 +98,43 @@
 - Role scope: the maintainer's IR and maturity team filters stay locked to the bound team and state why. Admin can choose the supported team scope; viewer receives no write controls.
 - Maturity: edit monthly drafts in the activity table. Blank is not evaluated and zero is valid. Copy-previous changes only the draft, preview reviews the month before save, and clear remains separately confirmed. Viewer uses compact read-only sections/tables, not a dashboard.
 - Pending domains and resilience: AR/SR, issues, MR and code review show a compact pending state; no schema, fields or actions are invented. Loading retains PageHeader/filter context when available. Errors stay in the owning domain. Empty/No Data never masquerades as zero or a fabricated count.
+
+## System Management
+
+- Shared page order: PageHeader → necessary scope/status → primary workspace → Drawer or detail panel. Breadcrumb owns route context; do not repeat the path as an eyebrow. Keep one visually primary page action at most.
+- Teams use a compact master list with selected-team detail and a member table. Member counts are shown only where the current API response provides a complete scope; a maintainer does not see a false zero for other teams.
+- Products preserve Team → Product → Version → Iteration ownership. Show versions and their iterations in the selected product detail; do not add a separate tree editor.
+- Metric definitions retain two distinct tabs: dashboard activity/metric catalog and source-data rule/result query. Selecting an activity scopes its metric table. The compute result is a configuration check showing value, numerator, denominator, and valid-record count; it is not a dashboard KPI.
+- Collection settings separate current status, scheduled configuration, manual run, and run history. The default manual request omits a custom time window and uses the existing previous-complete-period behavior. Custom time inputs are disclosed on demand and preserve the `[start_at, end_at)` Asia/Shanghai contract. Run history is a table with expandable team results, localized known failure messages/code, and `可重试` text only when the API says so. Do not add a retry action without a retry API.
+- User and permission management uses the table as its main surface. Role labels keep Chinese meaning and English code at subdued emphasis. Mark the signed-in account and retain the backend-protected self-delete behavior. Maintainer team binding remains required when selecting that role; username/password remain uneditable on the existing edit API.
+- Create/edit remains in the existing Drawer flow. Destructive confirmations identify the object and existing constraint; successful hard deletion is described as unrecoverable. Preserve API methods, payloads, navigation, and error recovery.
+
+## Authentication and session
+
+- Login remains a single-column credentials form. Username and password have visible labels, `username` / `current-password` autocomplete, keyboard submit, app-owned validation, associated inline error text, and visible focus. A failed credential clears the password while retaining the account name.
+- A 401 during an authenticated request sets “会话已过期，请重新登录。” and preserves path, query, and hash. After successful login, return to that path. Do not add token refresh or retry loops.
+- Login, logout, bootstrap, and route access keep the existing backend session and role model. UI visibility is not the authorization boundary.
+
+## Global status and loading
+
+- `StatusPage` is the shared treatment for 403, 404, pending capability, and fatal load errors. Every state has a text label, title, concise explanation, and relevant action. Error uses `role="alert"`; pending uses a neutral `role="status"`. No state relies on color alone. Error text on subtle danger surfaces uses `--color-danger-foreground` rather than the chart/status indicator color.
+- A 403 says the current account cannot access the page and offers the overview. A 404 says the page is missing or the link is invalid. Pending states say the data specification is not defined and do not imply a working form or dataset.
+- Initial auth bootstrap stays outside the authenticated shell. Lazy route loading happens inside App Shell content, retaining sidebar, Breadcrumb, and user context. Page content loading uses a stable `ContentLoadingState`; mutations keep loading on their button.
+- Fatal request copy is safe and actionable; do not expose raw authentication or infrastructure details. Provide retry where reloading the owning data is safe.
+
+## App Shell and responsive fallback
+
+- Keep 248px expanded / 64px collapsed desktop navigation, the existing 680px drawer breakpoint, and a 56px Topbar. Desktop collapse preference and route/role behavior remain unchanged. Sidebar toggle exposes `aria-expanded`; the mobile opener controls the navigation while open and focus returns after close.
+- Topbar contains Breadcrumb, username, one localized role label, and a quiet logout action. It does not repeat the page title.
+- System management uses Operational width policy; form-oriented collection settings cap at 1120px. At 768–1100px, master/detail stacks vertically. Below 720px, controls wrap, settings summaries reduce columns, and tables use local horizontal scrolling when their columns need it.
+- Responsive fallback must preserve every action, role, status, object relationship, and full value access. Check 1440×900, 1920×1080, 1024×768, and 390×844 with no page-level horizontal overflow.
+
+## Accessibility rules
+
+- Native buttons/links own actions/navigation; selection controls have visible focus and accessible names. Icon-only actions identify their object and action. Tables keep headings and local overflow.
+- Inputs have visible labels, submit-time validation, `aria-invalid` and associated error text when invalid. Password managers and paste remain available. Busy controls prevent duplicate submit without moving layout.
+- Status includes text, not color alone. Drawers and confirmation overlays preserve keyboard dismissal and focus return. Sidebar controls expose their expanded/controlled relationship. Loading is announced as status; errors use alert semantics.
+- Verify keyboard navigation, focus visibility, form labels, icon/action names, contrast, disabled state, Drawer focus return, and keyboard-usable confirmations in the real browser. Normal-size error text must meet 4.5:1 contrast on its background.
 
 ## Overlays and feedback
 

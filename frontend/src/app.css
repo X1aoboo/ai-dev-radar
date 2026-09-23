@@ -353,17 +353,34 @@ textarea:focus-visible {
   gap: var(--app-space-3);
 }
 
-.app-role-tag {
-  margin: 0;
-}
-
 .app-user {
   align-items: center;
   color: var(--app-text-secondary);
   display: inline-flex;
   font-size: 12px;
   gap: var(--app-space-2);
-  white-space: nowrap;
+  min-width: 0;
+}
+
+.app-user__identity {
+  display: grid;
+  line-height: 1.35;
+  min-width: 0;
+}
+
+.app-user__name {
+  color: var(--app-text);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.app-user__role {
+  color: var(--app-text-tertiary);
+  font-size: 11px;
+}
+
+.app-logout.ant-btn {
+  color: var(--app-text-secondary);
 }
 
 .app-shell__content {
@@ -398,7 +415,7 @@ textarea:focus-visible {
 }
 
 .app-error {
-  color: var(--color-danger);
+  color: var(--color-danger-foreground);
 }
 
 .workbench-eyebrow {
@@ -424,11 +441,14 @@ textarea:focus-visible {
   min-height: 420px;
 }
 
+.status-page--auth {
+  min-height: 100vh;
+  padding: var(--app-space-6);
+}
+
 .auth-page {
   align-items: center;
-  background:
-    radial-gradient(circle at 20% 10%, rgba(37, 99, 235, .10), transparent 34%),
-    var(--app-page);
+  background: var(--app-page);
   display: flex;
   justify-content: center;
   min-height: 100vh;
@@ -438,8 +458,8 @@ textarea:focus-visible {
 .auth-card {
   background: var(--app-surface);
   border: 1px solid var(--app-border);
-  border-radius: 10px;
-  box-shadow: 0 16px 40px rgba(16, 24, 40, .08);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
   max-width: 392px;
   padding: var(--app-space-6);
   width: 100%;
@@ -482,15 +502,21 @@ textarea:focus-visible {
 
 .auth-field input {
   border: 1px solid var(--app-border-strong);
-  border-radius: 6px;
-  min-height: 32px;
+  border-radius: var(--radius-sm);
+  min-height: 40px;
   padding: 0 var(--app-space-3);
+  width: 100%;
 }
 
 .auth-error {
-  color: var(--color-danger);
+  color: var(--color-danger-foreground);
   font-size: 12px;
+  background: var(--color-bg-danger-subtle);
+  border: 1px solid var(--color-border-danger-subtle);
+  border-radius: var(--radius-sm);
+  line-height: 1.5;
   margin: 0 0 var(--app-space-4);
+  padding: var(--app-space-2) var(--app-space-3);
 }
 
 .settings-page {
@@ -544,5 +570,6 @@ textarea:focus-visible {
 
   .app-topbar__actions {
     width: 100%;
+    justify-content: space-between;
   }
 }

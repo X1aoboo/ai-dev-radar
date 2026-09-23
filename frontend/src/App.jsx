@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
-import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Result, Tag, Tooltip } from 'antd'
+import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Tooltip } from 'antd'
+import zhCN from 'antd/locale/zh_CN'
 import { LogoutOutlined, MenuFoldOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
 import {
   Navigate,
@@ -16,7 +17,7 @@ import {
 
 import { fetchJson } from './api'
 import './app.css'
-import PageHeader from './components/PageHeader'
+import StatusPage, { ContentLoadingState } from './components/StatusPage'
 import { appTheme } from './design/theme'
 import { findMetric } from './metricDetail/metricDetailLogic'
 import {
@@ -47,16 +48,20 @@ const GatewaySettingsPage = lazy(() => import('./settings/GatewaySettingsPage'))
 
 const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
 
-function LoginPage({ onLogin, error }) {
+function LoginPage({ onLogin, error, onClearError }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [validationError, setValidationError] = useState(null)
+  const usernameInput = useRef(null)
+  const passwordInput = useRef(null)
 
   async function submit(event) {
     event.preventDefault()
     if (!username.trim() || !password) {
       setValidationError('请输入账号和密码。')
+      if (!username.trim()) usernameInput.current?.focus()
+      else passwordInput.current?.focus()
       return
     }
     setValidationError(null)
@@ -64,7 +69,8 @@ function LoginPage({ onLogin, error }) {
     try {
       await onLogin({ username, password })
     } catch {
-      // 登录错误已经由 App 转换为表单提示。
+      setPassword('')
+      passwordInput.current?.focus()
     } finally {
       setSubmitting(false)
     }
@@ -78,8 +84,8 @@ function LoginPage({ onLogin, error }) {
           <div><h1>ai-dev-radar</h1><p>Enterprise Analytics</p></div>
         </div>
         <p className="auth-card__intro">登录后查看研发团队的 AI 研发效能分析。</p>
-        <label className="auth-field">账号<input autoComplete="username" value={username} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setUsername(event.target.value); setValidationError(null) }} required /></label>
-        <label className="auth-field">密码<input type="password" autoComplete="current-password" value={password} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setPassword(event.target.value); setValidationError(null) }} required /></label>
+        <label className="auth-field" htmlFor="login-username">账号<input ref={usernameInput} id="login-username" name="username" autoComplete="username" value={username} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setUsername(event.target.value); setValidationError(null); onClearError() }} required /></label>
+        <label className="auth-field" htmlFor="login-password">密码<input ref={passwordInput} id="login-password" name="password" type="password" autoComplete="current-password" value={password} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setPassword(event.target.value); setValidationError(null); onClearError() }} required /></label>
         {(validationError || error) && <p id="login-error" role="alert" className="auth-error">{validationError || error}</p>}
         <Button type="primary" htmlType="submit" block loading={submitting}>登录</Button>
       </form>
@@ -89,28 +95,18 @@ function LoginPage({ onLogin, error }) {
 
 function ForbiddenPage() {
   const navigate = useNavigate()
-  return <div className="status-page"><Result status="403" title="无权访问" subTitle="当前角色不能访问此页面。" extra={<Button type="primary" onClick={() => navigate('/')}>返回总览</Button>} /></div>
-}
-
-function LoadingPage({ text = '加载中…' }) {
-  return <div className="status-page"><p className="app-loading">{text}</p></div>
+  return <StatusPage status="forbidden" title="无权访问" description="当前账号没有访问此页面的权限。" actions={<Button type="primary" onClick={() => navigate('/')}>返回研发总览</Button>} />
 }
 
 function NotFoundPage() {
   const navigate = useNavigate()
-  return <div className="status-page"><Result status="404" title="页面未找到" subTitle="请求的页面不存在，或链接已经失效。" extra={<Button type="primary" onClick={() => navigate('/')}>返回总览</Button>} /></div>
+  return <StatusPage status="not-found" title="页面未找到" description="页面不存在，或链接已经失效。" actions={<Button type="primary" onClick={() => navigate('/')}>返回研发总览</Button>} />
 }
 
 function PendingDomainPage({ domain }) {
   const navigate = useNavigate()
   return (
-    <div className="operational-pending-page">
-      <PageHeader className="operational-page-header" title={`${domain}数据`} description="该数据源的字段、校验规则和指标口径尚未定义。" actions={<Button onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} />
-      <section className="operational-state" role="status">
-        <Tag className="operational-status-tag operational-status-tag--pending">规格待定义</Tag>
-        <span className="operational-state__message">当前不提供数据表单。</span>
-      </section>
-    </div>
+    <StatusPage status="pending" layout="compact" title={`${domain}数据暂未开放`} description="该数据源的字段、校验规则和指标口径尚未定义，当前不提供数据表单。" actions={<Button onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} />
   )
 }
 
@@ -264,8 +260,8 @@ function AppShell({ user, onLogout }) {
         <AppSidebar user={user} onNavigate={() => setDrawerOpen(false)} />
       </Drawer>}
       <div className="app-shell__body">
-        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><span className="app-user"><UserOutlined />{user.username}<Tag color="blue" className="app-role-tag">{ROLE_LABELS[user.role] ?? user.role} · {user.role}</Tag></span><Button type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
-        <div id="main-content" className={`app-shell__content app-shell__content--${contentMode}`} role="main" tabIndex={-1}><Outlet /></div>
+        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><div className="app-user"><UserOutlined /><span className="app-user__identity"><span className="app-user__name">{user.username}</span><span className="app-user__role">{ROLE_LABELS[user.role] ?? user.role}</span></span></div><Button className="app-logout" type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <div id="main-content" className={`app-shell__content app-shell__content--${contentMode}`} role="main" tabIndex={-1}><Suspense fallback={<ContentLoadingState label="加载页面模块…" className="route-loading" />}><Outlet /></Suspense></div>
       </div>
     </div>
   )
@@ -273,6 +269,7 @@ function AppShell({ user, onLogout }) {
 
 function AnalyticsDataLayout({ onSessionExpired }) {
   const [state, setState] = useState({ catalog: null, teams: null, versions: null, error: null })
+  const [loadAttempt, setLoadAttempt] = useState(0)
   const [filter, setFilter] = useUrlFilter(state.versions ?? [])
   const [maturity, setMaturity] = useUrlMaturity(state.teams ?? [])
   const sessionExpiredRef = useRef(onSessionExpired)
@@ -284,10 +281,10 @@ function AnalyticsDataLayout({ onSessionExpired }) {
       .then(([catalog, teams, versions]) => { if (active) setState({ catalog, teams, versions, error: null }) })
       .catch((error) => { if (!active) return; setState((current) => ({ ...current, error })); if (error.status === 401) sessionExpiredRef.current() })
     return () => { active = false }
-  }, [])
+  }, [loadAttempt])
 
-  if (state.error) return <div className="status-page"><Result status="error" title="分析数据加载失败" subTitle={state.error.message} /></div>
-  if (!state.catalog || !state.teams || !state.versions) return <LoadingPage text="加载研发分析…" />
+  if (state.error) return <StatusPage status="error" title="研发分析暂时无法加载" description="请重试；如果问题持续，请稍后再试。" actions={<Button type="primary" onClick={() => { setState({ catalog: null, teams: null, versions: null, error: null }); setLoadAttempt((attempt) => attempt + 1) }}>重试</Button>} />
+  if (!state.catalog || !state.teams || !state.versions) return <ContentLoadingState label="加载研发分析…" />
   return <Outlet context={{ ...state, filter, onFilterChange: setFilter, maturity, onMaturityChange: setMaturity }} />
 }
 
@@ -377,9 +374,7 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
   const CollectionsSettingsComponent = routeComponents.CollectionsSettingsPage
   const GatewaySettingsComponent = routeComponents.GatewaySettingsPage
   return (
-    <Suspense fallback={<LoadingPage text="加载页面模块…" />}>
-      <Routes>
-        <Route path="login" element={<Navigate to="/" replace />} />
+    <Routes>
         <Route element={<AppShell user={user} onLogout={onLogout} />}>
           <Route element={<AnalyticsDataLayout onSessionExpired={onSessionExpired} />}>
             <Route index element={<LegacyCategoryOrOverviewRoute Page={OverviewComponent} user={user} onSessionExpired={onSessionExpired} />} />
@@ -417,8 +412,7 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
           <Route path={ROUTE_PATHS.legacyMetric} element={<LegacyMetricRedirect />} />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
-      </Routes>
-    </Suspense>
+    </Routes>
   )
 }
 
@@ -437,6 +431,7 @@ export default function App() {
   const [returnPath, setReturnPath] = useState(null)
   const authBootstrapPromise = useRef(null)
   const authMounted = useRef(false)
+  const loginDestination = useRef(null)
   const initialLocation = useRef(location)
   const navigateRef = useRef(navigate)
   navigateRef.current = navigate
@@ -446,6 +441,14 @@ export default function App() {
     const title = location.pathname === '/login' ? '登录' : getRouteMeta(location.pathname).title
     document.title = `${title} | ai-dev-radar`
   }, [location.pathname])
+
+  useEffect(() => {
+    if (location.pathname !== '/login') {
+      loginDestination.current = null
+      return
+    }
+    if (user) navigate(loginDestination.current ?? returnPath ?? '/', { replace: true })
+  }, [location.pathname, navigate, returnPath, user])
 
   useEffect(() => {
     authMounted.current = true
@@ -471,19 +474,20 @@ export default function App() {
     try {
       const loggedInUser = await fetchJson('/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(credentials) })
       setAuthError(null)
+      loginDestination.current = location.pathname === '/login' ? (returnPath ?? '/') : `${location.pathname}${location.search}${location.hash}`
       setUser(loggedInUser)
-      const currentPath = `${location.pathname}${location.search}${location.hash}`
-      const destination = location.pathname === '/login' ? (returnPath ?? '/') : currentPath
+      const destination = loginDestination.current
       setReturnPath(null)
       navigate(destination, { replace: true })
     } catch (error) {
-      setAuthError(error.status === 401 ? '账号或密码错误。' : error.message)
+      setAuthError(error.status === 401 ? '账号或密码错误。' : '登录请求暂时失败，请稍后重试。')
       throw error
     }
   }, [location, navigate, returnPath])
 
   const logout = useCallback(async () => {
     await fetchJson('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
+    loginDestination.current = null
     setUser(null)
     setReturnPath(null)
     navigate('/login', { replace: true })
@@ -499,10 +503,12 @@ export default function App() {
 
   let content
   if (user === undefined) {
-    content = authError ? <main className="status-page"><Result status="error" title="认证服务不可用" subTitle={authError} /></main> : <LoadingPage />
+    content = authError
+      ? <main className="status-page"><StatusPage status="error" title="认证服务暂时不可用" description="请重试；如果问题持续，请稍后再试。" actions={<Button type="primary" onClick={() => window.location.reload()}>重试</Button>} /></main>
+      : <main className="status-page"><ContentLoadingState label="正在确认登录状态…" className="auth-loading" /></main>
   } else if (!user) {
-    content = location.pathname === '/login' ? <LoginPage onLogin={login} error={authError} /> : <Navigate to="/login" replace />
+    content = location.pathname === '/login' ? <LoginPage onLogin={login} error={authError} onClearError={() => setAuthError(null)} /> : <Navigate to="/login" replace />
   } else content = <ApplicationRoutes user={user} onLogout={logout} onSessionExpired={sessionExpired} />
 
-  return <ConfigProvider theme={appTheme}><AntdApp>{content}</AntdApp></ConfigProvider>
+  return <ConfigProvider locale={zhCN} theme={appTheme}><AntdApp>{content}</AntdApp></ConfigProvider>
 }

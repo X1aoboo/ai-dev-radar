@@ -12,6 +12,7 @@ colors:
   success: "#039855"
   warning: "#dc6803"
   danger: "#d92d20"
+  danger-foreground: "#b42318"
 typography:
   sans:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, sans-serif"
@@ -34,6 +35,9 @@ components:
   metric-card: { }
   analytics-panel: { }
   chart: { }
+  settings-workspace: { }
+  status-page: { }
+  content-loading: { }
 ---
 
 # ai-dev-radar Design System
@@ -58,7 +62,7 @@ The product should feel like a concise management review assembled from an engin
 
 ## Colors
 
-`--color-bg-page`, `--color-bg-surface`, `--color-text-primary`, `--color-text-secondary`, `--color-border-default`, and `--color-brand-primary` establish light-mode hierarchy. Semantic status colors only express real success, warning, and error meanings. `--color-data-team-1` through `--color-data-team-8` are fixed entity slots; `--color-data-average` is neutral gray and dashed. `--color-data-maturity-0` through `--color-data-maturity-5` are the ordinal maturity palette, not positive/negative signals. Fact charts label `company_average` as “全公司均值”; maturity charts label the assessment aggregate as “领域平均”. `--color-data-target` is intentionally quiet and can be rendered only when a true target exists.
+`--color-bg-page`, `--color-bg-surface`, `--color-text-primary`, `--color-text-secondary`, `--color-border-default`, and `--color-brand-primary` establish light-mode hierarchy. Semantic status colors only express real success, warning, and error meanings. Text on subtle error surfaces uses `--color-danger-foreground` to preserve readable contrast; `--color-danger` remains the indicator and chart color. `--color-data-team-1` through `--color-data-team-8` are fixed entity slots; `--color-data-average` is neutral gray and dashed. `--color-data-maturity-0` through `--color-data-maturity-5` are the ordinal maturity palette, not positive/negative signals. Fact charts label `company_average` as “全公司均值”; maturity charts label the assessment aggregate as “领域平均”. `--color-data-target` is intentionally quiet and can be rendered only when a true target exists.
 
 Future dark mode changes semantic mappings under a theme selector; pages must not depend on current primitive values. Focus uses the brand role with a visible outline, and selection uses the sidebar-specific semantic roles.
 
@@ -108,9 +112,25 @@ The IR workspace table is the page surface, not a nested Card. An empty pending 
 
 Maturity remains an Operational Editing workflow. Its table distinguishes blank/not evaluated from valid zero; copy-previous changes only the draft; an explicit Drawer previews the month before save; clearing remains separately confirmed. Viewer summaries use two compact table sections.
 
+### System Management
+
+System Management is an Administrative Workspace: medium-high information density, table-first, and organized by object relationships. Its shared order is PageHeader → required scope/status → primary workspace → Drawer or detail panel. Breadcrumb owns route context, so settings pages do not repeat “系统管理 / …” as an eyebrow. Use one primary page action at most.
+
+Teams use a compact master list and selected team detail. Products show Product → Version → Iteration ownership without a custom tree editor. Dashboard metric catalog and IR source metric rules remain separate tabs; activity selection narrows its metric table, and compute output is a configuration check. Users and permissions use the operational table as the page surface with subdued bilingual role labels and a quiet current-account marker.
+
+Settings workspaces use the shared `.settings-master-detail`, `.settings-workspace`, and `.settings-section` patterns in `frontend/src/design/design-system.css`. Dividers and table surfaces express relationships; Cards are reserved for independent objects or floating content. The collection page uses a compact status summary, a schedule section, an optional custom-window disclosure, and an expandable run-history table. Failed outcomes show their message/code and retryable state when the API reports it; no retry action is shown without an API.
+
+### Authentication and global status
+
+Login uses one restrained, token-based sign-in panel with the shared radar mark, visible labels, associated errors, password-manager autocomplete, and a stable submit action. Session-expired feedback stays near the form. The shared `StatusPage` pattern covers 403, 404, pending capability, and fatal load errors; it uses a short status label, a clear title, concise explanation, and a relevant action. Pending is neutral/informational, while actual failures use the danger role. Route loading retains App Shell geometry and uses a compact `ContentLoadingState`; action loading stays on its button.
+
+### App Shell and responsive fallback
+
+Desktop navigation keeps the 248px/64px expanded/collapsed widths and the 56px Breadcrumb/account Topbar. The account area presents the username, one localized role label, and a quiet logout action. The <=680px navigation Drawer preserves the sidebar IA and focus return. At 768–1100px, management master/detail workspaces stack; below 720px, settings summaries and forms wrap, and dense tables keep local horizontal scrolling. No route creates page-level horizontal overflow. The app remains usable at 390px without claiming a mobile dashboard redesign.
+
 ### Forms and overlays
 
-Ant Design Form, Drawer, Alert, Result, and application App feedback remain canonical. Select and date controls retain their existing Ant Design/native ownership per route until a later phase intentionally changes it. Drawers retain list context for create/edit/detail operations; validation stays associated with fields and server errors preserve entered values.
+Ant Design Form, Drawer, Alert, and application App feedback remain canonical. Global route states use the shared `StatusPage` component rather than the library's default oversized Result layout. Select and date controls retain their existing Ant Design/native ownership per route until a later phase intentionally changes it. Drawers retain list context for create/edit/detail operations; validation stays associated with fields and server errors preserve entered values.
 
 The `/data/maturity` monthly editor is a batch workflow: score and note stay in the activity table, “复制上月已有值” only populates the draft, and an explicit preview Drawer reviews the full month before confirmation. Blank remains not evaluated; numeric zero remains a valid value. Clearing stays a separately confirmed action.
 

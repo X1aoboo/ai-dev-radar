@@ -7,17 +7,39 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import App, { ApplicationRoutes } from '../App.jsx'
 import { getRouteMeta } from './routeMetadata.js'
 
+function MockForm({ children }) { return <form noValidate>{children}</form> }
+MockForm.useForm = () => [{ setFieldsValue: () => undefined, submit: () => undefined }]
+MockForm.Item = ({ children, label }) => <label>{label}{children}</label>
+function MockInput(props) { return <input {...props} /> }
+MockInput.Password = (props) => <input type="password" {...props} />
+function MockTable({ columns = [], dataSource = [], rowKey = 'id', locale }) {
+  return <table><tbody>{dataSource.length ? dataSource.map((record) => <tr key={record[rowKey]}>{columns.map((column) => <td key={column.key ?? column.dataIndex ?? column.title}>{column.render ? column.render(record[column.dataIndex], record) : record[column.dataIndex]}</td>)}</tr>) : <tr><td>{locale?.emptyText}</td></tr>}</tbody></table>
+}
+const MockText = ({ children }) => <span>{children}</span>
+function MockTypography({ children }) { return <span>{children}</span> }
+MockTypography.Text = MockText
+
 // Route behavior is rendered with the real router and real application route tree.
 // Ant Design's CSS-in-JS adapter requires a browser document, which this node-only
 // renderer deliberately does not provide, so only the shell primitives are mocked.
 vi.mock('antd', () => ({
+  Alert: ({ message }) => <div role="alert">{message}</div>,
   App: ({ children }) => <>{children}</>,
   Breadcrumb: ({ items = [] }) => <nav>{items.map((item) => <span key={item.title}>{item.title}</span>)}</nav>,
   Button: ({ children, onClick, ...props }) => <button type="button" onClick={onClick} {...props}>{children}</button>,
   Drawer: ({ children, open, onClose }) => open ? <div data-drawer><button data-close-drawer onClick={onClose}>关闭</button>{children}</div> : null,
+  Empty: ({ description }) => <span>{description}</span>,
+  Form: MockForm,
+  Input: Object.assign(MockInput, { Password: MockInput.Password }),
+  Popconfirm: ({ children }) => <span>{children}</span>,
+  Select: ({ options = [], ...props }) => <select {...props}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
+  Space: ({ children }) => <span>{children}</span>,
+  Table: MockTable,
+  Typography: MockTypography,
   Tooltip: ({ children }) => <>{children}</>,
   ConfigProvider: ({ children }) => <>{children}</>,
   Result: ({ title, subTitle, extra }) => <section><h1>{title}</h1><p>{subTitle}</p>{extra}</section>,
+  Spin: () => <span>加载中</span>,
   Tag: ({ children }) => <span>{children}</span>,
 }))
 
@@ -33,12 +55,15 @@ vi.mock('@ant-design/icons', () => {
     BarChartOutlined: Icon,
     BugOutlined: Icon,
     CodeOutlined: Icon,
+    DeleteOutlined: Icon,
     DatabaseOutlined: Icon,
+    EditOutlined: Icon,
     FileTextOutlined: Icon,
     PullRequestOutlined: Icon,
     LogoutOutlined: Icon,
     MenuFoldOutlined,
     MenuOutlined,
+    PlusOutlined: Icon,
     TeamOutlined: Icon,
     UserOutlined: Icon,
   }
@@ -94,7 +119,7 @@ function renderText(node) {
   return renderText(node.children)
 }
 
-async function renderAt(pathname, role = 'admin') {
+async function renderAt(pathname, role = 'admin', components = routeComponents) {
   let renderer
   await act(async () => {
     renderer = create(
@@ -104,7 +129,7 @@ async function renderAt(pathname, role = 'admin') {
             user={{ id: 1, username: role, role }}
             onLogout={() => undefined}
             onSessionExpired={() => undefined}
-            routeComponents={routeComponents}
+            routeComponents={components}
           />
           <LocationProbe />
           <HistoryBack />
@@ -271,6 +296,7 @@ for (const [role, pathname] of [
   test(`${role} receives 403 for ${pathname}`, async () => {
     const renderer = await renderAt(pathname, role)
     expect(hasText(renderer, '无权访问')).toBe(true)
+    expect(renderer.root.findAll((node) => node.props.className?.includes('global-status--forbidden'))).toHaveLength(1)
     renderer.unmount()
   })
 }
@@ -312,7 +338,8 @@ test('returns 403 for non-admin access to the migrated /config entry', async () 
 test('only supported pending domains render the pending state', async () => {
   const pending = await renderAt('/data/issues', 'admin')
   expect(hasText(pending, '问题单数据')).toBe(true)
-  expect(hasText(pending, '规格待定义')).toBe(true)
+  expect(hasText(pending, '待定义')).toBe(true)
+  expect(pending.root.findAll((node) => node.props.className?.includes('global-status--pending'))).toHaveLength(1)
   expect(hasText(pending, '问题单数据源规格待定义')).toBe(false)
   pending.unmount()
 
@@ -331,6 +358,7 @@ test('unknown requirement types fall back to IR', async () => {
 test('unknown paths render the unified 404 state', async () => {
   const renderer = await renderAt('/not-a-real-page', 'admin')
   expect(hasText(renderer, '页面未找到')).toBe(true)
+  expect(renderer.root.findAll((node) => node.props.className?.includes('global-status--not-found'))).toHaveLength(1)
   renderer.unmount()
 })
 
@@ -356,8 +384,68 @@ test('login validation and authentication failures are app-owned and associated 
   await act(async () => password.props.onChange({ target: { value: 'example-password' } }))
   await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }))
   expect(renderer.root.findByProps({ id: 'login-error' }).props.children).toBe('账号或密码错误。')
+  expect(renderer.root.findByProps({ autoComplete: 'username' }).props.value).toBe('admin')
+  expect(password.props.value).toBe('')
   expect(globalThis.fetch.mock.calls.some(([url]) => url === '/api/auth/login')).toBe(true)
   await act(async () => renderer.unmount())
+})
+
+test('keeps the shell visible during lazy route loading', async () => {
+  let resolvePage
+  const DelayedUsersPage = React.lazy(() => new Promise((resolve) => { resolvePage = resolve }))
+  let renderer
+  await act(async () => {
+    renderer = create(
+      <ConfigProvider>
+        <MemoryRouter initialEntries={['/settings/users']}>
+          <ApplicationRoutes
+            user={{ id: 1, username: 'admin', role: 'admin' }}
+            onLogout={() => undefined}
+            onSessionExpired={() => undefined}
+            routeComponents={{ ...routeComponents, UsersSettingsPage: DelayedUsersPage }}
+          />
+        </MemoryRouter>
+      </ConfigProvider>,
+    )
+  })
+  expect(renderer.root.findByProps({ className: 'app-topbar' })).toBeDefined()
+  expect(renderer.root.findByProps({ className: 'content-loading route-loading' })).toBeDefined()
+  await act(async () => { resolvePage({ default: () => <StubPage page="settings-users">用户与权限</StubPage> }) })
+  expect(hasPage(renderer, 'settings-users')).toBe(true)
+  renderer.unmount()
+})
+
+test('session expiry explains re-authentication and restores the interrupted route', async () => {
+  let userListRequests = 0
+  globalThis.fetch = vi.fn(async (input, options) => {
+    const url = String(input)
+    const json = (value, status = 200) => new Response(JSON.stringify(value), { status, headers: { 'content-type': 'application/json' } })
+    if (url.endsWith('/api/auth/me')) return json({ id: 1, username: 'admin', role: 'admin' })
+    if (url.endsWith('/api/teams')) return json([])
+    if (url.endsWith('/api/auth/users')) {
+      userListRequests += 1
+      return userListRequests === 1 ? json({ detail: 'Unauthorized' }, 401) : json([])
+    }
+    if (url.endsWith('/api/auth/login') && options?.method === 'POST') return json({ id: 1, username: 'admin', role: 'admin' })
+    return json([])
+  })
+
+  let renderer
+  await act(async () => {
+    renderer = create(<MemoryRouter initialEntries={['/settings/users?from=expired']}><App /><LocationProbe /></MemoryRouter>)
+  })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)) })
+  expect(currentPath(renderer)).toBe('/login')
+  expect(hasText(renderer, '会话已过期，请重新登录。')).toBe(true)
+
+  const form = renderer.root.findByProps({ className: 'auth-card' })
+  await act(async () => renderer.root.findByProps({ autoComplete: 'username' }).props.onChange({ target: { value: 'admin' } }))
+  await act(async () => renderer.root.findByProps({ autoComplete: 'current-password' }).props.onChange({ target: { value: 'valid-password' } }))
+  await act(async () => form.props.onSubmit({ preventDefault: vi.fn() }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)) })
+  expect(currentPath(renderer)).toBe('/settings/users')
+  expect(currentSearch(renderer)).toBe('?from=expired')
+  renderer.unmount()
 })
 
 test('hydrates the analysis slice from URL query parameters', async () => {

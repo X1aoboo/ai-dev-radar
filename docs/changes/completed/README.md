@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [Phase 4: System Management, Authentication, Global Status, and App Shell](phase-4-system-management-auth-global-shell.md)：完成系统管理、认证反馈、全局状态、App Shell 与响应式收口。
 - [Data Workbench Operational Console UX](data-workbench-operational-console.md)：完成 Phase 3 IR、成熟度及待定义数据域的操作型工作台整改。
 - [Gateway Runtime Configuration, Readiness and Project E2E Gate](gateway-runtime-configuration.md)：完成数据库托管配置、健康诊断、采集快照与真实 HTTP 浏览器门禁。
 - [Analytics UX Gate 整改](analytics-ux-remediation.md)：完成 Design Foundation 与五个 Analytics 页面的滚动、信息层级、响应式布局和真实浏览器 Gate。

@@ -32,6 +32,7 @@ import {
 import { fetchJson } from '../api'
 import FilterToolbar from '../components/FilterToolbar'
 import PageHeader from '../components/PageHeader'
+import StatusPage, { ContentLoadingState } from '../components/StatusPage'
 import { currentMonthId, formatMetricValue, isValidMonth } from '../overview/overviewLogic'
 import { maturitySavePayload, useMaturityRecords } from '../overview/maturityData'
 import {
@@ -92,6 +93,22 @@ const STICKY_HEADER_OFFSET = 56
 const EMPTY_TEAM_FORM = { id: null, name: '', productVersions: '', repos: '' }
 const EMPTY_MEMBER_FORM = { id: null, team_id: '', employee_id: '', name: '', role: '' }
 
+const MANAGEMENT_CONFLICTS = {
+  'team is referenced by facts or maintainers': '该团队仍有事实或维护者关联，无法删除。',
+  'product is referenced by versions or IR data': '该产品仍被版本或 IR 数据引用，无法删除。',
+  'version is referenced by iterations or IR data': '该版本仍被迭代或 IR 数据引用，无法删除。',
+  'iteration is referenced by IR data': '该迭代仍被 IR 数据引用，无法删除。',
+  'activity still has metrics': '该活动仍包含指标，无法删除。',
+  'metric is referenced by facts': '该指标仍被事实记录引用，无法删除。',
+  'cannot move a metric with facts': '该指标已有事实记录，不能更改所属活动。',
+  'resource already exists': '名称或代码已被使用，请修改后重试。',
+}
+
+function dataManagementErrorMessage(error) {
+  if (error.status !== 409) return error.message
+  return MANAGEMENT_CONFLICTS[error.message] ?? '现有数据或名称冲突，操作未完成。请检查关联记录后重试。'
+}
+
 function Notice({ notice }) {
   if (!notice) return null
   return <Alert className="workbench-notice" type={notice.type === 'error' ? 'error' : 'success'} showIcon closable message={notice.text} />
@@ -108,7 +125,7 @@ function formatTableTimestamp(value) {
 }
 
 function LoadingState({ text = '加载中…' }) {
-  return <div className="workbench-state"><Spin size="small" /><Text type="secondary">{text}</Text></div>
+  return <ContentLoadingState label={text} />
 }
 
 function EmptyState({ children = '暂无数据。' }) {
@@ -153,10 +170,12 @@ function InputField({ label, value, onChange, type = 'text', className = 'operat
 function useReferenceData(onSessionExpired, user) {
   const [data, setData] = useState({ teams: [], products: [], versions: [], members: [] })
   const [loading, setLoading] = useState(true)
+  const [hasLoaded, setHasLoaded] = useState(false)
   const [error, setError] = useState(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
+    setError(null)
     try {
       const [teams, products, versions, members] = await Promise.all([
         fetchJson('/api/teams'),
@@ -175,11 +194,12 @@ function useReferenceData(onSessionExpired, user) {
       if (nextError.status === 401) onSessionExpired()
     } finally {
       setLoading(false)
+      setHasLoaded(true)
     }
   }, [onSessionExpired, user.role])
 
   useEffect(() => { reload() }, [reload])
-  return { ...data, loading, error, reload }
+  return { ...data, loading, hasLoaded, error, reload }
 }
 
 function TeamEditorDrawer({ editor, onClose, onSubmit, submitting }) {
@@ -243,6 +263,8 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
 
   const selectedTeam = refs.teams.find((team) => team.id === selectedTeamId)
   const members = refs.members.filter((member) => member.team_id === selectedTeamId)
+  const memberCounts = new Map(refs.teams.map((team) => [team.id, 0]))
+  refs.members.forEach((member) => memberCounts.set(member.team_id, (memberCounts.get(member.team_id) ?? 0) + 1))
 
   async function saveTeam(values) {
     setSubmitting(true)
@@ -263,7 +285,7 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
       setNotice({ type: 'success', text: editing ? '团队已更新。' : '团队已创建。' })
       await onRefresh()
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally { setSubmitting(false) }
   }
@@ -281,7 +303,7 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
       setNotice({ type: 'success', text: editing ? '团队成员已更新。' : '团队成员已创建。' })
       await onRefresh()
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally { setSubmitting(false) }
   }
@@ -292,7 +314,7 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
       setNotice({ type: 'success', text: '团队成员已删除。' })
       await onRefresh()
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     }
   }
@@ -303,33 +325,37 @@ function TeamManagement({ user, refs, onRefresh, onSessionExpired }) {
       setNotice({ type: 'success', text: '团队已删除。' })
       await onRefresh()
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     }
   }
 
   const teamColumns = [
-    { title: '团队', dataIndex: 'name', width: 100, render: (name) => <Text strong>{name}</Text> },
-    { title: '版本映射', width: 90, align: 'right', render: (_, team) => team.source_mapping?.product_versions?.length ?? 0 },
-    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 180 : 72, render: (_, team) => <Space size={0}><AntButton type="link" size="small" aria-label={`查看团队 ${team.name}`} aria-pressed={team.id === selectedTeamId} onClick={(event) => { event.stopPropagation(); setSelectedTeamId(team.id) }}>查看</AntButton>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑团队 ${team.name}`} icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setTeamEditor({ id: team.id, name: team.name, productVersions: team.source_mapping?.product_versions?.join('\n') || '', repos: team.source_mapping?.repos?.join('\n') || '' }) }}>编辑</AntButton><Popconfirm title={`确定删除团队“${team.name}”？`} description="有关联数据或维护者时可能无法删除。" onConfirm={() => removeTeam(team)}><AntButton type="link" danger size="small" aria-label={`删除团队 ${team.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></>}</Space> },
+    { title: '团队', dataIndex: 'name', width: 160, render: (name) => <Text strong>{name}</Text> },
+    { title: '成员', width: 64, align: 'right', render: (_, team) => user.role === 'maintainer' && team.id !== user.maintainer_team_id ? '—' : memberCounts.get(team.id) },
+    { title: '选择', key: 'action', width: 72, render: (_, team) => <AntButton type="link" size="small" aria-label={`查看团队 ${team.name}`} aria-pressed={team.id === selectedTeamId} onClick={() => setSelectedTeamId(team.id)}>查看</AntButton> },
   ]
   const memberColumns = [
-    { title: '工号', dataIndex: 'employee_id', render: (value) => <Text code>{value}</Text> },
-    { title: '姓名', dataIndex: 'name' },
-    { title: '角色', dataIndex: 'role' },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, member) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`编辑团队成员 ${member.name}`} icon={<EditOutlined />} onClick={() => setMemberEditor({ ...member, team_id: String(member.team_id) })}>编辑</AntButton><Popconfirm title={`确定删除成员“${member.name}”？`} onConfirm={() => removeMember(member)}><AntButton type="link" danger size="small" aria-label={`删除团队成员 ${member.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
+    { title: '成员', dataIndex: 'name', render: (name, member) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text type="secondary">{member.employee_id} · {member.role}</Text></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, member) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`编辑团队成员 ${member.name}`} icon={<EditOutlined />} onClick={() => setMemberEditor({ ...member, team_id: String(member.team_id) })}>编辑</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除成员“${member.name}”？`} description="删除成功后无法恢复。" onConfirm={() => removeMember(member)}><AntButton type="link" danger size="small" aria-label={`删除团队成员 ${member.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="系统管理 / 主数据" title="团队与人员" description="团队是当前看板的统计和权限归属单位；成员工号用于关联源数据责任人。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setTeamEditor(EMPTY_TEAM_FORM)}>新增团队</AntButton>} />
+      <PageIntro title="团队与人员" description="团队是当前看板的统计和权限归属单位；成员工号用于关联源数据责任人。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setTeamEditor(EMPTY_TEAM_FORM)}>新增团队</AntButton>} />
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
-      <div className="workbench-master-detail">
-        <Card title="团队" extra={<Text type="secondary">{refs.teams.length} 个</Text>}><Table className="operational-table" rowKey="id" size="small" columns={teamColumns} dataSource={refs.teams} pagination={false} scroll={{ x: canEdit ? 370 : 262 }} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} /></Card>
-        <Card title={selectedTeam ? `${selectedTeam.name} · 团队详情` : '团队详情'} extra={canEdit && selectedTeam && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setMemberEditor({ ...EMPTY_MEMBER_FORM, team_id: String(selectedTeam.id) })}>新增成员</AntButton>}>
-          {selectedTeam ? <><Descriptions size="small" column={1} items={[{ key: 'mapping', label: '数据源映射', children: <Space wrap>{(selectedTeam.source_mapping?.product_versions ?? []).map((value) => <Tag key={value}>{value}</Tag>)}{(selectedTeam.source_mapping?.repos ?? []).map((value) => <Tag key={value} color="blue">{value}</Tag>)}{!selectedTeam.source_mapping?.product_versions?.length && !selectedTeam.source_mapping?.repos?.length && <Text type="secondary">未配置</Text>}</Space> }]} /><Divider titlePlacement="left" plain>团队成员</Divider><Table className="operational-table" rowKey="id" size="small" columns={memberColumns} dataSource={members} pagination={false} locale={{ emptyText: <EmptyState>暂无团队成员。</EmptyState> }} /></> : <EmptyState>请选择团队查看详情。 </EmptyState>}
-        </Card>
+      <div className="settings-master-detail">
+        <section className="settings-workspace" aria-label="团队列表">
+          <div className="settings-workspace__header"><h2 className="settings-workspace__title">团队</h2><span className="settings-workspace__count">{refs.teams.length} 个</span></div>
+          <Table className="operational-table" rowKey="id" size="small" loading={refs.loading} columns={teamColumns} dataSource={refs.teams} pagination={false} scroll={{ x: 296 }} rowClassName={(record) => record.id === selectedTeamId ? 'is-selected' : ''} locale={{ emptyText: <EmptyState>暂无团队。</EmptyState> }} />
+        </section>
+        <section className="settings-workspace" aria-label="团队详情">
+          <div className="settings-workspace__header"><h2 className="settings-workspace__title">{selectedTeam ? `${selectedTeam.name} · 团队详情` : '团队详情'}</h2>{canEdit && selectedTeam && <Space wrap size={0}><AntButton size="small" icon={<EditOutlined />} aria-label={`编辑团队 ${selectedTeam.name}`} onClick={() => setTeamEditor({ id: selectedTeam.id, name: selectedTeam.name, productVersions: selectedTeam.source_mapping?.product_versions?.join('\n') || '', repos: selectedTeam.source_mapping?.repos?.join('\n') || '' })}>编辑团队</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除团队“${selectedTeam.name}”？`} description="有关联数据或维护者时可能无法删除；删除成功后无法恢复。" onConfirm={() => removeTeam(selectedTeam)}><AntButton danger size="small" aria-label={`删除团队 ${selectedTeam.name}`}>删除团队</AntButton></Popconfirm><AntButton size="small" icon={<PlusOutlined />} onClick={() => setMemberEditor({ ...EMPTY_MEMBER_FORM, team_id: String(selectedTeam.id) })}>新增成员</AntButton></Space>}</div>
+          <div className="settings-workspace__body">
+            {selectedTeam ? <><Descriptions size="small" column={1} items={[{ key: 'mapping', label: '数据源映射', children: <Space wrap>{(selectedTeam.source_mapping?.product_versions ?? []).map((value) => <Tag key={value}>{value}</Tag>)}{(selectedTeam.source_mapping?.repos ?? []).map((value) => <Tag key={value} color="blue">{value}</Tag>)}{!selectedTeam.source_mapping?.product_versions?.length && !selectedTeam.source_mapping?.repos?.length && <Text type="secondary">未配置</Text>}</Space> }]} /><section className="settings-section"><div className="settings-section__header"><h3 className="settings-section__title">团队成员</h3><span className="settings-workspace__count">{user.role === 'maintainer' && selectedTeam.id !== user.maintainer_team_id ? '—' : `${members.length} 人`}</span></div><Table className="operational-table" rowKey="id" size="small" loading={refs.loading} columns={memberColumns} dataSource={members} pagination={false} locale={{ emptyText: <EmptyState>{user.role === 'maintainer' && selectedTeam.id !== user.maintainer_team_id ? '当前账号无法查看该团队成员。' : '暂无团队成员。'}</EmptyState> }} /></section></> : <EmptyState>暂无团队。 </EmptyState>}
+          </div>
+        </section>
       </div>
       <TeamEditorDrawer editor={teamEditor} onClose={() => setTeamEditor(null)} onSubmit={saveTeam} submitting={submitting} />
       <MemberEditorDrawer editor={memberEditor} teams={refs.teams} onClose={() => setMemberEditor(null)} onSubmit={saveMember} submitting={submitting} />
@@ -374,7 +400,7 @@ function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
 
   async function save(url, method, body, success, close) {
     setSubmitting(true)
-    try { await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); close(); setNotice({ type: 'success', text: success }); await onRefresh() } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
+    try { await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); close(); setNotice({ type: 'success', text: success }); await onRefresh() } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
   }
 
   async function remove(url, label) {
@@ -382,27 +408,30 @@ function ProductManagement({ user, refs, onRefresh, onSessionExpired }) {
   }
 
   const productColumns = [
-    { title: '产品', dataIndex: 'name', width: 120, render: (name) => <Text strong>{name}</Text> },
-    { title: '团队', dataIndex: 'team_name', width: 95 },
-    { title: '版本数', width: 70, align: 'right', render: (_, product) => product.versions?.length ?? 0 },
-    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 190 : 72, render: (_, product) => <Space size={0}><AntButton type="link" size="small" aria-label={`查看产品 ${product.name}`} aria-pressed={product.id === selectedProductId} onClick={(event) => { event.stopPropagation(); setSelectedProductId(product.id) }}>查看</AntButton>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑产品 ${product.name}`} icon={<EditOutlined />} onClick={(event) => { event.stopPropagation(); setProductEditor({ id: product.id, team_id: String(product.team_id), name: product.name }) }}>编辑</AntButton><Popconfirm title={`确定删除产品“${product.name}”？`} description="仅未被版本或 IR 数据引用的产品可删除。" onConfirm={() => remove(`/api/products/${product.id}`, `产品“${product.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除产品 ${product.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></>}</Space> },
+    { title: '产品', dataIndex: 'name', width: 160, render: (name, product) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text type="secondary">{product.team_name}</Text></Space> },
+    { title: '版本', width: 56, align: 'right', render: (_, product) => product.versions?.length ?? 0 },
+    { title: '选择', key: 'action', width: 72, render: (_, product) => <AntButton type="link" size="small" aria-label={`查看产品 ${product.name}`} aria-pressed={product.id === selectedProductId} onClick={() => setSelectedProductId(product.id)}>查看</AntButton> },
   ]
   const versionColumns = [
-    { title: '版本', dataIndex: 'name', render: (name) => <Text strong>{name}</Text> },
-    { title: '迭代', render: (_, version) => <Space wrap>{(version.iterations ?? []).map((iteration) => <Tag key={iteration.id} color="blue"><Space size={4}><span>{iteration.name}</span>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑迭代 ${iteration.name}`} icon={<EditOutlined />} onClick={() => setIterationEditor({ id: iteration.id, version_id: String(version.id), name: iteration.name, start_date: iteration.start_date, end_date: iteration.end_date })} /><Popconfirm title={`确定删除迭代“${iteration.name}”？`} onConfirm={() => remove(`/api/iterations/${iteration.id}`, `迭代“${iteration.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除迭代 ${iteration.name}`} icon={<DeleteOutlined />} /></Popconfirm></>}</Space></Tag>)}</Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 220, render: (_, version) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`为版本 ${version.name} 新增迭代`} icon={<PlusOutlined />} onClick={() => setIterationEditor({ id: null, version_id: String(version.id), name: '', start_date: '', end_date: '' })}>新增迭代</AntButton><AntButton type="link" size="small" aria-label={`编辑版本 ${version.name}`} icon={<EditOutlined />} onClick={() => setVersionEditor({ id: version.id, product_id: String(version.product_id), name: version.name })}>编辑</AntButton><Popconfirm title={`确定删除版本“${version.name}”？`} onConfirm={() => remove(`/api/versions/${version.id}`, `版本“${version.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除版本 ${version.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
+    { title: '版本', dataIndex: 'name', width: 180, render: (name, version) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text type="secondary">{version.iterations?.length ?? 0} 个迭代</Text></Space> },
+    { title: '开发迭代期', width: 360, render: (_, version) => <Space wrap>{(version.iterations ?? []).map((iteration) => <span className="settings-iteration" key={iteration.id}><span>{iteration.name}</span>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑迭代 ${iteration.name}`} icon={<EditOutlined />} onClick={() => setIterationEditor({ id: iteration.id, version_id: String(version.id), name: iteration.name, start_date: iteration.start_date, end_date: iteration.end_date })} /><Popconfirm okText="删除" cancelText="取消" title={`确定删除迭代“${iteration.name}”？`} description="被 IR 数据引用时无法删除；成功删除后无法恢复。" onConfirm={() => remove(`/api/iterations/${iteration.id}`, `迭代“${iteration.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除迭代 ${iteration.name}`} icon={<DeleteOutlined />} /></Popconfirm></>}</span>)}</Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 220, render: (_, version) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`为版本 ${version.name} 新增迭代`} icon={<PlusOutlined />} onClick={() => setIterationEditor({ id: null, version_id: String(version.id), name: '', start_date: '', end_date: '' })}>新增迭代</AntButton><AntButton type="link" size="small" aria-label={`编辑版本 ${version.name}`} icon={<EditOutlined />} onClick={() => setVersionEditor({ id: version.id, product_id: String(version.product_id), name: version.name })}>编辑</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除版本“${version.name}”？`} description="有迭代或 IR 数据引用时无法删除；成功删除后无法恢复。" onConfirm={() => remove(`/api/versions/${version.id}`, `版本“${version.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除版本 ${version.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
   return (
     <div className="workbench-page">
-      <PageIntro eyebrow="系统管理 / 主数据" title="产品、版本与开发迭代期" description="产品属于团队，版本属于产品，迭代属于版本；使用主从布局维护层级关系。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setProductEditor({ id: null, team_id: '', name: '' })}>新增产品</AntButton>} />
+      <PageIntro title="产品与版本" description="产品属于团队，版本属于产品，开发迭代期属于版本。" action={canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setProductEditor({ id: null, team_id: '', name: '' })}>新增产品</AntButton>} />
       <Notice notice={notice} />
       {!canEdit && <ReadOnlyHint />}
-      <div className="workbench-master-detail">
-        <Card title="产品" extra={<Text type="secondary">{refs.products.length} 个</Text>}><Table className="operational-table" rowKey="id" size="small" columns={productColumns} dataSource={refs.products} pagination={false} scroll={{ x: canEdit ? 475 : 357 }} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} /></Card>
-        <Card title={selectedProduct ? `${selectedProduct.name} · 层级详情` : '产品详情'} extra={canEdit && selectedProduct && <AntButton size="small" icon={<PlusOutlined />} onClick={() => setVersionEditor({ id: null, product_id: String(selectedProduct.id), name: '' })}>新增版本</AntButton>}>
-          {selectedProduct ? <><Descriptions size="small" column={2} items={[{ key: 'team', label: '负责团队', children: selectedProduct.team_name }, { key: 'versions', label: '版本数量', children: versions.length }]} /><Divider titlePlacement="left" plain>产品版本与迭代</Divider><Table className="operational-table" rowKey="id" size="small" columns={versionColumns} dataSource={versions} pagination={false} locale={{ emptyText: <EmptyState>暂无产品版本。</EmptyState> }} /></> : <EmptyState>请选择产品查看层级。</EmptyState>}
-        </Card>
+      <div className="settings-master-detail">
+        <section className="settings-workspace" aria-label="产品列表">
+          <div className="settings-workspace__header"><h2 className="settings-workspace__title">产品</h2><span className="settings-workspace__count">{refs.products.length} 个</span></div>
+          <Table className="operational-table" rowKey="id" size="small" loading={refs.loading} columns={productColumns} dataSource={refs.products} pagination={false} scroll={{ x: 288 }} rowClassName={(record) => record.id === selectedProductId ? 'is-selected' : ''} locale={{ emptyText: <EmptyState>暂无产品。</EmptyState> }} />
+        </section>
+        <section className="settings-workspace" aria-label="产品版本与迭代详情">
+          <div className="settings-workspace__header"><h2 className="settings-workspace__title">{selectedProduct ? `${selectedProduct.name} · 层级详情` : '产品详情'}</h2>{canEdit && selectedProduct && <Space wrap size={0}><AntButton size="small" icon={<EditOutlined />} aria-label={`编辑产品 ${selectedProduct.name}`} onClick={() => setProductEditor({ id: selectedProduct.id, team_id: String(selectedProduct.team_id), name: selectedProduct.name })}>编辑产品</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除产品“${selectedProduct.name}”？`} description="仅未被版本或 IR 数据引用的产品可删除；删除成功后无法恢复。" onConfirm={() => remove(`/api/products/${selectedProduct.id}`, `产品“${selectedProduct.name}”`)}><AntButton danger size="small" aria-label={`删除产品 ${selectedProduct.name}`}>删除产品</AntButton></Popconfirm><AntButton size="small" icon={<PlusOutlined />} onClick={() => setVersionEditor({ id: null, product_id: String(selectedProduct.id), name: '' })}>新增版本</AntButton></Space>}</div>
+          <div className="settings-workspace__body">{selectedProduct ? <><Descriptions size="small" column={2} items={[{ key: 'team', label: '所属团队', children: selectedProduct.team_name }, { key: 'versions', label: '版本数量', children: versions.length }]} /><section className="settings-section"><div className="settings-section__header"><h3 className="settings-section__title">版本与开发迭代期</h3></div><Table className="operational-table" rowKey="id" size="small" loading={refs.loading} columns={versionColumns} dataSource={versions} pagination={false} scroll={{ x: 760 }} locale={{ emptyText: <EmptyState>暂无产品版本。</EmptyState> }} /></section></> : <EmptyState>暂无产品。</EmptyState>}</div>
+        </section>
       </div>
       <ProductEditorDrawer editor={productEditor} teams={refs.teams} onClose={() => setProductEditor(null)} onSubmit={(values) => save(productEditor.id ? `/api/products/${productEditor.id}` : '/api/products', productEditor.id ? 'PATCH' : 'POST', { team_id: Number(values.team_id), name: values.name.trim() }, productEditor.id ? '产品已更新。' : '产品已创建。', () => setProductEditor(null))} submitting={submitting} />
       <VersionEditorDrawer editor={versionEditor} products={refs.products} onClose={() => setVersionEditor(null)} onSubmit={(values) => save(versionEditor.id ? `/api/versions/${versionEditor.id}` : '/api/versions', versionEditor.id ? 'PATCH' : 'POST', { product_id: Number(values.product_id), name: values.name.trim() }, versionEditor.id ? '产品版本已更新。' : '产品版本已创建。', () => setVersionEditor(null))} submitting={submitting} />
@@ -525,7 +554,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
 
   const load = useCallback(async ({ clearNotice = true } = {}) => {
     setLoading(true)
-    try { setData(await fetchJson(`/api/data/ir?${buildIrQuery(filters).toString()}`)); if (clearNotice) setNotice(null) } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setLoading(false) }
+    try { setData(await fetchJson(`/api/data/ir?${buildIrQuery(filters).toString()}`)); if (clearNotice) setNotice(null) } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setLoading(false) }
   }, [filters, onSessionExpired])
   useEffect(() => { load() }, [load])
 
@@ -535,7 +564,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
     try {
       setCollectorBatches(await fetchJson('/api/data/ir/imports?source_kind=collector&status=pending'))
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally {
       setCollectorBatchesLoading(false)
@@ -554,19 +583,19 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
       const editing = Boolean(editor.record?.id)
       await fetchJson(editing ? `/api/data/ir/${editor.record.id}` : '/api/data/ir', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
       setEditor(null); setNotice({ type: 'success', text: editing ? 'IR 需求已更新。' : 'IR 需求已创建。' }); await load({ clearNotice: false })
-    } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
+    } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
   }
 
   async function previewFile(file) {
     setBusy(true)
-    try { const batch = await fetchJson('/api/data/ir/imports/preview', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Filename': file.name }, body: await file.arrayBuffer() }); setImportBatch(batch); setNotice({ type: 'success', text: `已生成导入预览：${batch.valid_rows} 行可确认，${batch.invalid_rows} 行有错误。` }) } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
+    try { const batch = await fetchJson('/api/data/ir/imports/preview', { method: 'POST', headers: { 'Content-Type': file.type || 'application/octet-stream', 'X-Filename': file.name }, body: await file.arrayBuffer() }); setImportBatch(batch); setNotice({ type: 'success', text: `已生成导入预览：${batch.valid_rows} 行可确认，${batch.invalid_rows} 行有错误。` }) } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
   }
 
   async function confirmImport() {
     if (!importBatch) return
     const wasCollectorBatch = importBatch.source_kind === 'collector'
     setBusy(true)
-    try { const result = await fetchJson(`/api/data/ir/imports/${importBatch.id}/confirm`, { method: 'POST' }); setImportBatch(null); setNotice({ type: 'success', text: `${wasCollectorBatch ? '采集' : '导入'}批次已确认：新增 ${result.created} 条，补充 ${result.updated} 条，未变化 ${result.unchanged} 条。` }); await load({ clearNotice: false }); if (wasCollectorBatch) await loadCollectorBatches() } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
+    try { const result = await fetchJson(`/api/data/ir/imports/${importBatch.id}/confirm`, { method: 'POST' }); setImportBatch(null); setNotice({ type: 'success', text: `${wasCollectorBatch ? '采集' : '导入'}批次已确认：新增 ${result.created} 条，补充 ${result.updated} 条，未变化 ${result.unchanged} 条。` }); await load({ clearNotice: false }); if (wasCollectorBatch) await loadCollectorBatches() } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setBusy(false) }
   }
 
   async function openCollectorBatch(summary) {
@@ -574,7 +603,7 @@ function IRManagement({ user, refs, onRefresh, onSessionExpired }) {
     try {
       setImportBatch(await fetchJson(`/api/data/ir/imports/${summary.id}`))
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally { setBusy(false) }
   }
@@ -669,32 +698,41 @@ function DashboardMetricEditorDrawer({ editor, catalog, onClose, onSubmit, submi
 
 function DashboardCatalogTab({ user, catalog, loading, onReload, onSessionExpired }) {
   const canEdit = user.role === 'admin'
+  const [selectedActivityId, setSelectedActivityId] = useState(null)
   const [activityEditor, setActivityEditor] = useState(null)
   const [metricEditor, setMetricEditor] = useState(null)
   const [notice, setNotice] = useState(null)
   const [submitting, setSubmitting] = useState(false)
 
+  useEffect(() => {
+    if (!selectedActivityId || !catalog.some((activity) => activity.id === selectedActivityId)) setSelectedActivityId(catalog[0]?.id ?? null)
+  }, [catalog, selectedActivityId])
+
   async function save(url, method, body, success, close) {
     setSubmitting(true)
-    try { await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); close(); setNotice({ type: 'success', text: success }); await onReload() } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
+    try { await fetchJson(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); close(); setNotice({ type: 'success', text: success }); await onReload() } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
   }
   async function remove(url, label) { await save(url, 'DELETE', undefined, `${label}已删除。`, () => undefined) }
 
+  const selectedActivity = catalog.find((activity) => activity.id === selectedActivityId)
   const columns = [
     { title: '活动', dataIndex: 'name', render: (name, activity) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text type="secondary">{activity.kind === 'key' ? '关键研发活动' : '通用研发能力'}</Text></Space> },
-    { title: '指标目录', key: 'metrics', render: (_, activity) => <Space wrap>{activity.metrics.map((metric) => <Tag key={metric.id} color={metric.type === 'boolean' ? 'gold' : 'blue'}>{metric.name} · {metricValueLabel(metric.type)}</Tag>)}</Space> },
-    { title: '操作', key: 'action', fixed: 'right', width: 250, render: (_, activity) => canEdit && <Space><AntButton type="link" size="small" icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: String(activity.id), code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setActivityEditor({ id: activity.id, code: activity.code, name: activity.name, kind: activity.kind })}>编辑活动</AntButton><Popconfirm title={`确定删除活动“${activity.name}”？`} description="仍包含指标或事实记录的活动不能删除。" onConfirm={() => remove(`/api/activities/${activity.id}`, `活动“${activity.name}”`)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
+    { title: '指标', width: 56, align: 'right', render: (_, activity) => activity.metrics.length },
+    { title: '操作', key: 'action', fixed: 'right', width: canEdit ? 174 : 76, render: (_, activity) => <Space size={0}><AntButton type="link" size="small" aria-pressed={activity.id === selectedActivityId} aria-label={`查看活动 ${activity.name} 的指标`} onClick={() => setSelectedActivityId(activity.id)}>查看</AntButton>{canEdit && <><AntButton type="link" size="small" aria-label={`编辑活动 ${activity.name}`} icon={<EditOutlined />} onClick={() => setActivityEditor({ id: activity.id, code: activity.code, name: activity.name, kind: activity.kind })} /><Popconfirm okText="删除" cancelText="取消" title={`确定删除活动“${activity.name}”？`} description="仍包含指标或事实记录的活动不能删除；成功删除后无法恢复。" onConfirm={() => remove(`/api/activities/${activity.id}`, `活动“${activity.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除活动 ${activity.name}`} icon={<DeleteOutlined />} /></Popconfirm></>}</Space> },
   ]
-  const metrics = catalog.flatMap((activity) => activity.metrics.map((metric) => ({ ...metric, activity_name: activity.name })))
+  const metrics = (selectedActivity?.metrics ?? []).map((metric) => ({ ...metric, activity_name: selectedActivity.name }))
   const metricColumns = [
     { title: '指标', dataIndex: 'name', render: (name, metric) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text code>{metric.code}</Text></Space> },
     { title: '所属活动', dataIndex: 'activity_name' },
     { title: '类型', dataIndex: 'type', render: (type) => metricValueLabel(type) },
     { title: '分子 / 分母', key: 'semantics', render: (_, metric) => `${metric.numerator_semantic} / ${metric.denominator_semantic ?? '—'}` },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setMetricEditor({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '', collect_method: metric.collect_method ?? 'manual_only' })}>编辑</AntButton><Popconfirm title={`确定删除指标“${metric.name}”？`} onConfirm={() => remove(`/api/metrics/${metric.id}`, `指标“${metric.name}”`)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`编辑看板指标 ${metric.name}`} icon={<EditOutlined />} onClick={() => setMetricEditor({ ...metric, activity_id: String(metric.activity_id), denominator_semantic: metric.denominator_semantic ?? '', collect_method: metric.collect_method ?? 'manual_only' })}>编辑</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除指标“${metric.name}”？`} description="成功删除后无法恢复。" onConfirm={() => remove(`/api/metrics/${metric.id}`, `指标“${metric.name}”`)}><AntButton type="link" danger size="small" aria-label={`删除看板指标 ${metric.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
 
-  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板活动</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</AntButton>}{canEdit && <AntButton icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton>}</Space></div><Notice notice={notice} /><Card title="研发活动目录"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} /></Card><Card className="workbench-section-gap" title="指标明细"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} /></Card><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Space><Text strong>看板目录</Text><Text type="secondary">活动与指标是看板计算目录，不等同于源数据指标规则。</Text></Space><Space wrap>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setActivityEditor({ id: null, code: '', name: '', kind: 'general' })}>新增活动</AntButton>}{canEdit && <AntButton icon={<PlusOutlined />} onClick={() => setMetricEditor({ id: null, activity_id: selectedActivity ? String(selectedActivity.id) : '', code: '', name: '', type: 'penetration', numerator_semantic: '', denominator_semantic: '', collect_method: 'manual_only' })}>新增指标</AntButton>}</Space></div><Notice notice={notice} /><div className="settings-master-detail">
+    <section className="settings-workspace" aria-label="研发活动目录"><div className="settings-workspace__header"><h2 className="settings-workspace__title">研发活动</h2><span className="settings-workspace__count">{catalog.length} 个</span></div><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={catalog} pagination={false} scroll={{ x: canEdit ? 390 : 250 }} /></section>
+    <section className="settings-workspace" aria-label="当前活动的看板指标"><div className="settings-workspace__header"><h2 className="settings-workspace__title">{selectedActivity ? `${selectedActivity.name} · 指标` : '指标'}</h2><span className="settings-workspace__count">{metrics.length} 个</span></div><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={metricColumns} dataSource={metrics} pagination={false} scroll={{ x: 680 }} locale={{ emptyText: <EmptyState>{selectedActivity ? '该活动暂无指标。' : '暂无研发活动。'}</EmptyState> }} /></section>
+  </div><ActivityEditorDrawer editor={activityEditor} onClose={() => setActivityEditor(null)} onSubmit={(values) => save(activityEditor.id ? `/api/activities/${activityEditor.id}` : '/api/activities', activityEditor.id ? 'PATCH' : 'POST', values, activityEditor.id ? '活动已更新。' : '活动已创建。', () => setActivityEditor(null))} submitting={submitting} /><DashboardMetricEditorDrawer editor={metricEditor} catalog={catalog} onClose={() => setMetricEditor(null)} onSubmit={(values) => save(metricEditor.id ? `/api/metrics/${metricEditor.id}` : '/api/metrics', metricEditor.id ? 'PATCH' : 'POST', { ...values, activity_id: Number(values.activity_id), denominator_semantic: values.denominator_semantic || null, collect_method: 'manual_only' }, metricEditor.id ? '指标已更新。' : '指标已创建。', () => setMetricEditor(null))} submitting={submitting} /></div>
 }
 
 function DataMetricEditorDrawer({ editor, onClose, onSubmit, submitting }) {
@@ -712,33 +750,37 @@ function DataMetricTab({ user, refs, onSessionExpired }) {
   const [notice, setNotice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [computing, setComputing] = useState(false)
   const [metricFilters, setMetricFilters] = useState({ team_id: user.role === 'maintainer' ? String(user.maintainer_team_id) : '', completed_from: '', completed_to: '' })
 
   const load = useCallback(async () => {
     setLoading(true)
-    try { const next = await fetchJson('/api/data-metrics?domain=ir'); setMetrics(next); setSelectedCode((current) => current || next[0]?.code || '') } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } finally { setLoading(false) }
+    try { const next = await fetchJson('/api/data-metrics?domain=ir'); setMetrics(next); setSelectedCode((current) => current || next[0]?.code || '') } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setLoading(false) }
   }, [onSessionExpired])
   useEffect(() => { load() }, [load])
 
   async function save(values) {
     setSubmitting(true)
-    try { const body = { domain: 'ir', ...values, filter_definition: typeof values.filter_definition === 'string' ? JSON.parse(values.filter_definition || '{}') : values.filter_definition }; const editing = Boolean(editor.id); await fetchJson(editing ? `/api/data-metrics/${editor.id}` : '/api/data-metrics', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); setEditor(null); setNotice({ type: 'success', text: editing ? '源数据指标规则已更新。' : '源数据指标规则已创建。' }); await load() } catch (error) { setNotice({ type: 'error', text: error instanceof SyntaxError ? '筛选条件必须是合法 JSON。' : error.message }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
+    try { const body = { domain: 'ir', ...values, filter_definition: typeof values.filter_definition === 'string' ? JSON.parse(values.filter_definition || '{}') : values.filter_definition }; const editing = Boolean(editor.id); await fetchJson(editing ? `/api/data-metrics/${editor.id}` : '/api/data-metrics', { method: editing ? 'PATCH' : 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); setEditor(null); setNotice({ type: 'success', text: editing ? '源数据指标规则已更新。' : '源数据指标规则已创建。' }); await load() } catch (error) { setNotice({ type: 'error', text: error instanceof SyntaxError ? '筛选条件必须是合法 JSON。' : dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setSubmitting(false) }
   }
-  async function remove(metric) { if (!metric) return; try { await fetchJson(`/api/data-metrics/${metric.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: '源数据指标规则已删除。' }); setSelectedCode((current) => current === metric.code ? '' : current); await load() } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } }
-  async function compute() { if (!selectedCode) return; try { const params = new URLSearchParams({ metric_code: selectedCode }); Object.entries(metricFilters).forEach(([key, value]) => { if (value) params.set(key, value) }); setResult(await fetchJson(`/api/data-metrics/compute?${params.toString()}`)) } catch (error) { setNotice({ type: 'error', text: error.message }); if (error.status === 401) onSessionExpired() } }
+  async function remove(metric) { if (!metric) return; try { await fetchJson(`/api/data-metrics/${metric.id}`, { method: 'DELETE' }); setNotice({ type: 'success', text: '源数据指标规则已删除。' }); setSelectedCode((current) => current === metric.code ? '' : current); await load() } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } }
+  async function compute() { if (!selectedCode) return; setComputing(true); try { const params = new URLSearchParams({ metric_code: selectedCode }); Object.entries(metricFilters).forEach(([key, value]) => { if (value) params.set(key, value) }); setResult(await fetchJson(`/api/data-metrics/compute?${params.toString()}`)) } catch (error) { setNotice({ type: 'error', text: dataManagementErrorMessage(error) }); if (error.status === 401) onSessionExpired() } finally { setComputing(false) } }
 
   const columns = [
-    { title: '规则', dataIndex: 'name', render: (name, metric) => <Space orientation="vertical" size={0}><Text strong>{name}</Text><Text code>{metric.code}</Text></Space> },
+    { title: '规则', dataIndex: 'name', render: (name, metric) => <Space orientation="vertical" size={0}><AntButton className="settings-rule-select" type="link" size="small" aria-label={`查看规则 ${name} 的结果`} aria-pressed={metric.code === selectedCode} onClick={() => { setSelectedCode(metric.code); setResult(null) }}>{name}</AntButton><Text code>{metric.code}</Text></Space> },
     { title: '类型', dataIndex: 'metric_type', render: (type) => metricValueLabel(type) },
     { title: '字段', key: 'fields', render: (_, metric) => `${metric.numerator_field} / ${metric.denominator_field ?? '—'}` },
-    { title: '状态', dataIndex: 'active', render: (active) => <Tag color={active ? 'green' : 'default'}>{active ? '启用' : '停用'}</Tag> },
-    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" icon={<EditOutlined />} onClick={() => setEditor({ ...metric, filter_definition: JSON.stringify(metric.filter_definition ?? {}, null, 2) })}>编辑</AntButton><Popconfirm title={`确定删除规则“${metric.name}”？`} onConfirm={() => remove(metric)}><AntButton type="link" danger size="small" icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
+    { title: '状态', dataIndex: 'active', render: (active) => <StatusTag tone={active ? 'success' : 'neutral'}>{active ? '启用' : '停用'}</StatusTag> },
+    { title: '操作', key: 'action', fixed: 'right', width: 150, render: (_, metric) => canEdit && <Space size={0}><AntButton type="link" size="small" aria-label={`编辑源数据规则 ${metric.name}`} icon={<EditOutlined />} onClick={() => setEditor({ ...metric, filter_definition: JSON.stringify(metric.filter_definition ?? {}, null, 2) })}>编辑</AntButton><Popconfirm okText="删除" cancelText="取消" title={`确定删除规则“${metric.name}”？`} description="成功删除后无法恢复。" onConfirm={() => remove(metric)}><AntButton type="link" danger size="small" aria-label={`删除源数据规则 ${metric.name}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm></Space> },
   ]
   const selectedMetric = metrics.find((metric) => metric.code === selectedCode)
   const formattedResult = result?.value === null || result?.value === undefined
     ? '—'
     : formatMetricValue({ type: selectedMetric?.metric_type }, result.value)
-  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</AntButton>}</div><Notice notice={notice} /><div className="workbench-two-column"><Card title="源数据指标规则"><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} onRow={(record) => ({ onClick: () => { setSelectedCode(record.code); setResult(null) } })} /></Card><Card title="结果查询"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><AntButton type="primary" disabled={!selectedCode} onClick={compute}>计算当前结果</AntButton></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</Card></div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
+  return <div className="workbench-page"><div className="workbench-toolbar"><Text type="secondary">规则引用 IR 源数据字段；结果按有效正式数据实时计算，不直接编辑。</Text>{canEdit && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ id: null, code: '', name: '', metric_type: 'penetration', activity_code: '', numerator_field: 'ai_assisted', denominator_field: 'record_count', filter_definition: '{}', active: true })}>新增源数据规则</AntButton>}</div><Notice notice={notice} /><div className="settings-master-detail settings-master-detail--rules">
+    <section className="settings-workspace" aria-label="源数据指标规则"><div className="settings-workspace__header"><h2 className="settings-workspace__title">源数据指标规则</h2><span className="settings-workspace__count">{metrics.length} 条</span></div><Table className="operational-table" rowKey="id" size="small" loading={loading} columns={columns} dataSource={metrics} pagination={false} rowClassName={(record) => record.code === selectedCode ? 'is-selected' : ''} scroll={{ x: 520 }} locale={{ emptyText: <EmptyState>暂无源数据规则。</EmptyState> }} /></section>
+    <section className="settings-workspace" aria-label="结果查询"><div className="settings-workspace__header"><h2 className="settings-workspace__title">结果查询</h2></div><div className="settings-workspace__body"><div className="workbench-form"><SelectField label="指标" value={selectedCode} onChange={(value) => { setSelectedCode(value); setResult(null) }} options={metrics.map((metric) => [metric.code, metric.name])} /><SelectField label="团队" value={metricFilters.team_id} disabled={user.role === 'maintainer'} helper={user.role === 'maintainer' ? '按账号绑定团队筛选' : undefined} onChange={(value) => setMetricFilters({ ...metricFilters, team_id: value })} options={refs.teams.map((team) => [team.id, team.name])} /><div className="workbench-form-grid two"><InputField label="完成时间起" type="date" value={metricFilters.completed_from} onChange={(value) => setMetricFilters({ ...metricFilters, completed_from: value })} /><InputField label="完成时间止" type="date" value={metricFilters.completed_to} onChange={(value) => setMetricFilters({ ...metricFilters, completed_to: value })} /></div><AntButton type="primary" disabled={!selectedCode} loading={computing} onClick={compute}>计算当前结果</AntButton></div>{result ? <div className="workbench-result"><Title level={2}>{formattedResult}</Title><Text>{result.metric_name}</Text><Text type="secondary">分子 {result.numerator} · 分母 {result.denominator} · 有效记录 {result.record_count}</Text></div> : <EmptyState>选择规则后计算结果。</EmptyState>}</div></section>
+  </div><DataMetricEditorDrawer editor={editor} onClose={() => setEditor(null)} onSubmit={save} submitting={submitting} /></div>
 }
 
 function MetricManagement({ user, refs, onSessionExpired }) {
@@ -747,7 +789,7 @@ function MetricManagement({ user, refs, onSessionExpired }) {
   const [catalogError, setCatalogError] = useState(null)
   const loadCatalog = useCallback(async () => { setLoading(true); try { setCatalog(await fetchJson('/api/catalog')); setCatalogError(null) } catch (error) { setCatalogError(error); if (error.status === 401) onSessionExpired() } finally { setLoading(false) } }, [onSessionExpired])
   useEffect(() => { loadCatalog() }, [loadCatalog])
-  return <div className="workbench-page"><PageIntro eyebrow="系统管理 / 指标定义" title="指标定义" description="分别管理看板指标目录和 IR 源数据指标规则，避免混淆两套计算入口。" /><ReferenceError error={catalogError} />{user.role !== 'admin' && <ReadOnlyHint />}<Tabs items={[{ key: 'catalog', label: '看板指标目录', children: <DashboardCatalogTab user={user} catalog={catalog} loading={loading} onReload={loadCatalog} onSessionExpired={onSessionExpired} /> }, { key: 'source', label: '源数据指标规则 / 结果查询', children: <DataMetricTab user={user} refs={refs} onSessionExpired={onSessionExpired} /> }]} /></div>
+  return <div className="workbench-page"><PageIntro title="指标定义" description="分别管理看板指标目录和 IR 源数据指标规则，避免混淆两套计算入口。" /><ReferenceError error={catalogError} />{user.role !== 'admin' && <ReadOnlyHint />}<Tabs items={[{ key: 'catalog', label: '看板指标目录', children: <DashboardCatalogTab user={user} catalog={catalog} loading={loading} onReload={loadCatalog} onSessionExpired={onSessionExpired} /> }, { key: 'source', label: '源数据指标规则 / 结果查询', children: <DataMetricTab user={user} refs={refs} onSessionExpired={onSessionExpired} /> }]} /></div>
 }
 
 function MaturityReadOnly({ month, onSessionExpired }) {
@@ -829,7 +871,7 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
       setPreview(false)
       onSaved?.()
     } catch (error) {
-      setMessage({ type: 'error', text: error.message })
+      setMessage({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally {
       setSaving(false)
@@ -847,7 +889,7 @@ function MaturityEditor({ teamId, month, catalog, onSessionExpired, onSaved }) {
       setMessage('本月成熟度已清空。')
       onSaved?.()
     } catch (error) {
-      setMessage({ type: 'error', text: error.message })
+      setMessage({ type: 'error', text: dataManagementErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally {
       setClearing(false)
@@ -901,7 +943,8 @@ function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
 export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', initialMonth, onRequirementTypeChange, user, onSessionExpired }) {
   const section = requestedSection ?? sectionFromPath(pathname)
   const refs = useReferenceData(onSessionExpired, user)
-  if (refs.loading && ['teams', 'products', 'metrics'].includes(section)) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
+  if (refs.loading && !refs.hasLoaded && ['teams', 'products', 'metrics'].includes(section)) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
+  if (refs.error && ['teams', 'products'].includes(section)) return <div className="data-management-content"><StatusPage status="error" title="系统管理数据暂时无法加载" description="请重试；如果问题持续，请稍后再试。" actions={<AntButton type="primary" onClick={() => refs.reload()}>重试</AntButton>} /></div>
   let content
   if (section === 'teams') content = <TeamManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'products') content = <ProductManagement user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />

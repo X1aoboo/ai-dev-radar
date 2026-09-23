@@ -355,38 +355,41 @@ describe('data management workbench rendering', () => {
 
   test('team and product pages use master-detail layouts', async () => {
     const teamRenderer = await render('teams')
-    expect(teamRenderer.root.findAllByProps({ className: 'workbench-master-detail' })).toHaveLength(1)
+    expect(teamRenderer.root.findAllByProps({ className: 'settings-master-detail' })).toHaveLength(1)
     expect(renderText(teamRenderer.toJSON())).toContain('团队')
     teamRenderer.unmount()
 
     const productRenderer = await render('products')
-    expect(productRenderer.root.findAllByProps({ className: 'workbench-master-detail' })).toHaveLength(1)
+    expect(productRenderer.root.findAllByProps({ className: 'settings-master-detail' })).toHaveLength(1)
     expect(renderText(productRenderer.toJSON())).toContain('产品')
+    expect(renderText(productRenderer.toJSON())).toContain('版本与开发迭代期')
     productRenderer.unmount()
   })
 
   test('master-detail selection uses focusable view buttons without row click coupling', async () => {
     const teamRenderer = await render('teams')
     const teamList = teamRenderer.root.findAllByType(MockTable)[0]
-    expect(teamList.props.scroll.x).toBe(370)
-    expect(teamList.props.columns.map(({ width }) => width)).toEqual([100, 90, 180])
+    expect(teamList.props.scroll.x).toBe(296)
+    expect(teamList.props.columns.map(({ width }) => width)).toEqual([160, 64, 72])
     expect(teamRenderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '编辑团队 团队A')).toBe(true)
     expect(teamRenderer.root.findAllByType('button').some((button) => button.props['aria-label'] === '编辑团队成员 成员一')).toBe(true)
     const teamView = teamRenderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看团队 团队B')
     expect(teamView.type).toBe('button')
     const teamStopPropagation = vi.fn()
     await act(async () => { teamView.props.onClick({ stopPropagation: teamStopPropagation }) })
-    expect(teamStopPropagation).toHaveBeenCalledOnce()
+    expect(teamStopPropagation).not.toHaveBeenCalled()
     expect(renderText(teamRenderer.toJSON())).toContain('团队B · 团队详情')
     teamRenderer.unmount()
 
     const productRenderer = await render('products')
     const productList = productRenderer.root.findAllByType(MockTable)[0]
-    expect(productList.props.scroll.x).toBe(475)
-    expect(productList.props.columns.map(({ width }) => width)).toEqual([120, 95, 70, 190])
+    expect(productList.props.scroll.x).toBe(288)
+    expect(productList.props.columns.map(({ width }) => width)).toEqual([160, 56, 72])
     const productView = productRenderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看产品 产品B')
     expect(productView.type).toBe('button')
-    await act(async () => { productView.props.onClick({ stopPropagation: vi.fn() }) })
+    const productStopPropagation = vi.fn()
+    await act(async () => { productView.props.onClick({ stopPropagation: productStopPropagation }) })
+    expect(productStopPropagation).not.toHaveBeenCalled()
     expect(renderText(productRenderer.toJSON())).toContain('产品B · 层级详情')
     const productEdit = productRenderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '编辑产品 产品B')
     await act(async () => { productEdit.props.onClick({ stopPropagation: vi.fn() }) })
@@ -396,10 +399,40 @@ describe('data management workbench rendering', () => {
     productRenderer.unmount()
   })
 
+  test('team selection stays on its detail after a mutation refresh', async () => {
+    const renderer = await render('teams')
+    const teamView = renderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看团队 团队B')
+    await act(async () => teamView.props.onClick())
+    const addMember = renderer.root.findAllByType('button').find((button) => button.children.includes('新增成员'))
+    await act(async () => addMember.props.onClick())
+    const form = renderer.root.findAll((node) => Boolean(node.props['data-form-submit'])).at(-1)
+    await act(async () => form.props['data-form-submit']({ team_id: '2', employee_id: 'B003', name: '成员三', role: '研发工程师' }))
+    expect(renderText(renderer.toJSON())).toContain('团队B · 团队详情')
+    expect(fetchJson.mock.calls.some(([url, options]) => url === '/api/team-members' && options?.method === 'POST')).toBe(true)
+    renderer.unmount()
+  })
+
+  test('product selection stays on its detail after a mutation refresh', async () => {
+    const renderer = await render('products')
+    const productView = renderer.root.findAllByType('button').find((button) => button.props['aria-label'] === '查看产品 产品B')
+    await act(async () => productView.props.onClick())
+    const editProduct = renderer.root.findByProps({ 'aria-label': '编辑产品 产品B' })
+    await act(async () => editProduct.props.onClick())
+    const form = renderer.root.findAll((node) => Boolean(node.props['data-form-submit'])).at(-1)
+    await act(async () => form.props['data-form-submit']({ team_id: '2', name: '产品B已编辑' }))
+    expect(renderText(renderer.toJSON())).toContain('产品B · 层级详情')
+    expect(fetchJson.mock.calls.some(([url, options]) => url === '/api/products/11' && options?.method === 'PATCH')).toBe(true)
+    renderer.unmount()
+  })
+
   test('admin can confirm team deletion and refreshes the references', async () => {
     const renderer = await render('teams')
     const confirmation = renderer.root.findAllByProps({ 'data-popconfirm': true }).find((node) => node.findAllByProps({ 'aria-label': '删除团队 团队A' }).length > 0)
     expect(confirmation).toBeDefined()
+    const popconfirm = renderer.root.findAllByType(MockPopconfirm).find((node) => node.findAllByProps({ 'aria-label': '删除团队 团队A' }).length > 0)
+    expect(popconfirm.props.okText).toBe('删除')
+    expect(popconfirm.props.cancelText).toBe('取消')
+    expect(popconfirm.props.description).toContain('有关联数据')
 
     await act(async () => { await confirmation.props['data-on-confirm']() })
 
@@ -410,7 +443,7 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
-  test('admin preserves a team deletion conflict from the backend', async () => {
+  test('admin explains team deletion constraints in Chinese', async () => {
     const renderer = await render('teams')
     fetchJson.mockImplementation(async (url, options) => {
       if (url === '/api/teams/1' && options?.method === 'DELETE') {
@@ -424,7 +457,7 @@ describe('data management workbench rendering', () => {
 
     await act(async () => { await confirmation.props['data-on-confirm']() })
 
-    expect(renderText(renderer.toJSON())).toContain('team is referenced by facts or maintainers')
+    expect(renderText(renderer.toJSON())).toContain('该团队仍有事实或维护者关联，无法删除。')
     renderer.unmount()
   })
 
@@ -496,6 +529,8 @@ describe('data management workbench rendering', () => {
     expect(renderer.root.findAllByProps({ 'data-tabs': true })).toHaveLength(1)
     expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toContain('看板指标目录')
     expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toContain('源数据指标规则 / 结果查询')
+    expect(renderer.root.findAllByProps({ className: 'settings-master-detail' })).toHaveLength(1)
+    expect(renderer.root.findAllByProps({ className: 'settings-master-detail settings-master-detail--rules' })).toHaveLength(1)
     expect(renderText(renderer.toJSON())).toContain('SA设计')
     renderer.unmount()
   })

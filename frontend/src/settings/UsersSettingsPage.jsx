@@ -1,14 +1,25 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button as AntButton, Card, Drawer, Empty, Form as AntForm, Input, Popconfirm, Select, Space, Spin, Table, Tag, Typography } from 'antd'
+import { Alert, Button as AntButton, Drawer, Empty, Form as AntForm, Input, Popconfirm, Select, Space, Table, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
+import StatusPage, { ContentLoadingState } from '../components/StatusPage'
 
 const { Text } = Typography
 
 const EMPTY_USER = { id: null, username: '', password: '', role: 'viewer', maintainer_team_id: '' }
 const ROLE_LABELS = { admin: '管理员', maintainer: '维护者', viewer: '查看者' }
+const USER_CONFLICTS = {
+  'cannot delete the current user': '不能删除当前账号。',
+  'cannot delete the last admin': '不能删除唯一的管理员账号。',
+  'resource already exists': '账号名称已被使用，请修改后重试。',
+}
+
+function userErrorMessage(error) {
+  if (error.status !== 409) return error.message
+  return USER_CONFLICTS[error.message] ?? '账号或角色与现有权限关系冲突，操作未完成。'
+}
 
 function UserEditorDrawer({ editor, teams, onClose, onSubmit, submitting }) {
   const [form] = AntForm.useForm()
@@ -32,16 +43,18 @@ export default function UsersSettingsPage({ user, onSessionExpired }) {
   const [notice, setNotice] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [loadError, setLoadError] = useState(null)
 
   const load = useCallback(async ({ clearNotice = true } = {}) => {
     setLoading(true)
+    setLoadError(null)
     try {
       const [nextTeams, nextUsers] = await Promise.all([fetchJson('/api/teams'), fetchJson('/api/auth/users')])
       setTeams(nextTeams)
       setUsers(nextUsers)
       if (clearNotice) setNotice(null)
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setLoadError(error)
       if (error.status === 401) onSessionExpired()
     } finally { setLoading(false) }
   }, [onSessionExpired])
@@ -60,7 +73,7 @@ export default function UsersSettingsPage({ user, onSessionExpired }) {
       setNotice({ type: 'success', text: editing ? '用户角色已更新。' : '用户已创建。' })
       await load({ clearNotice: false })
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: userErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     } finally { setSubmitting(false) }
   }
@@ -71,24 +84,27 @@ export default function UsersSettingsPage({ user, onSessionExpired }) {
       setNotice({ type: 'success', text: '账号已删除。' })
       await load({ clearNotice: false })
     } catch (error) {
-      setNotice({ type: 'error', text: error.message })
+      setNotice({ type: 'error', text: userErrorMessage(error) })
       if (error.status === 401) onSessionExpired()
     }
   }
 
   const columns = [
-    { title: '账号', dataIndex: 'username', render: (value) => <Text strong>{value}</Text> },
-    { title: '角色', dataIndex: 'role', render: (role) => <Tag color={role === 'admin' ? 'blue' : role === 'maintainer' ? 'gold' : 'default'}>{ROLE_LABELS[role] ?? role} · {role}</Tag> },
+    { title: '账号', dataIndex: 'username', render: (value, account) => <span><Text strong>{value}</Text>{account.id === user.id && <span className="settings-current-account">当前账号</span>}</span> },
+    { title: '角色', dataIndex: 'role', render: (role) => <span className={`settings-role${role === 'admin' ? ' settings-role--admin' : ''}`}>{ROLE_LABELS[role] ?? role} · {role}</span> },
     { title: '绑定团队', key: 'team', render: (_, account) => teams.find((team) => team.id === account.maintainer_team_id)?.name ?? '—' },
-    { title: '操作', key: 'actions', fixed: 'right', width: 180, render: (_, account) => <Space size={0}><AntButton type="link" size="small" aria-label={`编辑账号 ${account.username} 角色`} icon={<EditOutlined />} onClick={() => setEditor({ ...account, password: '', maintainer_team_id: account.maintainer_team_id ? String(account.maintainer_team_id) : '' })}>编辑角色</AntButton>{account.id !== user.id && <Popconfirm title={`确定删除账号“${account.username}”？`} onConfirm={() => remove(account)}><AntButton type="link" danger size="small" aria-label={`删除账号 ${account.username}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm>}</Space> },
+    { title: '操作', key: 'actions', fixed: 'right', width: 180, render: (_, account) => <Space size={0}><AntButton type="link" size="small" aria-label={`编辑账号 ${account.username} 角色`} icon={<EditOutlined />} onClick={() => setEditor({ ...account, password: '', maintainer_team_id: account.maintainer_team_id ? String(account.maintainer_team_id) : '' })}>编辑角色</AntButton>{account.id !== user.id && <Popconfirm okText="删除" cancelText="取消" title={`确定删除账号“${account.username}”？`} description="该账号将无法继续登录；删除成功后无法恢复。" onConfirm={() => remove(account)}><AntButton type="link" danger size="small" aria-label={`删除账号 ${account.username}`} icon={<DeleteOutlined />}>删除</AntButton></Popconfirm>}</Space> },
   ]
 
-  if (loading) return <div className="settings-page"><div className="workbench-state"><Spin size="small" />读取用户与权限…</div></div>
+  const pageHeader = <PageHeader title="用户与权限" description="管理本地账号、角色和维护者的数据归属。" actions={!loading && <AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor(EMPTY_USER)}>新增账号</AntButton>} />
+  if (loading) return <div className="settings-page">{pageHeader}<ContentLoadingState label="读取用户与权限…" /></div>
   return (
     <div className="settings-page">
-      <PageHeader eyebrow="系统管理 / 访问控制" title="用户与权限" description="管理本地账号、角色和维护者的数据归属。" actions={<AntButton type="primary" icon={<PlusOutlined />} onClick={() => setEditor(EMPTY_USER)}>新增账号</AntButton>} />
+      {pageHeader}
       {notice && <Alert className="settings-page__notice" type={notice.type} showIcon message={notice.text} />}
-      <Card title="账号列表" extra={<Text type="secondary">共 {users.length} 个账号</Text>}><Table rowKey="id" size="small" columns={columns} dataSource={users} pagination={false} locale={{ emptyText: <Empty description="暂无账号" /> }} scroll={{ x: 700 }} /></Card>
+      {loadError
+        ? <StatusPage status="error" layout="compact" title="用户列表暂时无法加载" description="请重试；如果问题持续，请稍后再试。" actions={<AntButton type="primary" onClick={() => load()}>重试</AntButton>} />
+        : <section className="operational-workspace" aria-label="用户与权限列表"><div className="operational-workspace__header"><h2 className="operational-workspace__title">账号</h2><span className="operational-workspace__count">共 {users.length} 个</span></div><Table className="operational-table" rowKey="id" size="small" columns={columns} dataSource={users} pagination={false} locale={{ emptyText: <Empty description="暂无账号" /> }} scroll={{ x: 700 }} /></section>}
       <UserEditorDrawer editor={editor} teams={teams} onClose={() => setEditor(null)} onSubmit={submit} submitting={submitting} />
     </div>
   )
