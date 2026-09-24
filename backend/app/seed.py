@@ -1,14 +1,15 @@
 """指标目录初始数据 + 演示数据种子。
 
 - 目录：spec §2.1 的 15 个活动及全部指标，全部标记 `仅补录`（ADR-0002）
-- 演示数据：4 团队、2 版本、各 2 迭代，按 spec 口径生成事实记录（含负值效率、实际=0 样例）
-- 幂等：先清后插；随机数为固定种子（20260908，参照原型 seed），重跑结果一致
+- 演示数据：4 团队、2 版本、近六个月各 1 迭代及完整事实/成熟度/IR 示例
+- 幂等：先清后插；同一基准日期使用固定随机种子（20260908）重跑结果一致
 
 用法：cd backend && python -m app.seed [--db URL]
 """
 
 import argparse
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
@@ -124,12 +125,16 @@ def mulberry32(seed):
 
 
 SEED = 20260908
-WEEKS = 34  # 2026 年 W1–W34（1–8 月）
-W1_MONDAY = date(2026, 1, 5)  # 2026-01-05 是周一（Asia/Shanghai 周口径）
+WINDOW_MONTHS = 6
 
 
-def week_monday(n: int) -> date:
-    return W1_MONDAY + timedelta(days=7 * (n - 1))
+def month_start(value: date, offset: int = 0) -> date:
+    index = value.year * 12 + value.month - 1 + offset
+    return date(index // 12, index % 12 + 1, 1)
+
+
+def month_end(value: date) -> date:
+    return month_start(value, 1) - timedelta(days=1)
 
 
 # 团队画像（演示假设）：m = AI 成熟度基线，size = 规模（分母量级）
@@ -147,20 +152,6 @@ ACT_FACTOR = {
     "third": 0.45, "vul": 0.6, "ad": 1, "wb": 0.4,
 }
 
-# (版本名, [(迭代名, 起始周, 结束周)])
-VERSIONS = [
-    ("SCC 27.1.RC1", [
-        ("SCC 27.1.RC1-迭代一", 1, 9),
-        ("SCC 27.1.RC1-迭代二", 10, 18),
-    ]),
-    ("SCC 27.2.RC1", [
-        ("SCC 27.2.RC1-迭代一", 19, 27),
-        ("SCC 27.2.RC1-迭代二", 28, 34),
-    ]),
-]
-
-ENTERED_AT = datetime(2026, 1, 1, 12, 0, 0)
-
 # ---------------------------------------------------------------- 种子实现
 
 
@@ -177,8 +168,13 @@ def seed_catalog(db: Session) -> None:
             ))
 
 
-def seed_demo(db: Session) -> None:
+def seed_demo(db: Session, today: date) -> None:
     rnd = mulberry32(SEED)
+    months = [month_start(today, offset) for offset in range(1 - WINDOW_MONTHS, 1)]
+    # 人工补录必须晚于演示种子，才能按既有“最新人工事实”规则覆盖。
+    entered_at = datetime.combine(date(2000, 1, 1), time(12))
+    version_names = [f"演示版本 {months[0]:%Y-%m}—{months[2]:%Y-%m}",
+                     f"演示版本 {months[3]:%Y-%m}—{months[5]:%Y-%m}"]
 
     def rr(lo, hi):
         return lo + rnd() * (hi - lo)
@@ -189,7 +185,7 @@ def seed_demo(db: Session) -> None:
     teams = []
     for name, _meta in TEAMS:
         team = Team(name=name, source_mapping={
-            "product_versions": ["SCC 27.1.RC1", "SCC 27.2.RC1"],
+            "product_versions": version_names,
             "repos": [f"https://git.example.com/{name}/main.git"],
         })
         db.add(team)
@@ -221,20 +217,21 @@ def seed_demo(db: Session) -> None:
         ))
     db.add(User(username="viewer", password_hash=hash_password(SEED_PASSWORD), role="viewer"))
 
-    iterations = []  # (Iteration, week_lo, week_hi)
+    iterations = []  # (Iteration, 月份, 事实完成日期)
     versions = []
-    for vi, (vname, its) in enumerate(VERSIONS):
+    for vi, vname in enumerate(version_names):
         # 演示数据只为第一支团队挂载一套产品版本；旧版事实看板仍可跨团队展示。
         version = ProductVersion(name=vname, product_id=products[0].id, sort_order=vi)
         db.add(version)
         versions.append(version)
         db.flush()
-        for ii, (iname, w_lo, w_hi) in enumerate(its):
-            it = Iteration(version_id=version.id, name=iname, sort_order=ii,
-                           start_date=week_monday(w_lo),
-                           end_date=week_monday(w_hi) + timedelta(days=6))
+        for ii, start in enumerate(months[vi * 3:(vi + 1) * 3]):
+            end = min(month_end(start), today)
+            fact_date = today if start == months[-1] else min(start + timedelta(days=14), end)
+            it = Iteration(version_id=version.id, name=f"{vname}-迭代{ii + 1} ({start:%Y-%m})",
+                           sort_order=ii, start_date=start, end_date=end)
             db.add(it)
-            iterations.append((it, w_lo, w_hi))
+            iterations.append((it, start, fact_date))
     db.flush()
 
     activities = db.query(Activity).order_by(Activity.sort_order).all()
@@ -246,62 +243,68 @@ def seed_demo(db: Session) -> None:
             numerator=num, denominator=den,
             start_date=start, end_date=end,
             source="manual",  # 第一版全部仅补录（ADR-0002）
-            entered_by="演示种子", entered_at=ENTERED_AT,
+            entered_by="演示种子", entered_at=entered_at,
         ))
 
     # 关键研发活动：团队 × 活动 × 指标 × 迭代
-    for ti, (team, (_name, meta)) in enumerate(zip(teams, TEAMS)):
+    for team, (_name, meta) in zip(teams, TEAMS):
         for act in activities:
             if act.kind != "key":
                 continue
             factor = ACT_FACTOR[act.code]
-            for it, w_lo, w_hi in iterations:
+            for month_index, (it, _month, fact_date) in enumerate(iterations):
                 m = meta["m"]
-                grow = (w_lo - 1) / WEEKS * 0.12  # 随时间缓慢爬升
+                grow = month_index / (WINDOW_MONTHS - 1) * 0.12
                 rate = clamp(m * factor + grow + rr(-0.07, 0.07), 0.02, 0.98)
                 eff = clamp(m * 0.7 - 0.15 + grow * 0.8 + rr(-0.16, 0.16), -0.35, 0.8)
-                week = w_lo + int(rr(0, w_hi - w_lo + 1))
-                start = week_monday(week)
-                end = start + timedelta(days=4)  # 完成时间落在该周内
                 for metric in act.metrics:
                     if metric.type in ("penetration", "ratio"):
                         den = round(rr(15, 70) * meta["size"])
-                        fact(team.id, metric, round(den * rate), den, start, end, it.id)
+                        fact(team.id, metric, round(den * rate), den, fact_date, fact_date, it.id)
                     elif metric.type == "count":
                         fact(team.id, metric, round(rr(30, 180) * meta["size"] * (0.3 + rate)),
-                             None, start, end, it.id)
+                             None, fact_date, fact_date, it.id)
                     elif metric.type == "efficiency":
                         items = round(rr(8, 26) * meta["size"])
                         est = round(items * rr(2, 8), 1)
                         act_days = round(est * (1 - eff), 1)
-                        fact(team.id, metric, est, act_days, start, end, it.id)
+                        fact(team.id, metric, est, act_days, fact_date, fact_date, it.id)
 
-    # 通用研发能力：团队 × 活动 × 指标 × 周（仅时间维度，无迭代）
+    # 通用研发能力：六个月每周有事实，近 30 天每天有事实；不依赖迭代。
+    weekly_dates = []
+    cursor = months[0]
+    while cursor <= today:
+        weekly_dates.append(cursor)
+        cursor += timedelta(days=7)
+    recent_start = max(months[0], today - timedelta(days=29))
+    daily_dates = [recent_start + timedelta(days=offset)
+                   for offset in range((today - recent_start).days + 1)]
+    time_dates = sorted(set(weekly_dates + daily_dates))
     for team, (_name, meta) in zip(teams, TEAMS):
         for act in activities:
             if act.kind != "general" or act.code == "ad":
                 continue
             factor = ACT_FACTOR[act.code]
-            for w in range(1, WEEKS + 1):
+            for index, point_date in enumerate(time_dates):
                 m = meta["m"]
-                rate = clamp(m * factor + (w / WEEKS) * 0.12 + rr(-0.09, 0.09), 0.01, 0.98)
-                start = week_monday(w)
-                end = start + timedelta(days=4)
+                rate = clamp(m * factor + (index / max(1, len(time_dates) - 1)) * 0.12 + rr(-0.09, 0.09), 0.01, 0.98)
                 for metric in act.metrics:
                     if metric.type == "boolean":
                         continue
                     if metric.type == "ratio":
                         den = round(rr(8, 45) * meta["size"])
-                        fact(team.id, metric, round(den * rate), den, start, end)
+                        fact(team.id, metric, round(den * rate), den, point_date, point_date)
                     else:  # count
                         fact(team.id, metric, round(rr(4, 30) * meta["size"] * (0.3 + rate)),
-                             None, start, end)
+                             None, point_date, point_date)
 
-    # 布尔型：一次性事实（自动化构建部署），团队D 不具备
+    # 布尔型：每月状态，团队D 不具备；显式选择当前月也能读取状态。
     ad_bool = metric_by_code["ad-bool"]
     for team in teams:
-        fact(team.id, ad_bool, 0 if team.name == "团队D" else 1, None,
-             W1_MONDAY, W1_MONDAY)
+        for start in months:
+            point_date = today if start == months[-1] else start + timedelta(days=14)
+            fact(team.id, ad_bool, 0 if team.name == "团队D" else 1, None,
+                 point_date, point_date)
 
     # ---- 边界样例（验收项）：实际=0、负值效率提升 ----
     db.flush()  # 上面的 insert 都在 pending，先落库再改
@@ -313,53 +316,61 @@ def seed_demo(db: Session) -> None:
             FactRecord.iteration_id == iteration.id,
         ).all()
 
-    # 实际=0（看板侧按 0.5 人天计分母的口径样例）：团队C 在 27.2.RC1-迭代一 的全部效率指标
+    # 实际=0（看板侧按 0.5 人天计分母的口径样例）。
     team_c = next(t for t in teams if t.name == "团队C")
-    it_272_1 = next(it for it, _lo, _hi in iterations if it.name == "SCC 27.2.RC1-迭代一")
-    for rec in facts_of(team_c, it_272_1):
+    for rec in facts_of(team_c, iterations[3][0]):
         rec.denominator = 0.0
-    # 负值效率提升（实际 > 预估，(预估-实际)/实际 = -28.6%）：团队D 在 27.1.RC1-迭代一
+    # 负值效率提升（实际 > 预估，(预估-实际)/实际 = -28.6%）。
     team_d = next(t for t in teams if t.name == "团队D")
-    it_271_1 = next(it for it, _lo, _hi in iterations if it.name == "SCC 27.1.RC1-迭代一")
-    for rec in facts_of(team_d, it_271_1):
+    for rec in facts_of(team_d, iterations[0][0]):
         rec.denominator = round(rec.numerator * 1.4, 1)
 
-    # 首期数据管理工作台的 IR 示例数据。
-    ir_samples = [
-        ("IR-DEMO-001", "CNAE 智能配置", True, "CNAE"),
-        ("IR-DEMO-002", "CNAE 批量导入", False, "CNAE"),
-    ]
-    first_version = versions[0]
-    first_iterations = [item for item, *_ in iterations if item.version_id == first_version.id]
-    for index, (number, name, ai_assisted, module) in enumerate(ir_samples):
-        db.add(IRRequirement(
-            requirement_no=number,
-            requirement_name=name,
-            responsible_employee_id=f"A{index + 1:03d}",
-            product_id=products[0].id,
-            version_id=first_version.id,
-            iteration_id=first_iterations[index].id,
-            completed_at=first_iterations[index].end_date,
-            business_module=module,
-            requirement_scenario="AI研发效能数据管理",
-            estimated_workload=10.0 + index,
-            actual_workload=5.0 + index,
-            sa_estimated_workload=4.0,
-            sa_actual_workload=2.0,
-            se_estimated_workload=6.0 + index,
-            se_actual_workload=3.0 + index,
-            ai_assisted=ai_assisted,
-            ai_attribute_metadata={
-                "ai_assisted": {
-                    "source": "manual",
-                    "updated_by": "演示种子",
-                    "updated_at": ENTERED_AT.isoformat(),
-                }
-            },
-            record_source="seed",
-            updated_by="演示种子",
-            updated_at=ENTERED_AT,
-        ))
+    # 成熟度是独立的模拟人工判断，不从事实指标计算。
+    for team, (_name, meta) in zip(teams, TEAMS):
+        for month_index, start in enumerate(months):
+            for activity_index, activity in enumerate(activities):
+                score = clamp(meta["m"] * 5 + (month_index - 2) * 0.12
+                              + (ACT_FACTOR[activity.code] - 0.7) * 0.8
+                              + (activity_index % 3 - 1) * 0.08, 0, 5)
+                db.add(MaturityRecord(
+                    team_id=team.id, activity_id=activity.id, assessment_month=start,
+                    score_decimal=f"{score:.2f}", note="演示评估（模拟人工判断）",
+                    maintained_by="演示种子", updated_at=entered_at,
+                ))
+
+    # IR 工作台：每月两条正式源记录，AI 与非 AI 样例均覆盖。
+    for month_index, (it, _start, fact_date) in enumerate(iterations):
+        version = next(version for version in versions if version.id == it.version_id)
+        for sample_index in range(2):
+            index = month_index * 2 + sample_index
+            db.add(IRRequirement(
+                requirement_no=f"IR-DEMO-{index + 1:03d}",
+                requirement_name=f"CNAE 演示需求 {index + 1}",
+                responsible_employee_id=f"A{sample_index + 1:03d}",
+                product_id=products[0].id,
+                version_id=version.id,
+                iteration_id=it.id,
+                completed_at=fact_date,
+                business_module="CNAE",
+                requirement_scenario="AI研发效能数据管理",
+                estimated_workload=10.0 + sample_index,
+                actual_workload=5.0 + sample_index,
+                sa_estimated_workload=4.0,
+                sa_actual_workload=2.0,
+                se_estimated_workload=6.0 + sample_index,
+                se_actual_workload=3.0 + sample_index,
+                ai_assisted=sample_index == 0,
+                ai_attribute_metadata={
+                    "ai_assisted": {
+                        "source": "manual",
+                        "updated_by": "演示种子",
+                        "updated_at": entered_at.isoformat(),
+                    }
+                },
+                record_source="seed",
+                updated_by="演示种子",
+                updated_at=entered_at,
+            ))
 
 
 def seed_data_metrics(db: Session) -> None:
@@ -416,10 +427,11 @@ def clear(db: Session) -> None:
     db.execute(delete(Activity))
 
 
-def run_seed(db: Session) -> None:
+def run_seed(db: Session, today: date | None = None) -> None:
+    today = today or datetime.now(ZoneInfo("Asia/Shanghai")).date()
     clear(db)
     seed_catalog(db)
-    seed_demo(db)
+    seed_demo(db, today)
     seed_data_metrics(db)
     db.commit()
 

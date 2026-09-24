@@ -9,7 +9,7 @@
     "dev:backend": "node scripts/run-python.mjs --env APP_ENV=development -m uvicorn app.main:app --reload --app-dir backend --port 8000",
     "dev:frontend": "npm --prefix frontend run dev",
     "setup": "node scripts/bootstrap.mjs",
-    "seed": "node scripts/run-python.mjs --cwd backend --env APP_ENV=development -m app.seed",
+    "seed": "node scripts/run-python.mjs --env APP_ENV=development --env PYTHONPATH=backend -m app.seed",
     "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q",
     "test:e2e:gateway": "node scripts/run-gateway-e2e.mjs",
     "gate": "node scripts/run-quality-gate.mjs",

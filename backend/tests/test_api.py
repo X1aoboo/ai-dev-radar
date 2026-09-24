@@ -20,24 +20,26 @@ def test_teams_endpoint(authenticated_client):
     assert res.status_code == 200
     body = res.json()
     assert len(body) == 4
-    assert body[0]["source_mapping"]["product_versions"] == ["SCC 27.1.RC1", "SCC 27.2.RC1"]
+    versions = authenticated_client.get("/api/versions").json()
+    assert body[0]["source_mapping"]["product_versions"] == [v["name"] for v in versions]
 
 
 def test_versions_endpoint(authenticated_client):
     res = authenticated_client.get("/api/versions")
     assert res.status_code == 200
     body = res.json()
-    assert [v["name"] for v in body] == ["SCC 27.1.RC1", "SCC 27.2.RC1"]
-    assert all(len(v["iterations"]) == 2 for v in body)
-    assert body[1]["iterations"][0]["name"] == "SCC 27.2.RC1-迭代一"
+    assert len(body) == 2
+    assert all(v["name"].startswith("演示版本 ") for v in body)
+    assert all(len(v["iterations"]) == 3 for v in body)
+    assert len({item["start_date"][:7] for v in body for item in v["iterations"]}) == 6
 
 
 def test_iterations_endpoint_filters_by_version(authenticated_client):
     all_iters = authenticated_client.get("/api/iterations").json()
-    assert len(all_iters) == 4
+    assert len(all_iters) == 6
     version_id = authenticated_client.get("/api/versions").json()[0]["id"]
     filtered = authenticated_client.get(f"/api/iterations?version_id={version_id}").json()
-    assert len(filtered) == 2
+    assert len(filtered) == 3
 
 
 def test_facts_endpoint_filters(authenticated_client):

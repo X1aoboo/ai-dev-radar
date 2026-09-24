@@ -1,5 +1,8 @@
 """手动补录 API 与当前事实记录语义的行为测试。"""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 import pytest
 from sqlalchemy import delete
 
@@ -38,20 +41,15 @@ def team_by_name(client, name):
     return next(team for team in client.get("/api/teams").json() if team["name"] == name)
 
 
-def iteration_by_name(client, name):
-    return next(
-        iteration
-        for version in client.get("/api/versions").json()
-        for iteration in version["iterations"]
-        if iteration["name"] == name
-    )
+def selected_iteration(client):
+    return client.get("/api/versions").json()[1]["iterations"][0]
 
 
 def test_maintainer_can_append_a_key_fact_with_audit_metadata(client):
     login(client, "maintainer.团队A")
     team = team_by_name(client, "团队A")
     metric = metric_by_code(client, "sa-ir-pen")
-    iteration = iteration_by_name(client, "SCC 27.2.RC1-迭代一")
+    iteration = selected_iteration(client)
 
     response = client.post(
         "/api/facts",
@@ -82,7 +80,7 @@ def test_maintainer_cannot_append_a_fact_for_another_team(client):
     login(client, "maintainer.团队A")
     team = team_by_name(client, "团队B")
     metric = metric_by_code(client, "sa-ir-pen")
-    iteration = iteration_by_name(client, "SCC 27.2.RC1-迭代一")
+    iteration = selected_iteration(client)
 
     response = client.post(
         "/api/facts",
@@ -102,7 +100,7 @@ def test_viewer_cannot_append_a_fact(client):
     login(client, "viewer")
     team = team_by_name(client, "团队A")
     metric = metric_by_code(client, "sa-ir-pen")
-    iteration = iteration_by_name(client, "SCC 27.2.RC1-迭代一")
+    iteration = selected_iteration(client)
 
     response = client.post(
         "/api/facts",
@@ -122,7 +120,7 @@ def test_repeated_manual_entry_keeps_history_but_compute_uses_latest_manual(clie
     login(client, "maintainer.团队A")
     team = team_by_name(client, "团队A")
     metric = metric_by_code(client, "sa-ir-pen")
-    iteration = iteration_by_name(client, "SCC 27.2.RC1-迭代一")
+    iteration = selected_iteration(client)
     payload = {
         "team_id": team["id"],
         "metric_id": metric["id"],
@@ -169,7 +167,7 @@ def test_repeated_manual_entry_keeps_history_but_compute_uses_latest_manual(clie
             "team_id": team["id"],
             "iteration_id": iteration["id"],
             "dim": "iteration",
-            "version_id": 2,
+            "version_id": iteration["version_id"],
         },
     )
     assert computed.status_code == 200
@@ -180,14 +178,17 @@ def test_general_manual_entry_uses_an_explicit_period(client):
     login(client, "maintainer.团队A")
     team = team_by_name(client, "团队A")
     metric = metric_by_code(client, "mrr-rate")
+    future_year = datetime.now(ZoneInfo("Asia/Shanghai")).year + 2
+    start_date = f"{future_year}-09-01"
+    end_date = f"{future_year}-09-07"
 
     response = client.post(
         "/api/facts",
         json={
             "team_id": team["id"],
             "metric_id": metric["id"],
-            "start_date": "2026-09-01",
-            "end_date": "2026-09-07",
+            "start_date": start_date,
+            "end_date": end_date,
             "numerator": 3,
             "denominator": 4,
         },
@@ -195,8 +196,8 @@ def test_general_manual_entry_uses_an_explicit_period(client):
 
     assert response.status_code == 201
     assert response.json()["iteration_id"] is None
-    assert response.json()["start_date"] == "2026-09-01"
-    assert response.json()["end_date"] == "2026-09-07"
+    assert response.json()["start_date"] == start_date
+    assert response.json()["end_date"] == end_date
 
     computed = client.get(
         "/api/compute",
@@ -208,7 +209,7 @@ def test_general_manual_entry_uses_an_explicit_period(client):
         },
     )
     assert computed.status_code == 200
-    september = next(point for point in computed.json()["series"][0]["values"] if point["period_id"] == "2026-09")
+    september = next(point for point in computed.json()["series"][0]["values"] if point["period_id"] == f"{future_year}-09")
     assert september["value"] == 0.75
 
 
@@ -217,7 +218,7 @@ def test_manual_entry_rejects_mismatched_scope_and_metric_values(client):
     team = team_by_name(client, "团队A")
     key_metric = metric_by_code(client, "sa-ir-pen")
     general_metric = metric_by_code(client, "mrr-count")
-    iteration = iteration_by_name(client, "SCC 27.2.RC1-迭代一")
+    iteration = selected_iteration(client)
 
     key_with_period = client.post(
         "/api/facts",

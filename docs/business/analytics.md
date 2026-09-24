@@ -37,6 +37,8 @@ Signal 顺序为负提效、成熟度/事实缺失、低于全公司均值的团
 
 目录 Activity/Metric、FactRecord、Team、ProductVersion/Iteration 支持事实查询；MaturityRecord 独立支持评估。
 
+本地演示种子按执行时的 Asia/Shanghai 当前月生成近六个月事实与独立的成熟度模拟评估，覆盖四个团队及目录中全部活动和指标；当前月的事实落在执行当天。演示评估只用于界面预览，不由事实指标推导，也不改变正式评估的人工维护规则。跨入新月份后须重跑种子才覆盖新的默认月份；该命令会重建业务数据。
+
 | 行为 | 实现 | 验证入口 |
 |---|---|---|
 | 事实计算 | `backend/app/compute.py`、`api.py` `/api/compute` | `test_compute.py`、`test_compute_api.py` |

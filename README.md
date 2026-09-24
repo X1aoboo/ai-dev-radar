@@ -37,7 +37,7 @@ Gateway Project E2E 使用临时 SQLite、独立 Mock Gateway 进程、Radar 和
 2. 执行 `docker compose up`。Compose 会构建前端、把构建产物交给 FastAPI 静态托管，并以单个 Uvicorn 进程启动 FastAPI + APScheduler。
 3. 打开 <http://localhost:8000>，使用账号 `admin` 和 `SEED_PASSWORD` 登录。
 
-首次启动会在持久化卷 `ai-dev-radar-data` 的 `/data/ai-dev-radar.db` 中自动建表；空库会自动写入指标目录、演示团队/版本/事实记录和 admin 账号。不要删除该卷，否则 SQLite 数据会丢失。
+首次启动会在持久化卷 `ai-dev-radar-data` 的 `/data/ai-dev-radar.db` 中自动建表；空库会自动写入指标目录、近六个月演示事实与成熟度、IR 示例和 admin 账号。不要删除该卷，否则 SQLite 数据会丢失。
 
 ### 环境变量
 
@@ -64,8 +64,8 @@ docker compose run --rm app python -m app.seed
 
 ## 本地认证
 
-`npm run dev` 和 `npm run seed` 已显式使用 `APP_ENV=development`。直接运行
-后端命令时请自行设置环境；应用默认按生产模式启动，漏配生产密钥会直接失败。
+`npm run dev` 和 `npm run seed` 已显式使用 `APP_ENV=development`。直接运行后端命令时请自行设置环境；应用默认按生产模式启动，漏配生产密钥会直接失败。
+`npm run seed` 与开发服务使用同一项目根目录下的默认 `ai-dev-radar.db`；如设置了 `DATABASE_URL`，两者都遵循该连接串。命令会清空并重建业务演示数据。
 
 首次启动会创建演示账号。默认密码由 `SEED_PASSWORD` 控制，默认值为
 `dev-password`，仅适用于本地开发；重新运行种子会重置演示账号密码。

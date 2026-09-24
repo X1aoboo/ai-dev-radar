@@ -1,5 +1,10 @@
 """计算层 HTTP seam 测试。"""
 
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from app.seed import month_start
+
 
 def test_compute_endpoint_returns_time_series_and_company_average(authenticated_client):
     catalog = authenticated_client.get("/api/catalog").json()
@@ -20,14 +25,13 @@ def test_compute_endpoint_returns_time_series_and_company_average(authenticated_
     assert body["metric_id"] == metric_id
     assert body["dimension"] == "time"
     assert body["granularity"] == "month"
-    assert [period["id"] for period in body["periods"]] == [
-        "2026-01", "2026-02", "2026-03", "2026-04",
-        "2026-05", "2026-06", "2026-07", "2026-08",
-    ]
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    expected_months = [month_start(today, offset).strftime("%Y-%m") for offset in range(-5, 1)]
+    assert [period["id"] for period in body["periods"]] == expected_months
     assert len(body["series"]) == 4
-    assert len(body["series"][0]["values"]) == 8
-    assert len(body["company_average"]) == 8
-    assert len(body["domain_summary"]) == 8
+    assert len(body["series"][0]["values"]) == 6
+    assert len(body["company_average"]) == 6
+    assert len(body["domain_summary"]) == 6
     assert body["domain_summary"][0]["fact_count"] > 0
     assert all(point["value"] is not None for point in body["company_average"])
 

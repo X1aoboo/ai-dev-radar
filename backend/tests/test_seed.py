@@ -1,12 +1,14 @@
-"""种子测试：目录完整性、幂等重跑、边界样例。"""
+"""种子测试：目录、滚动窗口、图表覆盖、幂等和边界样例。"""
 
-from datetime import date
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import create_engine, func, select
+from sqlalchemy.orm import Session
 
-from app.db import SessionLocal
-from app.models import Activity, FactRecord, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
-from app.seed import CATALOG, run_seed
+from app.db import Base, SessionLocal
+from app.models import Activity, FactRecord, IRRequirement, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
+from app.seed import CATALOG, month_start, run_seed
 
 
 def test_catalog_matches_spec():
@@ -23,19 +25,18 @@ def test_catalog_matches_spec():
 
 
 def test_demo_dimensions():
-    """演示数据：4 团队、2 版本、各 2 迭代、事实记录齐备。"""
+    """演示数据：4 团队、2 版本、近六个月各一迭代、事实和评估齐备。"""
     with SessionLocal() as db:
         assert db.scalar(select(func.count()).select_from(Team)) == 4
         assert db.scalar(select(func.count()).select_from(ProductVersion)) == 2
         iterations = db.scalars(select(Iteration)).all()
-        assert len(iterations) == 4
-        assert {it.name for it in iterations} == {
-            "SCC 27.1.RC1-迭代一", "SCC 27.1.RC1-迭代二",
-            "SCC 27.2.RC1-迭代一", "SCC 27.2.RC1-迭代二",
-        }
+        assert len(iterations) == 6
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+        assert {it.start_date for it in iterations} == {month_start(today, offset) for offset in range(-5, 1)}
         assert db.scalar(select(func.count()).select_from(FactRecord)) > 1000
         assert db.scalar(select(func.count()).select_from(User)) == 6  # admin + 4 maintainer + viewer
-        assert db.scalar(select(func.count()).select_from(MaturityRecord)) == 0
+        assert db.scalar(select(func.count()).select_from(MaturityRecord)) == 4 * 15 * 6
+        assert db.scalar(select(func.count()).select_from(IRRequirement)) == 12
 
 
 def test_fact_scope_dimensions():
@@ -75,6 +76,8 @@ def test_seed_idempotent():
             "facts": db.scalar(select(func.count()).select_from(FactRecord)),
             "metrics": db.scalar(select(func.count()).select_from(Metric)),
             "sum_num": db.scalar(select(func.sum(FactRecord.numerator))) or 0,
+            "maturity": db.scalar(select(func.count()).select_from(MaturityRecord)),
+            "ir": db.scalar(select(func.count()).select_from(IRRequirement)),
         }
 
     with SessionLocal() as db:
@@ -83,6 +86,90 @@ def test_seed_idempotent():
         after = snapshot(db)
         assert before == after
         assert after["facts"] > 0
+
+
+def test_seed_window_crosses_year_and_current_month_day_one():
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    today = date(2027, 1, 1)
+    with Session(engine) as db:
+        run_seed(db, today=today)
+        expected = [month_start(today, offset) for offset in range(-5, 1)]
+        assert [it.start_date for it in db.scalars(select(Iteration).order_by(Iteration.id))] == expected
+        assert all(it.end_date <= today for it in db.scalars(select(Iteration)))
+        assert {record.assessment_month for record in db.scalars(select(MaturityRecord))} == set(expected)
+        assert db.scalar(select(func.count()).select_from(FactRecord).where(FactRecord.end_date == today)) > 0
+        before = db.scalar(select(func.sum(FactRecord.numerator)))
+        run_seed(db, today=today)
+        assert db.scalar(select(func.sum(FactRecord.numerator))) == before
+
+
+def test_seed_has_one_key_fact_per_scope_and_daily_general_coverage():
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    with SessionLocal() as db:
+        key_ids = [metric.id for metric in db.scalars(select(Metric).join(Activity).where(Activity.kind == "key"))]
+        iterations = db.scalars(select(Iteration)).all()
+        assert db.scalar(select(func.count()).select_from(FactRecord).where(FactRecord.metric_id.in_(key_ids))) == 4 * len(key_ids) * len(iterations)
+        general_metric = db.scalar(select(Metric).where(Metric.code == "mrr-rate"))
+        recent_dates = {today - timedelta(days=offset) for offset in range(30)}
+        fact_dates = set(db.scalars(select(FactRecord.end_date).where(FactRecord.metric_id == general_metric.id)))
+        assert recent_dates <= fact_dates
+
+
+def test_seed_populates_all_defined_metric_views(authenticated_client):
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    expected_months = {month_start(today, offset).strftime("%Y-%m") for offset in range(-5, 1)}
+    catalog = authenticated_client.get("/api/catalog").json()
+    for activity in catalog:
+        for metric in activity["metrics"]:
+            response = authenticated_client.get("/api/compute", params={
+                "metric_id": metric["id"], "dim": "time", "gran": "month",
+            })
+            assert response.status_code == 200
+            body = response.json()
+            if metric["type"] == "boolean":
+                assert {point["period_id"] for series in body["series"] for point in series["values"] if point["value"] is not None} == expected_months
+            else:
+                assert {point["period_id"] for point in body["company_average"] if point["value"] is not None} == expected_months, metric["code"]
+    for kind, count in (("key", 8), ("general", 7)):
+        for assessment_month in expected_months:
+            overview = authenticated_client.get("/api/maturity/overview", params={"month": assessment_month, "kind": kind})
+            assert overview.status_code == 200
+            assert overview.json()["assessed_cell_count"] == 4 * count
+
+    for metric in authenticated_client.get("/api/data-metrics?domain=ir").json():
+        computed = authenticated_client.get("/api/data-metrics/compute", params={"metric_code": metric["code"]})
+        assert computed.status_code == 200
+        assert computed.json()["record_count"] == 12
+        assert computed.json()["value"] is not None
+
+
+def test_seed_populates_current_day_week_and_iteration_views(authenticated_client):
+    today = datetime.now(ZoneInfo("Asia/Shanghai")).date()
+    catalog = authenticated_client.get("/api/catalog").json()
+    by_code = {metric["code"]: metric for activity in catalog for metric in activity["metrics"]}
+    for code in ("sa-ir-pen", "mrr-rate"):
+        for granularity in ("day", "week"):
+            body = authenticated_client.get("/api/compute", params={
+                "metric_id": by_code[code]["id"], "dim": "time", "gran": granularity,
+            }).json()
+            current = today.isoformat() if granularity == "day" else f"{today.isocalendar().year}-W{today.isocalendar().week:02d}"
+            assert next(point for point in body["company_average"] if point["period_id"] == current)["value"] is not None
+
+    versions = authenticated_client.get("/api/versions").json()
+    for version in versions:
+        body = authenticated_client.get("/api/compute", params={
+            "metric_id": by_code["sa-ir-pen"]["id"], "dim": "iteration", "version_id": version["id"],
+        }).json()
+        assert len(body["periods"]) == 3
+        assert all(point["value"] is not None for series in body["series"] for point in series["values"])
+
+    boolean = authenticated_client.get("/api/compute", params={
+        "metric_id": by_code["ad-bool"]["id"], "dim": "time", "gran": "month",
+    }).json()
+    current_month = today.strftime("%Y-%m")
+    assert {next(point for point in series["values"] if point["period_id"] == current_month)["value"]
+            for series in boolean["series"]} == {0, 1}
 
 
 def test_manual_entry_granularity_keeps_correction_history():
