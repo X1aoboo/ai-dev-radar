@@ -1,5 +1,5 @@
 .drilldown-shell {
-  --drilldown-accent: var(--viz-team-1);
+  --drilldown-accent: var(--color-data-team-1);
 }
 
 .drilldown-page-head {
@@ -62,7 +62,7 @@
 }
 
 .drilldown-kpi-value.is-negative {
-  color: var(--viz-negative);
+  color: var(--color-danger);
 }
 
 .drilldown-kpi-footer {
@@ -77,12 +77,12 @@
 
 .drilldown-kpi-delta.is-positive,
 .drilldown-kpi-status.is-positive {
-  color: var(--viz-positive);
+  color: var(--color-success);
 }
 
 .drilldown-kpi-delta.is-negative,
 .drilldown-kpi-status.is-negative {
-  color: var(--viz-negative);
+  color: var(--color-danger);
 }
 
 .drilldown-sparkline {
@@ -290,14 +290,14 @@
 }
 
 .drilldown-boolean-status {
-  color: var(--viz-positive);
+  color: var(--color-success);
   font-size: 1rem;
   font-weight: 600;
   padding: 1.2rem 0 1rem;
 }
 
 .drilldown-boolean-status.is-negative {
-  color: var(--viz-negative);
+  color: var(--color-danger);
 }
 
 .drilldown-fact-note {
@@ -372,7 +372,7 @@
 }
 
 .drilldown-source.is-auto {
-  color: var(--viz-positive);
+  color: var(--color-success);
 }
 
 @media (max-width: 900px) {

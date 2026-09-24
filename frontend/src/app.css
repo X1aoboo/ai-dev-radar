@@ -2,43 +2,9 @@
 @import './design/design-system.css';
 
 :root {
-  --app-primary: var(--color-brand-primary);
-  --app-primary-hover: var(--color-brand-hover);
-  --app-page: var(--color-bg-page);
-  --app-surface: var(--color-bg-surface);
-  --app-text: var(--color-text-primary);
-  --app-text-secondary: var(--color-text-secondary);
-  --app-text-tertiary: var(--color-text-tertiary);
-  --app-border: var(--color-border-default);
-  --app-border-strong: var(--color-border-strong);
-  --app-sidebar: var(--color-sidebar);
-  --app-sidebar-text: var(--color-sidebar-text);
-  --app-sidebar-muted: var(--color-sidebar-muted);
-  --app-sidebar-border: var(--color-sidebar-border);
-  --app-sidebar-hover: var(--color-sidebar-hover);
-  --app-sidebar-active: var(--color-sidebar-active);
-  --app-sidebar-selected: var(--color-sidebar-selected);
-  --app-sidebar-marker: var(--color-brand-primary);
-  --app-motion: var(--duration-base) var(--easing-standard);
-  --app-topbar-height: var(--size-topbar);
-  --viz-team-1: var(--color-data-team-1);
-  --viz-team-2: var(--color-data-team-2);
-  --viz-team-3: var(--color-data-team-3);
-  --viz-team-4: var(--color-data-team-4);
-  --viz-company-average: var(--color-data-average);
-  --viz-grid: var(--color-data-grid);
-  --viz-axis: var(--color-data-axis);
-  --viz-positive: var(--color-success);
-  --viz-negative: var(--color-danger);
-  --app-space-1: var(--space-1);
-  --app-space-2: var(--space-2);
-  --app-space-3: var(--space-3);
-  --app-space-4: var(--space-4);
-  --app-space-5: var(--space-5);
-  --app-space-6: var(--space-6);
-  --app-sidebar-width: var(--size-sidebar);
-  color: var(--app-text);
-  background: var(--app-page);
+  --shell-sidebar-width: var(--size-sidebar);
+  color: var(--color-text-primary);
+  background: var(--color-bg-page);
   font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -56,8 +22,8 @@ body,
 
 body {
   margin: 0;
-  background: var(--app-page);
-  color: var(--app-text);
+  background: var(--color-bg-page);
+  color: var(--color-text-primary);
 }
 
 button,
@@ -72,21 +38,21 @@ a:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--app-primary);
+  outline: 2px solid var(--color-brand-primary);
   outline-offset: 2px;
 }
 
 .app-shell {
   min-height: 100vh;
-  background: var(--app-page);
+  background: var(--color-bg-page);
 }
 
 .app-skip-link {
-  background: var(--app-primary);
+  background: var(--color-brand-primary);
   border-radius: 0 0 6px 6px;
   color: var(--color-text-on-brand);
-  left: var(--app-space-4);
-  padding: var(--app-space-2) var(--app-space-3);
+  left: var(--space-4);
+  padding: var(--space-2) var(--space-3);
   position: fixed;
   text-decoration: none;
   top: -48px;
@@ -100,9 +66,9 @@ textarea:focus-visible {
 
 /* The header stays fixed while only the navigation scrolls. */
 .app-sidebar {
-  background: var(--app-sidebar);
-  border-right: 1px solid var(--app-sidebar-border);
-  color: var(--app-sidebar-text);
+  background: var(--color-sidebar);
+  border-right: 1px solid var(--color-sidebar-border);
+  color: var(--color-sidebar-text);
   display: flex;
   flex-direction: column;
   height: 100dvh;
@@ -110,8 +76,8 @@ textarea:focus-visible {
   overflow: hidden;
   padding: 16px 12px;
   position: fixed;
-  transition: width var(--app-motion);
-  width: var(--app-sidebar-width);
+  transition: width var(--duration-base) var(--easing-standard);
+  width: var(--shell-sidebar-width);
   z-index: 10;
 }
 
@@ -145,7 +111,7 @@ textarea:focus-visible {
   min-width: 0;
   opacity: 1;
   overflow: hidden;
-  transition: max-width var(--app-motion), opacity var(--app-motion);
+  transition: max-width var(--duration-base) var(--easing-standard), opacity var(--duration-base) var(--easing-standard);
   white-space: nowrap;
 }
 
@@ -160,7 +126,7 @@ textarea:focus-visible {
 }
 
 .app-brand__caption {
-  color: var(--app-sidebar-muted);
+  color: var(--color-sidebar-muted);
   display: block;
   font-size: 12px;
   margin-top: 2px;
@@ -186,7 +152,7 @@ textarea:focus-visible {
 }
 
 .app-nav__label {
-  color: var(--app-sidebar-muted);
+  color: var(--color-sidebar-muted);
   font-size: 12px;
   font-weight: 600;
   height: 18px;
@@ -199,7 +165,7 @@ textarea:focus-visible {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  color: var(--app-sidebar-text);
+  color: var(--color-sidebar-text);
   display: flex;
   font-size: 14px;
   gap: 12px;
@@ -211,7 +177,7 @@ textarea:focus-visible {
   min-width: 0;
   overflow: hidden;
   text-decoration: none;
-  transition: padding var(--app-motion), gap var(--app-motion), max-width var(--app-motion);
+  transition: padding var(--duration-base) var(--easing-standard), gap var(--duration-base) var(--easing-standard), max-width var(--duration-base) var(--easing-standard);
   width: 100%;
 }
 
@@ -220,20 +186,20 @@ textarea:focus-visible {
 }
 
 .app-nav__link:hover {
-  background: var(--app-sidebar-hover);
-  color: var(--app-sidebar-text);
+  background: var(--color-sidebar-hover);
+  color: var(--color-sidebar-text);
 }
 
 .app-nav__link[aria-current="page"],
 .app-nav__link[data-section-active="true"] {
-  background: var(--app-sidebar-active);
-  color: var(--app-sidebar-selected);
+  background: var(--color-sidebar-active);
+  color: var(--color-sidebar-selected);
   font-weight: 600;
 }
 
 .app-nav__link:focus-visible,
 .app-sidebar__toggle:focus-visible {
-  outline: 2px solid var(--app-sidebar-marker);
+  outline: 2px solid var(--color-brand-primary);
   outline-offset: -2px;
 }
 
@@ -251,7 +217,7 @@ textarea:focus-visible {
 
 .app-sidebar__toggle.ant-btn {
   align-items: center;
-  color: var(--app-sidebar-muted);
+  color: var(--color-sidebar-muted);
   display: inline-flex;
   height: 40px;
   justify-content: center;
@@ -263,18 +229,18 @@ textarea:focus-visible {
 
 .app-sidebar__toggle.ant-btn.ant-btn-variant-text:not(:disabled):not(.ant-btn-disabled):hover {
   background: var(--color-sidebar-hover);
-  color: var(--app-sidebar-text);
+  color: var(--color-sidebar-text);
   transform: scale(1.06);
 }
 
 .app-sidebar__toggle.ant-btn.ant-btn-variant-text:not(:disabled):not(.ant-btn-disabled):active {
   background: var(--color-sidebar-pressed);
-  color: var(--app-sidebar-text);
+  color: var(--color-sidebar-text);
   transform: scale(.94);
 }
 
 .app-sidebar__toggle.ant-btn:focus-visible {
-  outline: 2px solid var(--app-sidebar-marker);
+  outline: 2px solid var(--color-brand-primary);
   outline-offset: 2px;
 }
 
@@ -286,7 +252,7 @@ textarea:focus-visible {
 }
 
 .app-shell--collapsed {
-  --app-sidebar-width: 64px;
+  --shell-sidebar-width: 64px;
 }
 
 .app-shell--collapsed .app-brand__copy,
@@ -313,30 +279,30 @@ textarea:focus-visible {
 .ant-drawer .ant-drawer-section,
 .ant-drawer .ant-drawer-header,
 .ant-drawer .ant-drawer-body {
-  background: var(--app-sidebar);
-  color: var(--app-sidebar-text);
+  background: var(--color-sidebar);
+  color: var(--color-sidebar-text);
 }
-.ant-drawer .ant-drawer-header { border-bottom-color: var(--app-sidebar-border); }
+.ant-drawer .ant-drawer-header { border-bottom-color: var(--color-sidebar-border); }
 .ant-drawer .ant-drawer-close,
-.ant-drawer .ant-drawer-title { color: var(--app-sidebar-text); }
+.ant-drawer .ant-drawer-title { color: var(--color-sidebar-text); }
 .ant-drawer .ant-drawer-body { padding: 0; }
 .ant-drawer .app-sidebar { border: 0; height: 100%; position: static; transition: none; width: 100%; }
 
 .app-shell__body {
-  margin-left: var(--app-sidebar-width);
+  margin-left: var(--shell-sidebar-width);
   min-height: 100vh;
-  transition: margin-left var(--app-motion);
+  transition: margin-left var(--duration-base) var(--easing-standard);
 }
 
 .app-topbar {
   align-items: center;
   background: var(--color-bg-surface);
-  border-bottom: 1px solid var(--app-border);
+  border-bottom: 1px solid var(--color-border-default);
   display: flex;
-  gap: var(--app-space-5);
+  gap: var(--space-5);
   justify-content: space-between;
-  min-height: var(--app-topbar-height);
-  padding: var(--app-space-3) var(--app-space-6);
+  min-height: var(--size-topbar);
+  padding: var(--space-3) var(--space-6);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -350,15 +316,15 @@ textarea:focus-visible {
   align-items: center;
   display: flex;
   flex: 0 0 auto;
-  gap: var(--app-space-3);
+  gap: var(--space-3);
 }
 
 .app-user {
   align-items: center;
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   display: inline-flex;
   font-size: 12px;
-  gap: var(--app-space-2);
+  gap: var(--space-2);
   min-width: 0;
 }
 
@@ -369,18 +335,18 @@ textarea:focus-visible {
 }
 
 .app-user__name {
-  color: var(--app-text);
+  color: var(--color-text-primary);
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
 .app-user__role {
-  color: var(--app-text-tertiary);
+  color: var(--color-text-tertiary);
   font-size: 11px;
 }
 
 .app-logout.ant-btn {
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
 }
 
 .app-shell__content {
@@ -388,7 +354,7 @@ textarea:focus-visible {
   max-width: 1600px;
   min-width: 0;
   overflow-x: clip;
-  padding: var(--app-space-6);
+  padding: var(--space-6);
 }
 
 .app-shell__content--dashboard,
@@ -396,7 +362,7 @@ textarea:focus-visible {
   max-width: none;
   padding-left: clamp(24px, calc(2vw - 8px), 40px);
   padding-right: clamp(24px, calc(2vw - 8px), 40px);
-  padding-top: var(--app-space-5);
+  padding-top: var(--space-5);
 }
 
 .app-shell__content--operational {
@@ -409,9 +375,9 @@ textarea:focus-visible {
 
 .app-loading,
 .app-error {
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   margin: 0;
-  padding: var(--app-space-6) 0;
+  padding: var(--space-6) 0;
 }
 
 .app-error {
@@ -419,7 +385,7 @@ textarea:focus-visible {
 }
 
 .workbench-eyebrow {
-  color: var(--app-primary) !important;
+  color: var(--color-brand-primary) !important;
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .08em;
@@ -427,9 +393,9 @@ textarea:focus-visible {
 
 .workbench-state {
   align-items: center;
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   display: flex;
-  gap: var(--app-space-2);
+  gap: var(--space-2);
   justify-content: center;
   min-height: 240px;
 }
@@ -443,33 +409,33 @@ textarea:focus-visible {
 
 .status-page--auth {
   min-height: 100vh;
-  padding: var(--app-space-6);
+  padding: var(--space-6);
 }
 
 .auth-page {
   align-items: center;
-  background: var(--app-page);
+  background: var(--color-bg-page);
   display: flex;
   justify-content: center;
   min-height: 100vh;
-  padding: var(--app-space-6);
+  padding: var(--space-6);
 }
 
 .auth-card {
-  background: var(--app-surface);
-  border: 1px solid var(--app-border);
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border-default);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-panel);
   max-width: 392px;
-  padding: var(--app-space-6);
+  padding: var(--space-6);
   width: 100%;
 }
 
 .auth-card__brand {
   align-items: center;
   display: flex;
-  gap: var(--app-space-3);
-  margin-bottom: var(--app-space-5);
+  gap: var(--space-3);
+  margin-bottom: var(--space-5);
 }
 
 .auth-card__brand h1 {
@@ -479,32 +445,32 @@ textarea:focus-visible {
 }
 
 .auth-card__brand p {
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
-  margin: var(--app-space-1) 0 0;
+  margin: var(--space-1) 0 0;
 }
 
 .auth-card__intro {
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   font-size: 13px;
   line-height: 1.6;
-  margin: 0 0 var(--app-space-5);
+  margin: 0 0 var(--space-5);
 }
 
 .auth-field {
-  color: var(--app-text);
+  color: var(--color-text-primary);
   display: grid;
   font-size: 13px;
   font-weight: 600;
-  gap: var(--app-space-2);
-  margin-bottom: var(--app-space-4);
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
 
 .auth-field input {
-  border: 1px solid var(--app-border-strong);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-sm);
   min-height: 40px;
-  padding: 0 var(--app-space-3);
+  padding: 0 var(--space-3);
   width: 100%;
 }
 
@@ -515,24 +481,24 @@ textarea:focus-visible {
   border: 1px solid var(--color-border-danger-subtle);
   border-radius: var(--radius-sm);
   line-height: 1.5;
-  margin: 0 0 var(--app-space-4);
-  padding: var(--app-space-2) var(--app-space-3);
+  margin: 0 0 var(--space-4);
+  padding: var(--space-2) var(--space-3);
 }
 
 .settings-page {
-  color: var(--app-text);
+  color: var(--color-text-primary);
 }
 
 .settings-page__notice {
-  margin-bottom: var(--app-space-4);
+  margin-bottom: var(--space-4);
 }
 
 @media (max-width: 900px) {
 
   .app-topbar,
   .app-shell__content {
-    padding-left: var(--app-space-5);
-    padding-right: var(--app-space-5);
+    padding-left: var(--space-5);
+    padding-right: var(--space-5);
   }
 
 }
@@ -559,13 +525,13 @@ textarea:focus-visible {
 
 @media (max-width: 680px) {
   :root {
-    --app-sidebar-width: 0px;
+    --shell-sidebar-width: 0px;
   }
 
   .app-topbar {
     align-items: flex-start;
     flex-direction: column;
-    gap: var(--app-space-2);
+    gap: var(--space-2);
   }
 
   .app-topbar__actions {

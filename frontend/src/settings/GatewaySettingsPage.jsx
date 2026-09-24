@@ -60,7 +60,7 @@ function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, o
         rootClassName="gateway-editor-drawer"
         title={seed?.draft ? '编辑待启用配置' : seed?.active ? '编辑 Gateway 配置' : '配置 Gateway'}
         open={open}
-        width={440}
+        size={440}
         destroyOnClose
         onClose={onClose}
         styles={{ body: { padding: 24 } }}

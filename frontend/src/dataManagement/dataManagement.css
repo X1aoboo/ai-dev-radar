@@ -24,20 +24,20 @@
   align-items: center;
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-space-2) var(--app-space-4);
+  gap: var(--space-2) var(--space-4);
 }
 
 .gateway-details {
   display: grid;
-  gap: var(--app-space-4) var(--app-space-6);
+  gap: var(--space-4) var(--space-6);
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
-  margin: var(--app-space-4) 0;
+  margin: var(--space-4) 0;
 }
 
 .gateway-details dt {
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   font-size: 12px;
-  margin-bottom: var(--app-space-1);
+  margin-bottom: var(--space-1);
 }
 
 .gateway-details dd {
@@ -48,7 +48,7 @@
 .gateway-empty {
   align-items: start;
   display: grid;
-  gap: var(--app-space-3);
+  gap: var(--space-3);
   justify-items: start;
 }
 
@@ -63,10 +63,10 @@
 }
 
 .gateway-audit-list > li {
-  border-bottom: 1px solid var(--app-border);
+  border-bottom: 1px solid var(--color-border-default);
   display: grid;
-  gap: var(--app-space-2);
-  padding: var(--app-space-3) 0;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
 }
 
 .gateway-audit-list > li:first-child {
@@ -80,13 +80,13 @@
 
 .gateway-summary .ant-card-body {
   display: grid;
-  gap: var(--app-space-3);
+  gap: var(--space-3);
 }
 
 .gateway-summary__details {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-space-2) var(--app-space-5);
+  gap: var(--space-2) var(--space-5);
 }
 
 .collection-run__error {
@@ -103,20 +103,20 @@
 .workbench-page-intro {
   align-items: flex-end;
   display: flex;
-  gap: var(--app-space-5);
+  gap: var(--space-5);
   justify-content: space-between;
-  margin-bottom: var(--app-space-5);
+  margin-bottom: var(--space-5);
 }
 
 .workbench-notice {
-  margin-bottom: var(--app-space-4);
+  margin-bottom: var(--space-4);
 }
 
 .workbench-master-detail,
 .workbench-two-column {
   align-items: start;
   display: grid;
-  gap: var(--app-space-5);
+  gap: var(--space-5);
   grid-template-columns: minmax(360px, 1.05fr) minmax(0, 1.6fr);
 }
 
@@ -125,27 +125,27 @@
 }
 
 .workbench-section-gap {
-  margin-top: var(--app-space-5);
+  margin-top: var(--space-5);
 }
 
 .workbench-toolbar {
   align-items: center;
   display: flex;
-  gap: var(--app-space-4);
+  gap: var(--space-4);
   justify-content: space-between;
-  margin-bottom: var(--app-space-4);
+  margin-bottom: var(--space-4);
 }
 
 .workbench-form {
   display: grid;
-  gap: var(--app-space-4);
+  gap: var(--space-4);
 }
 
 .workbench-page textarea { resize: none; }
 
 .workbench-form-grid {
   display: grid;
-  gap: var(--app-space-4);
+  gap: var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
@@ -164,9 +164,9 @@
 
 .workbench-state {
   align-items: center;
-  color: var(--app-text-secondary);
+  color: var(--color-text-secondary);
   display: flex;
-  gap: var(--app-space-2);
+  gap: var(--space-2);
   justify-content: center;
   min-height: 240px;
 }
@@ -191,9 +191,9 @@
   border: 1px solid var(--color-border-brand);
   border-radius: var(--radius-sm);
   display: grid;
-  gap: var(--app-space-2);
-  margin-top: var(--app-space-5);
-  padding: var(--app-space-5);
+  gap: var(--space-2);
+  margin-top: var(--space-5);
+  padding: var(--space-5);
 }
 
 .workbench-result h2 {
@@ -210,13 +210,13 @@
 
 .collection-form {
   display: grid;
-  gap: var(--app-space-4);
+  gap: var(--space-4);
   max-width: 760px;
 }
 
 .collection-form > label {
   display: grid;
-  gap: var(--app-space-1);
+  gap: var(--space-1);
   max-width: 320px;
 }
 
@@ -229,20 +229,20 @@
 .collection-toggle {
   align-items: center;
   display: flex;
-  gap: var(--app-space-2);
+  gap: var(--space-2);
 }
 
 .collection-window-fields {
   display: grid;
-  gap: var(--app-space-4);
+  gap: var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .collection-run {
-  border-bottom: 1px solid var(--app-border);
+  border-bottom: 1px solid var(--color-border-default);
   display: grid;
-  gap: var(--app-space-2);
-  padding: var(--app-space-3) 0;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
 }
 
 .collection-run:first-child {
@@ -258,7 +258,7 @@
 .collection-run__heading {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--app-space-2) var(--app-space-4);
+  gap: var(--space-2) var(--space-4);
   justify-content: space-between;
 }
 

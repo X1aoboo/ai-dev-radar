@@ -101,17 +101,22 @@ test('admin configures and activates Gateway, then stages IR through real HTTP',
     token: VALID_TOKEN,
     beforeSave: async () => {
       await assertNoHorizontalOverflow(page, 390)
-      const drawer = page.locator('.ant-drawer-content-wrapper')
-      await expect.poll(async () => (await drawer.boundingBox())?.x ?? -1, {
+      const drawer = page.locator('.gateway-editor-drawer .ant-drawer-content-wrapper')
+      const viewportWidth = page.viewportSize()?.width ?? 390
+      await expect.poll(async () => {
+        const bounds = await drawer.boundingBox()
+        return bounds ? bounds.x + bounds.width : Number.POSITIVE_INFINITY
+      }, {
         message: await page.evaluate(() => JSON.stringify({
           innerWidth: window.innerWidth,
           clientWidth: document.documentElement.clientWidth,
           drawer: document.querySelector('.ant-drawer-content-wrapper')?.getAttribute('style'),
           root: document.querySelector('.ant-drawer')?.getBoundingClientRect().toJSON(),
         })),
-      }).toBeGreaterThanOrEqual(0)
+      }).toBeLessThanOrEqual(viewportWidth)
       const drawerBounds = await drawer.boundingBox()
-      expect(drawerBounds.x + drawerBounds.width).toBeLessThanOrEqual(390)
+      expect(drawerBounds.x).toBeGreaterThanOrEqual(0)
+      expect(drawerBounds.x + drawerBounds.width).toBeLessThanOrEqual(viewportWidth)
       await page.screenshot({ path: testInfo.outputPath('gateway-editor-mobile.png'), fullPage: true })
       const tokenInput = page.getByLabel('Bearer Token')
       await expect(tokenInput).toHaveAttribute('type', 'password')

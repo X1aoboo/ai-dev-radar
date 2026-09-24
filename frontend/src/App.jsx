@@ -230,16 +230,25 @@ function AppShell({ user, onLogout }) {
   const [narrow, setNarrow] = useState(() => globalThis.matchMedia?.('(max-width: 680px)').matches ?? false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const navigationButton = useRef(null)
+  const focusRestoreTimer = useRef(null)
   useEffect(() => {
     const media = globalThis.matchMedia?.('(max-width: 680px)')
     const update = () => { setNarrow(media.matches); setDrawerOpen(false) }
     media?.addEventListener?.('change', update)
-    return () => media?.removeEventListener?.('change', update)
+    return () => {
+      media?.removeEventListener?.('change', update)
+      globalThis.clearTimeout(focusRestoreTimer.current)
+    }
   }, [])
   function toggleSidebar() {
     const next = !collapsed
     setCollapsed(next)
     try { globalThis.localStorage?.setItem('ai-dev-radar.sidebar-collapsed', String(next)) } catch { /* Storage is optional. */ }
+  }
+  function closeNavigation() {
+    setDrawerOpen(false)
+    globalThis.clearTimeout(focusRestoreTimer.current)
+    focusRestoreTimer.current = globalThis.setTimeout(() => navigationButton.current?.focus(), 320)
   }
   const location = useLocation()
   const meta = getRouteMeta(location.pathname)
@@ -256,8 +265,8 @@ function AppShell({ user, onLogout }) {
     <div className={`app-shell${!narrow && collapsed ? ' app-shell--collapsed' : ''}`}>
       <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
       {!narrow && <AppSidebar user={user} collapsed={collapsed} onToggle={toggleSidebar} />}
-      {narrow && <Drawer title="导航" placement="left" size={280} open={drawerOpen} onClose={() => setDrawerOpen(false)} destroyOnHidden afterOpenChange={(open) => { if (!open) window.requestAnimationFrame(() => navigationButton.current?.focus()) }} styles={{ body: { padding: 0 } }}>
-        <AppSidebar user={user} onNavigate={() => setDrawerOpen(false)} />
+      {narrow && <Drawer title="导航" placement="left" size={280} open={drawerOpen} onClose={closeNavigation} destroyOnHidden focusable={{ focusTriggerAfterClose: false }} styles={{ body: { padding: 0 } }}>
+        <AppSidebar user={user} onNavigate={closeNavigation} />
       </Drawer>}
       <div className="app-shell__body">
         <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><div className="app-user"><UserOutlined /><span className="app-user__identity"><span className="app-user__name">{user.username}</span><span className="app-user__role">{ROLE_LABELS[user.role] ?? user.role}</span></span></div><Button className="app-logout" type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
