@@ -26,7 +26,7 @@
 - Project `DESIGN.md`: [DESIGN.md](DESIGN.md)
 - Token ownership model: existing runtime canonical.
 - Runtime design-system/token source: `frontend/src/design/tokens.css`.
-- Mapping/export/adapters: `frontend/src/design/theme.js` resolves semantic CSS tokens for Ant Design; `frontend/src/charts/chartTheme.js` resolves the same data-viz tokens for ECharts; `frontend/src/app.css` contains temporary compatibility aliases.
+- Mapping/export/adapters: `frontend/src/design/theme.js` resolves semantic CSS tokens for Ant Design; `frontend/src/charts/chartTheme.js` resolves the same data-viz tokens for ECharts; application/page CSS consume canonical tokens directly, while `frontend/src/app.css` retains only shell-local responsive state.
 - Token drift gate: review each semantic token change in `DESIGN.md`, `tokens.css`, and `theme.js`; search changed UI code for new literal colors.
 - Audit manifest: `premium-ui.json` declares this product-admin source root, `zh-CN`, and the established native Select/Listbox and Date ownership used by existing route controls.
 - Supported themes: Light mode is shipped; semantic tokens reserve a dark-mode remapping seam.
@@ -133,7 +133,7 @@
 
 - Native buttons/links own actions/navigation; selection controls have visible focus and accessible names. Icon-only actions identify their object and action. Tables keep headings and local overflow.
 - Inputs have visible labels, submit-time validation, `aria-invalid` and associated error text when invalid. Password managers and paste remain available. Busy controls prevent duplicate submit without moving layout.
-- Status includes text, not color alone. Drawers and confirmation overlays preserve keyboard dismissal and focus return. Sidebar controls expose their expanded/controlled relationship. Loading is announced as status; errors use alert semantics.
+- Status includes text, not color alone. Drawers and confirmation overlays preserve keyboard dismissal and focus return. The mobile navigation Drawer explicitly restores focus to its opener after Escape or navigation close. Sidebar controls expose their expanded/controlled relationship. Loading is announced as status; errors use alert semantics.
 - Verify keyboard navigation, focus visibility, form labels, icon/action names, contrast, disabled state, Drawer focus return, and keyboard-usable confirmations in the real browser. Normal-size error text must meet 4.5:1 contrast on its background.
 
 ## Overlays and feedback
@@ -154,6 +154,6 @@
 
 ## Validation
 
-- Required static commands: `npm --prefix frontend run test:unit`, `npm --prefix frontend run build`, `npm run check:docs`, `npm run test:docs`, `git diff --check`.
+- Required static commands: `npm --prefix frontend run test:unit`, `npm --prefix frontend run build`, `npm run test:e2e:gateway`, `npm run check:docs`, `npm run test:docs`, `git diff --check`.
 - Browser/device matrix: each changed phase checks 1440px and 1920px; interaction-heavy routes also check 1024px/390px, focus, reduced motion, loading, empty/error, and no page-level overflow.
 - Canonical sibling flow: preserve the established AppShell, analytical URL filters, and data-management drawers unless an active Change Design records an intentional variant.

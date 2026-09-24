@@ -7,6 +7,7 @@ ai-dev-radar 管理和展示团队级 AI 研发效能。React 客户端调用单
 代码提供当前实现事实，设计文档提供设计意图与结构；冲突需要依据需求和实现证据判断。初始化依据见 [Design Knowledge Inventory](design-knowledge-inventory.md)。
 
 视觉系统与跨页面交互契约见 [Design System](../DESIGN.md) 和 [UX Contract](../UX-CONTRACT.md)；运行时 token、Ant Design 适配和共享视觉模式位于 `frontend/src/design/`。
+UX 重构目标与已评审的参考效果图见 [UX Redesign Specification](ux/UX-REDESIGN-SPEC.md)。
 
 ## Business Design
 
