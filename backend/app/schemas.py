@@ -656,6 +656,7 @@ class ComputePeriodOut(BaseModel):
 class ComputePointOut(BaseModel):
     period_id: int | str
     value: float | bool | None
+    fact_count: int
     numerator: float | None = None
     denominator: float | None = None
     estimated: float | None = None
@@ -663,7 +664,6 @@ class ComputePointOut(BaseModel):
 
 
 class ComputeDomainPointOut(ComputePointOut):
-    fact_count: int
     sample_count: float
 
 

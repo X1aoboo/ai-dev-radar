@@ -12,9 +12,21 @@ export function metricRequests(catalog, filter) {
         dim: query.dimension,
         gran: query.granularity,
       })
-      if (query.dimension === 'iteration') params.set('version_id', String(query.versionId))
+      if (query.versionId && query.versionId !== 'all') params.set('version_id', String(query.versionId))
       return { activity, metric, url: `/api/compute?${params.toString()}`, fallback: query.fallback }
     })
+}
+
+export function normalizeFactPresence(data) {
+  return {
+    ...data,
+    series: (data?.series ?? []).map((series) => ({
+      ...series,
+      values: (series.values ?? []).map((point) => point.fact_count === 0
+        ? { ...point, value: null, numerator: null, denominator: null, estimated: null, actual: null }
+        : point),
+    })),
+  }
 }
 
 export function useComputedMetrics(catalog, filter, onSessionExpired) {
@@ -32,7 +44,7 @@ export function useComputedMetrics(catalog, filter, onSessionExpired) {
 
     Promise.allSettled(
       requests.map(async (request) => {
-        const response = await fetchJson(request.url, { signal: controller.signal })
+        const response = normalizeFactPresence(await fetchJson(request.url, { signal: controller.signal }))
         return {
           metricId: request.metric.id,
           data: filter.windowLimit

@@ -2,7 +2,7 @@ import React from 'react'
 import { act, create } from 'react-test-renderer'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const { metricLoadError, maturityLoadError, emptyMetrics } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null }, emptyMetrics: { current: false } }))
+const { metricLoadError, maturityLoadError, maturityCalls, emptyMetrics } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null }, maturityCalls: { current: [] }, emptyMetrics: { current: false } }))
 
 vi.mock('../components/EChart', () => ({
   default: ({ ariaLabel, onClick }) => onClick
@@ -21,6 +21,12 @@ const catalog = [
   { id: 1, name: '编码开发', kind: 'key', metrics: [{ id: 11, name: 'AI 渗透率', type: 'penetration', numerator_semantic: 'AI数', denominator_semantic: '总数' }, { id: 12, name: '需求数量', type: 'count', numerator_semantic: '需求数' }] },
   { id: 2, name: '通用能力一', kind: 'general', metrics: [{ id: 21, name: '能力覆盖率', type: 'penetration', numerator_semantic: 'AI数', denominator_semantic: '总数' }] },
 ]
+const rootCatalog = [
+  { ...catalog[0], metrics: [...catalog[0].metrics.map((metric) => metric.id === 11 ? { ...metric, code: 'cd-ar-pen' } : metric), { id: 13, code: 'cd-eff', name: '编码效率', type: 'efficiency', numerator_semantic: '预估人天', denominator_semantic: '实际人天' }] },
+  catalog[1],
+  { id: 3, name: '测试用例执行', kind: 'key', metrics: [{ id: 31, code: 'tce-count', name: '用例执行数', type: 'count', numerator_semantic: '执行用例数' }] },
+  { id: 4, name: '测试用例生成', kind: 'key', metrics: [{ id: 41, code: 'tcg-rate', name: '测试用例生成率', type: 'ratio', numerator_semantic: 'AI生成用例数', denominator_semantic: '用例总数' }] },
+]
 
 function overviewData(kind, month) {
   const activities = catalog.filter((activity) => activity.kind === kind)
@@ -36,12 +42,18 @@ function overviewData(kind, month) {
       activity_name: activity.name,
       score: index === 0 ? 2 : null,
       score_display: index === 0 ? '2.00' : null,
+      grade: index === 0 ? 2 : null,
       assessed_team_count: index === 0 ? 1 : 0,
     })),
     teams: teams.map((team, teamIndex) => ({
       team_id: team.id,
       team_name: team.name,
-      cells: activities.map((activity, index) => ({ activity_id: activity.id, score: teamIndex === 0 && index === 0 ? 2 : null })),
+      cells: activities.map((activity, index) => ({
+        activity_id: activity.id,
+        score: teamIndex === 0 && index === 0 ? 2 : null,
+        score_display: teamIndex === 0 && index === 0 ? '2.00' : null,
+        grade: teamIndex === 0 && index === 0 ? 2 : null,
+      })),
     })),
   }
 }
@@ -64,14 +76,18 @@ function metricData(metric, granularity = 'month') {
 }
 
 vi.mock('../overview/maturityData', () => ({
-  useMaturityOverview: (month, kind) => maturityLoadError.current
-    ? { loading: false, error: maturityLoadError.current, data: null, history: [] }
-    : {
+  useMaturityOverview: (month, kind, onSessionExpired, enabled = true) => {
+    maturityCalls.current.push({ kind, enabled })
+    if (!enabled) return { loading: false, error: null, data: null, history: [] }
+    return maturityLoadError.current
+      ? { loading: false, error: maturityLoadError.current, data: null, history: [] }
+      : {
       loading: false,
       error: null,
       data: overviewData(kind, month),
       history: ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', month].map((item) => ({ month: item, data: overviewData(kind, item) })),
-    },
+      }
+  },
 }))
 
 vi.mock('../overview/metricData', async () => ({
@@ -114,6 +130,7 @@ beforeEach(() => {
   globalThis.window = { localStorage: { getItem: () => '{}', setItem: () => undefined } }
   metricLoadError.current = null
   maturityLoadError.current = null
+  maturityCalls.current = []
   emptyMetrics.current = false
 })
 
@@ -121,50 +138,66 @@ afterEach(() => {
   delete globalThis.window
   metricLoadError.current = null
   maturityLoadError.current = null
+  maturityCalls.current = []
   emptyMetrics.current = false
 })
 
 test('root is an evidence-bounded management summary with no maturity maintenance action', async () => {
   let renderer
-  await act(async () => { renderer = create(<OverviewPage {...analyticsProps} />) })
+  await act(async () => { renderer = create(<OverviewPage {...analyticsProps} catalog={rootCatalog} />) })
   const text = renderText(renderer.toJSON())
   expect(text).toContain('研发总览')
-  expect(text).toContain('关键研发活动整体成熟度')
-  expect(text).toContain('通用研发能力整体成熟度')
+  expect(text).toContain('团队成熟度矩阵')
+  expect(text).toContain('领域整体成熟度画像')
+  expect(text).toContain('本期领域平均')
+  expect(text).toContain('上期领域平均')
   expect(text).toContain('核心指标趋势')
-  expect(text).toContain('研发生命周期')
-  expect(text).toContain('需求')
-  expect(text).toContain('交付')
+  expect(text).toContain('关键研发活动')
+  expect(text).toContain('编码开发')
+  expect(text).not.toContain('交付')
   expect(text).not.toContain('跨两个领域的团队成熟度')
-  expect(text).toContain('当前成熟度覆盖')
-  expect(text).toContain('团队单指标排名')
-  expect(text).toContain('研发生命周期')
+  expect(text).toContain('团队表现')
+  expect(text).not.toContain('团队单指标排名')
+  expect(text).toContain('关键研发活动')
   expect(text).toContain('核心指标趋势')
   expect(text).toContain('当前未配置业务 Target')
   expect(text).not.toContain('维护成熟度')
-  expect(text.indexOf('核心指标趋势')).toBeLessThan(text.indexOf('团队单指标排名'))
-  expect(text.indexOf('团队单指标排名')).toBeLessThan(text.indexOf('研发生命周期'))
-  expect(text.indexOf('研发生命周期')).toBeLessThan(text.indexOf('关键研发活动整体成熟度'))
+  expect(text.indexOf('核心指标趋势')).toBeLessThan(text.indexOf('关键研发活动'))
+  expect(text.indexOf('关键研发活动')).toBeLessThan(text.indexOf('团队表现'))
+  expect(text.indexOf('团队表现')).toBeLessThan(text.indexOf('团队成熟度矩阵'))
   renderer.unmount()
 })
 
-test('activity and capability pages render every metric as an independent chart', async () => {
+test('activity and capability pages use distinct directories and metric semantics', async () => {
   let renderer
-  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
+  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} catalog={rootCatalog} />) })
+  expect(maturityCalls.current.at(-1)).toEqual({ kind: 'key', enabled: false })
   let text = renderText(renderer.toJSON())
   expect(text).toContain('研发活动')
+  expect(text).toContain('核心成效')
+  expect(text).toContain('核心趋势')
+  expect(text).toContain('团队差异')
+  expect(text).toContain('业务量与原始指标')
   expect(text).toContain('AI 渗透率')
   expect(text).toContain('需求数量')
   expect(renderer.root.findAllByType('button').filter((node) => node.props['aria-label']?.includes('趋势图')).length).toBeGreaterThanOrEqual(3)
-  const activityLinks = renderer.root.findAllByType('a').filter((node) => node.props.href?.startsWith('#analytics-activity-'))
-  expect(activityLinks.map((node) => node.props.href)).toEqual(['#analytics-activity-1'])
-  expect(activityLinks[0].props['aria-current']).toBe('location')
+  const nextActivity = renderer.root.findByProps({ 'aria-label': '选择活动：测试用例执行' })
+  expect(nextActivity.props['aria-pressed']).toBe(false)
+  await act(async () => nextActivity.props.onClick())
+  expect(renderer.root.findByProps({ 'aria-label': '选择活动：测试用例执行' }).props['aria-pressed']).toBe(true)
+  expect(renderText(renderer.toJSON())).toContain('测试用例执行')
   renderer.unmount()
 
   await act(async () => { renderer = create(<CapabilitiesPage {...analyticsProps} />) })
+  expect(maturityCalls.current.at(-1)).toEqual({ kind: 'general', enabled: true })
   text = renderText(renderer.toJSON())
   expect(text).toContain('研发能力')
   expect(text).toContain('能力覆盖率')
+  expect(text).toContain('能力状态')
+  expect(text).toContain('能力演进')
+  expect(text).toContain('团队差异')
+  expect(text).toContain('证据与原始量')
+  expect(text).toContain('成熟度画像')
   expect(renderer.root.findAllByProps({ 'aria-pressed': true }).some((node) => renderText(node.props.children) === '月')).toBe(true)
   const dayButton = renderer.root.findAllByType('button').find((node) => renderText(node.props.children) === '日')
   await act(async () => dayButton.props.onClick())
@@ -232,7 +265,7 @@ test('activity workspace keeps URL-backed metric, dimension, and period filters'
   expect(allPeriodsText).not.toContain('最佳团队A · 40%')
   const reset = renderer.root.findByProps({ className: 'analytics-filter-reset' })
   await act(async () => reset.props.onClick())
-  expect(onFilterChange).toHaveBeenLastCalledWith({ dimension: 'time', granularity: 'month', versionId: 'all', periodId: '2026-03', metricId: 'all' }, { history: 'push' })
+  expect(onFilterChange).toHaveBeenLastCalledWith({ dimension: 'time', granularity: 'month', versionId: 'all', periodId: '2026-03', metricId: 'all', cycle: '6m' }, { history: 'push' })
   renderer.unmount()
 })
 
@@ -267,7 +300,7 @@ test('boolean metric detail uses team states instead of a company mean or rank',
   renderer.unmount()
 })
 
-test('activity workspace keeps metric and maturity failures visible with recovery copy', async () => {
+test('analytics detail keeps metric and maturity failures in their owning sections', async () => {
   metricLoadError.current = new Error('原始指标接口暂不可用')
   let renderer
   await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
@@ -276,8 +309,12 @@ test('activity workspace keeps metric and maturity failures visible with recover
 
   metricLoadError.current = null
   maturityLoadError.current = new Error('成熟度接口暂不可用')
-  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
-  expect(renderText(renderer.toJSON())).toContain('成熟度加载失败：成熟度接口暂不可用')
+  await act(async () => { renderer = create(<CapabilitiesPage {...analyticsProps} />) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('研发能力')
+  expect(text).toContain('能力状态')
+  expect(text).toContain('能力覆盖率')
+  expect(text).toContain('成熟度加载失败：成熟度接口暂不可用')
   renderer.unmount()
 })
 
@@ -288,7 +325,8 @@ test('capability booleans render a team status list instead of a metric trend ch
   const capabilityButton = renderer.root.findByProps({ 'aria-label': '查看能力：自动化能力' })
   await act(async () => capabilityButton.props.onClick())
   const text = renderText(renderer.toJSON())
-  expect(text).toContain('逐团队展示最近有效状态')
+  expect(text).toContain('布尔状态不合并为比例')
+  expect(text).toContain('不绘制 0/1 时间趋势')
   expect(text).toContain('团队A')
   expect(text).toContain('具备')
   expect(text).toContain('暂无数据')

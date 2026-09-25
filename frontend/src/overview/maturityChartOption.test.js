@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import { buildMaturityBarOption, maturityLevelColor, sortMaturityActivities } from './maturityChartOption.js'
+import { DATAVIZ_COLORS } from './overviewLogic.js'
 
 const activities = [
   { activity_id: 1, activity_name: '活动一', order: 0, score: null, score_display: null, level: null, grade: null, assessed_team_count: 0 },
@@ -20,5 +21,5 @@ test('maturity bars preserve catalog order by default and place missing values l
 
 test('maturity level colors are shared by the level index', () => {
   assert.notEqual(maturityLevelColor(0), maturityLevelColor(4))
-  assert.equal(maturityLevelColor(9), '#98a2b3')
+  assert.equal(maturityLevelColor(9), DATAVIZ_COLORS.companyAverage)
 })

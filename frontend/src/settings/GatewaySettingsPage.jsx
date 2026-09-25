@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, ConfigProvider, Drawer, Form, Input, InputNumber, Popconfirm, Space, Spin, Tag, Typography } from 'antd'
+import { Alert, Button, Card, ConfigProvider, Form, Input, InputNumber, Popconfirm, Space, Spin, Tag, Typography } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
+import FocusRestoringDrawer from '../components/FocusRestoringDrawer'
 import '../dataManagement/dataManagement.css'
 import { formatGatewayDate, gatewayStatusInfo } from './gatewayStatus'
 
@@ -56,7 +57,7 @@ function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, o
 
   return (
     <ConfigProvider locale={zhCN}>
-      <Drawer
+      <FocusRestoringDrawer
         rootClassName="gateway-editor-drawer"
         title={seed?.draft ? '编辑待启用配置' : seed?.active ? '编辑 Gateway 配置' : '配置 Gateway'}
         open={open}
@@ -94,7 +95,7 @@ function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, o
           <InputNumber min={0.01} step={1} precision={2} style={{ width: '100%' }} />
         </FormItem>
         </Form>
-      </Drawer>
+      </FocusRestoringDrawer>
     </ConfigProvider>
   )
 }
@@ -263,7 +264,6 @@ export default function GatewaySettingsPage({ onSessionExpired }) {
           </> : <div className="gateway-empty">
             <Text>尚未配置 AI 研发数据网关。</Text>
             <Text type="secondary">保存候选配置后，测试连接并启用才会影响 IR 采集。</Text>
-            <Button type="primary" onClick={openEditor}>配置 Gateway</Button>
           </div>}
         </Card>
 

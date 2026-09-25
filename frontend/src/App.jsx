@@ -16,6 +16,9 @@ import {
 } from 'react-router'
 
 import { fetchJson } from './api'
+import { DrawerFocusProvider } from './components/FocusRestoringDrawer'
+import './design/tokens.css'
+import './design/design-system.css'
 import './app.css'
 import StatusPage, { ContentLoadingState } from './components/StatusPage'
 import { appTheme } from './design/theme'
@@ -256,7 +259,7 @@ function AppShell({ user, onLogout }) {
     ? 'dashboard'
     : location.pathname.startsWith('/analytics/')
       ? 'analytics'
-      : ['/settings/collections', '/settings/gateway'].includes(location.pathname)
+      : location.pathname === '/settings/gateway'
         ? 'readable'
         : location.pathname.startsWith('/data/') || location.pathname.startsWith('/settings/')
           ? 'operational'
@@ -319,7 +322,7 @@ function TeamAnalyticsRoute({ Page, onSessionExpired }) {
   const analytics = useOutletContext()
   const navigate = useSearchPreservingNavigate()
   const team = analytics.teams.find((item) => String(item.id) === decodeURIComponent(teamId))
-  return <Page {...analytics} team={team} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
+  return <Page {...analytics} team={team} maturityState={analytics.maturity} onMaturityChange={analytics.onMaturityChange} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
 }
 
 function MetricAnalyticsRoute({ Page, onSessionExpired }) {
@@ -519,5 +522,5 @@ export default function App() {
     content = location.pathname === '/login' ? <LoginPage onLogin={login} error={authError} onClearError={() => setAuthError(null)} /> : <Navigate to="/login" replace />
   } else content = <ApplicationRoutes user={user} onLogout={logout} onSessionExpired={sessionExpired} />
 
-  return <ConfigProvider locale={zhCN} theme={appTheme}><AntdApp>{content}</AntdApp></ConfigProvider>
+  return <DrawerFocusProvider><ConfigProvider locale={zhCN} theme={appTheme}><AntdApp>{content}</AntdApp></ConfigProvider></DrawerFocusProvider>
 }

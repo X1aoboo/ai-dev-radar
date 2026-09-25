@@ -3,6 +3,7 @@ import { chartTheme } from '../charts/chartTheme.js'
 // Dataviz category colors are intentionally separate from the application primary.
 export const DATAVIZ_COLORS = {
   team: chartTheme.team,
+  metricType: chartTheme.metricType,
   companyAverage: chartTheme.domainAverage,
   grid: chartTheme.grid,
   axis: chartTheme.axis,
@@ -21,6 +22,7 @@ export const INITIAL_FILTER = {
   versionId: 'all',
   periodId: null,
   metricId: 'all',
+  cycle: '6m',
 }
 
 export const FILTER_QUERY_KEYS = {
@@ -29,6 +31,7 @@ export const FILTER_QUERY_KEYS = {
   versionId: 'version',
   periodId: 'period',
   metricId: 'metric',
+  cycle: 'cycle',
 }
 
 export const MATURITY_QUERY_KEYS = {
@@ -79,6 +82,29 @@ export function monthWindow(month, limit = 6) {
     cursor = previousMonthId(cursor)
   }
   return months
+}
+
+export function analysisWindowMonths(month, cycle = '6m') {
+  if (!isValidMonth(month)) return []
+  const [year, monthNumber] = String(month).split('-').map(Number)
+  const currentIndex = year * 12 + monthNumber - 1
+  const startIndex = cycle === 'year'
+    ? year * 12
+    : cycle === 'half'
+      ? year * 12 + (monthNumber > 6 ? 6 : 0)
+      : currentIndex - 5
+  return Array.from({ length: currentIndex - startIndex + 1 }, (_, offset) => {
+    const index = startIndex + offset
+    return `${Math.floor(index / 12)}-${String((index % 12) + 1).padStart(2, '0')}`
+  })
+}
+
+export function analysisWindowLabel(month, cycle = '6m') {
+  if (!isValidMonth(month)) return '近6个月'
+  const [year, monthNumber] = String(month).split('-').map(Number)
+  if (cycle === 'year') return `${year}年度`
+  if (cycle === 'half') return `${year}${monthNumber > 6 ? '下半年' : '上半年'}`
+  return '近6个月'
 }
 
 export function isValidMonth(value) {
@@ -158,15 +184,14 @@ export function normalizeFilter(input = {}, { versions = [], periods = [] } = {}
   const granularity = dimension === 'iteration'
     ? 'month'
     : ANALYSIS_GRANULARITIES.includes(input.granularity) ? input.granularity : 'month'
-  const versionId = dimension === 'iteration'
-    ? validIdOrDefault(input.versionId, versions, 'all')
-    : 'all'
+  const versionId = validIdOrDefault(input.versionId, versions, 'all')
   const periodId = input.periodId === 'all'
     ? 'all'
     : validIdOrDefault(input.periodId, periods, null)
   const metricId = input.metricId && input.metricId !== 'all' ? idKey(input.metricId) : 'all'
+  const cycle = ['half', 'year'].includes(input.cycle) ? input.cycle : '6m'
 
-  return { dimension, granularity, versionId, periodId, metricId }
+  return { dimension, granularity, versionId, periodId, metricId, cycle }
 }
 
 export function filtersEqual(left, right) {
@@ -175,6 +200,7 @@ export function filtersEqual(left, right) {
     && left?.versionId === right?.versionId
     && left?.periodId === right?.periodId
     && (left?.metricId ?? 'all') === (right?.metricId ?? 'all')
+    && (left?.cycle ?? '6m') === (right?.cycle ?? '6m')
 }
 
 export function filterFromSearchParams(searchParams, options) {
@@ -184,6 +210,7 @@ export function filterFromSearchParams(searchParams, options) {
     versionId: searchParams.get(FILTER_QUERY_KEYS.versionId),
     periodId: searchParams.get(FILTER_QUERY_KEYS.periodId),
     metricId: searchParams.get(FILTER_QUERY_KEYS.metricId),
+    cycle: searchParams.get(FILTER_QUERY_KEYS.cycle),
   }, options)
 }
 
@@ -193,7 +220,7 @@ export function filterToSearchParams(filter) {
   if (filter.dimension !== 'iteration' && filter.granularity !== 'month') {
     params.set(FILTER_QUERY_KEYS.granularity, filter.granularity)
   }
-  if (filter.dimension === 'iteration' && filter.versionId !== 'all') {
+  if (filter.versionId !== 'all') {
     params.set(FILTER_QUERY_KEYS.versionId, String(filter.versionId))
   }
   if (filter.periodId !== null && filter.periodId !== undefined) {
@@ -202,6 +229,7 @@ export function filterToSearchParams(filter) {
   if (filter.metricId && filter.metricId !== 'all') {
     params.set(FILTER_QUERY_KEYS.metricId, String(filter.metricId))
   }
+  if ((filter.cycle ?? '6m') !== '6m') params.set(FILTER_QUERY_KEYS.cycle, filter.cycle)
   return params
 }
 
@@ -381,7 +409,7 @@ export function valueForPeriod(data, metric, teamId, periodId) {
   const series = (data?.series ?? []).find((item) => idKey(item.team_id) === idKey(teamId))
   if (!series) return null
   if (metric.type === 'boolean') return series.snapshot ?? null
-  const points = series.values ?? []
+  const points = (series.values ?? []).filter((point) => point.fact_count !== 0)
   if (periodId !== 'all' && periodId !== null && periodId !== undefined) {
     return points.find((point) => idKey(point.period_id) === idKey(periodId))?.value ?? null
   }
@@ -416,7 +444,7 @@ export function currentSnapshot(data, periodId) {
     teams: (data.series ?? []).map((series) => ({
       team_id: series.team_id,
       team_name: series.team_name,
-      point: (series.values ?? []).find((point) => idKey(point.period_id) === selectedId),
+      point: (series.values ?? []).find((point) => idKey(point.period_id) === selectedId && point.fact_count !== 0),
     })),
     company: (data.company_average ?? []).find((point) => idKey(point.period_id) === selectedId),
   }
@@ -434,7 +462,7 @@ export function metricPointForMonth(data, month, totalTeamCount = data?.series?.
   const teams = (data?.series ?? []).map((series) => ({
     teamId: series.team_id,
     teamName: series.team_name,
-    point: period ? (series.values ?? []).find((item) => idKey(item.period_id) === idKey(month)) ?? null : null,
+    point: period ? (series.values ?? []).find((item) => idKey(item.period_id) === idKey(month) && item.fact_count !== 0) ?? null : null,
   }))
   const validTeamCount = teams.filter((team) => hasFactValue(team.point?.value)).length
 
@@ -632,7 +660,7 @@ export function queryForActivity(activity, filter) {
   return {
     dimension: fallback ? 'time' : filter.dimension,
     granularity: fallback ? 'month' : filter.granularity,
-    versionId: fallback ? null : filter.versionId,
+    versionId: fallback || activity?.kind === 'general' ? null : filter.versionId,
     fallback,
   }
 }

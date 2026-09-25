@@ -53,7 +53,7 @@ test('trend option uses a crosshair and de-emphasized company average', () => {
 
   assert.equal(option.tooltip.axisPointer.type, 'cross')
   assert.equal(option.series.length, 2)
-  assert.equal(option.series[0].lineStyle.width, 2)
+  assert.equal(option.series[0].lineStyle.width, 2.5)
   assert.equal(option.series[1].name, '全公司均值')
   assert.equal(option.series[1].lineStyle.type, 'dashed')
   assert.equal(option.series[0].data[1].symbol, 'circle')

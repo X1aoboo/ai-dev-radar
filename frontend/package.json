@@ -10,7 +10,7 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test:routes": "vitest run src/routing/routeRendering.test.jsx src/overview/OverviewPage.test.jsx src/dataManagement/dataManagementRendering.test.jsx src/settings/settingsRendering.test.jsx",
+    "test:routes": "vitest run src/components/AnalyticsComponents.test.jsx src/overview/metricData.test.jsx src/routing/routeRendering.test.jsx src/overview/OverviewPage.test.jsx src/dataManagement/dataManagementRendering.test.jsx src/settings/settingsRendering.test.jsx",
     "test:unit": "node --test src/overview/*.test.js src/drilldown/*.test.js src/metricDetail/*.test.js src/dataManagement/*.test.js src/routing/*.test.js src/settings/*.test.js && npm run test:routes"
   },
   "dependencies": {

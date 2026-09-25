@@ -388,10 +388,16 @@ def _team_name(team: Any) -> str:
     return team.get("name", str(_team_id(team))) if isinstance(team, dict) else getattr(team, "name")
 
 
-def _point(period: dict[str, Any], sums: MetricSums, value: float | bool | None) -> dict[str, Any]:
+def _point(
+    period: dict[str, Any],
+    sums: MetricSums,
+    value: float | bool | None,
+    fact_count: int,
+) -> dict[str, Any]:
     return {
         "period_id": period["id"],
         "value": value,
+        "fact_count": fact_count,
         "numerator": sums.numerator,
         "denominator": sums.denominator,
         "estimated": sums.numerator,
@@ -419,6 +425,7 @@ def build_series(
     team_ids 只控制返回哪些团队曲线；company_team_ids 控制全公司均值的分母，
     默认使用传入的全部团队。因此页面可以隐藏团队曲线而不改变全公司对照线。
     全公司均值沿用原型：对每个团队先计算指标值，再对非空团队值取算术平均。
+    时间维度的关键活动可按 iteration 所属 version 预筛事实；通用能力没有此版本范围。
     """
 
     resolved_dimension = _normalise_dimension(dimension)
@@ -431,6 +438,18 @@ def build_series(
         raise ValueError("general activity has no iteration dimension")
 
     fact_list = select_current_facts(facts)
+    iteration_list = list(iterations)
+    if resolved_dimension == "time" and resolved_kind == "key" and version_id not in (None, "all"):
+        version_by_iteration = {
+            str(_iteration_value(iteration, "id")): str(_iteration_value(iteration, "version_id"))
+            for iteration in iteration_list
+        }
+        selected_version = str(version_id)
+        fact_list = [
+            fact for fact in fact_list
+            if getattr(fact, "iteration_id", None) is not None
+            and version_by_iteration.get(str(getattr(fact, "iteration_id"))) == selected_version
+        ]
     team_list = list(teams)
     all_team_ids = [_team_id(team) for team in team_list]
     selected_ids = set(all_team_ids if team_ids is None else team_ids)
@@ -441,7 +460,7 @@ def build_series(
         fact_list,
         dimension=resolved_dimension,
         granularity=granularity,
-        iterations=iterations,
+        iterations=iteration_list,
         version_id=version_id,
         iteration_ids=iteration_ids,
         time_field=time_field,
@@ -456,7 +475,7 @@ def build_series(
                     if getattr(fact, "team_id", None) == _team_id(team)
                     and in_scope(fact, period, dimension=resolved_dimension, time_field=time_field)
                 ]
-                values.append(_point(period, _sum_facts(scoped_facts), _snapshot_value(scoped_facts)))
+                values.append(_point(period, _sum_facts(scoped_facts), _snapshot_value(scoped_facts), len(scoped_facts)))
             return values
 
         return {
@@ -489,8 +508,8 @@ def build_series(
                 if in_scope(fact, period, dimension=resolved_dimension, time_field=time_field)
             ]
             sums = _sum_facts(scoped_facts)
-            value = calculate_metric_value(resolved_metric_type, sums)
-            values.append(_point(period, sums, value))
+            value = calculate_metric_value(resolved_metric_type, sums) if scoped_facts else None
+            values.append(_point(period, sums, value, len(scoped_facts)))
         values_by_team[current_team_id] = values
 
     series = []
@@ -508,6 +527,7 @@ def build_series(
             values_by_team[current_team_id][index]["value"]
             for current_team_id in company_ids
             if current_team_id in values_by_team
+            and values_by_team[current_team_id][index]["fact_count"] > 0
             and isinstance(values_by_team[current_team_id][index]["value"], (int, float))
             and not isinstance(values_by_team[current_team_id][index]["value"], bool)
         ]
@@ -528,9 +548,9 @@ def build_series(
         domain_point = _point(
             period,
             sums,
-            calculate_metric_value(resolved_metric_type, sums),
+            calculate_metric_value(resolved_metric_type, sums) if domain_facts else None,
+            len(domain_facts),
         )
-        domain_point["fact_count"] = len(domain_facts)
         domain_point["sample_count"] = (
             sums.denominator
             if resolved_metric_type in {"penetration", "ratio"}

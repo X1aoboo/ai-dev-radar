@@ -1,7 +1,7 @@
-import { assignTeamColorSlots } from '../overview/overviewLogic.js'
-import { EXECUTIVE_TREND_CODES } from '../overview/executiveLogic.js'
+import { analysisWindowMonths, assignTeamColorSlots } from '../overview/overviewLogic.js'
+import { EXECUTIVE_KPI_CODES, metricCompanyAverageForWindow, metricDataForPeriods } from '../overview/executiveLogic.js'
 
-export const TEAM_KPI_CODES = [...EXECUTIVE_TREND_CODES, 'ad-bool']
+export const TEAM_KPI_CODES = [...EXECUTIVE_KPI_CODES]
 
 export function teamKpiEntries(entries = []) {
   return TEAM_KPI_CODES
@@ -52,7 +52,7 @@ export function mergePeriods(dataList = []) {
 
 function pointsForTeam(data, teamId) {
   const series = (data?.series ?? []).find((item) => String(item.team_id) === String(teamId))
-  return series?.values ?? []
+  return (series?.values ?? []).filter((point) => point.fact_count !== 0)
 }
 
 export function pointForSelection(data, teamId, periodId) {
@@ -111,6 +111,29 @@ export function deltaForSelection(data, metric, teamId, periodId) {
   const current = valueForSelection(data, metric, teamId, periods[index].id)
   const previous = valueForSelection(data, metric, teamId, periods[index - 1].id)
   return numeric(current) && numeric(previous) ? current - previous : null
+}
+
+export function teamMetricSummary({ data, metric, teamId, month, cycle = '6m' } = {}) {
+  const monthIds = analysisWindowMonths(month, '6m')
+  const periodIds = analysisWindowMonths(month, cycle)
+  const valueForWindow = (ids) => valueForSelection(metricDataForPeriods(data, ids), metric, teamId, 'all')
+  const monthValue = valueForSelection(data, metric, teamId, month)
+  const periodValue = valueForWindow(periodIds)
+  const previousPeriodValue = valueForWindow(periodIds.slice(0, -1))
+  const companyAverage = new Map((data?.company_average ?? []).map((point) => [String(point.period_id), point.value]))
+  return {
+    monthValue,
+    monthDelta: deltaForSelection(data, metric, teamId, month),
+    monthBenchmark: companyAverage.get(String(month)) ?? null,
+    monthTrend: monthIds.map((periodId) => valueForSelection(data, metric, teamId, periodId)),
+    periodValue,
+    periodDelta: metric?.type === 'count'
+      ? monthValue
+      : numeric(periodValue) && numeric(previousPeriodValue) ? periodValue - previousPeriodValue : null,
+    periodBenchmark: metricCompanyAverageForWindow(data, metric, periodIds),
+    periodTrend: periodIds.map((_, index) => valueForWindow(periodIds.slice(0, index + 1))),
+    periodIds,
+  }
 }
 
 function dateInPeriod(value, period) {

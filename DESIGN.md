@@ -13,6 +13,22 @@ colors:
   warning: "#dc6803"
   danger: "#d92d20"
   danger-foreground: "#b42318"
+  data-team-1: "#1f6feb"
+  data-team-2: "#168e67"
+  data-team-3: "#e88222"
+  data-team-4: "#7756d8"
+  data-team-5: "#0f9d9a"
+  data-team-6: "#5f6b7a"
+  data-team-7: "#c3436e"
+  data-team-8: "#80533d"
+  data-average: "#667085"
+  data-target: "#a5adba"
+  maturity-bg-0: "#f2f4f7"
+  maturity-bg-1: "#eaecf0"
+  maturity-bg-2: "#fffaeb"
+  maturity-bg-3: "#fff4e5"
+  maturity-bg-4: "#ecfdf3"
+  maturity-bg-5: "#d1fadf"
 typography:
   sans:
     fontFamily: "ui-sans-serif, -apple-system, BlinkMacSystemFont, Segoe UI, Microsoft YaHei, sans-serif"
@@ -32,9 +48,11 @@ components:
   app-shell: { }
   page-header: { }
   filter-toolbar: { }
-  metric-card: { }
-  analytics-panel: { }
-  chart: { }
+  metric-kpi-card: { }
+  chart-card: { }
+  benchmark-legend: { }
+  analytics-directory: { }
+  maturity-matrix: { }
   settings-workspace: { }
   status-page: { }
   content-loading: { }
@@ -46,33 +64,35 @@ components:
 
 ### Creative North Star
 
-The product should feel like a concise management review assembled from an engineering evidence book: calm working surfaces, deliberate typography, and data that speaks before ornament. Its signature is the evidence-led reading order—context, decision signal, supporting fact, then drill-down—not decorative dashboard chrome.
+The product should feel like a management review assembled from an engineering evidence book: calm working surfaces, deliberate typography, and data that speaks before ornament. Its signature is an evidence-led reading order—context, metric, comparison, then drill-down—paired with vivid but stable chart series. Use visual weight to clarify real data; never to imply a synthetic score or unsupported conclusion.
 
 ### Product context and register
 
 - **Audience and primary job:** R&D managers, domain owners, and team leaders assess verified AI engineering facts, maturity, variance, and operational data work.
 - **Target market(s) and evidence:** No market-specific claim is maintained. The Chinese product language is grounded in [CONTEXT.md](CONTEXT.md) and the business design under [docs/business](docs/business/index.md).
 - **Locale(s) and language policy:** Current product copy is Simplified Chinese with an English product name. New labels use concise, domain-defined Chinese; no Japanese-market behavior is inferred.
-- **Usage scene:** Desktop-first analytical work at 1440–1920px, with responsive fallback for narrow screens. Analytical and operational pages can be dense; executive pages must make the current evidence hierarchy obvious at a glance.
+- **Usage scene:** Desktop-only redesign, with primary acceptance at 1920×1080 and wide-screen acceptance at 2560×1440. Analytics pages use the full post-sidebar canvas. Existing narrow-screen fallbacks remain in the product but are not redesigned or accepted as part of this change.
 - **Register:** Product/admin application. The three modes are Executive Dashboard, Analytical Workspace, and Operational Console.
-- **Memorable signature:** A sparse evidence rail through hierarchy and spacing, not extra cards, gradients, or synthetic KPI scoring.
+- **Memorable signature:** The engineering evidence itself carries the visual emphasis through large metric values, compact trends, stable team colors, and same-metric benchmarks; page chrome stays quiet.
 - **Restraint:** Familiar Ant Design behavior, readable tables, filters, drawers, and navigation take priority over expression.
 - **Anti-references:** Neon/AI spectacle, blue-purple glow dashboards, generic Ant Design Pro card grids, and pie/donut defaults all obscure evidence density or imitate a template.
 - **Token ownership/runtime mapping:** `frontend/src/design/tokens.css` is the canonical runtime source. `frontend/src/design/theme.js` and `frontend/src/charts/chartTheme.js` resolve the CSS semantic tokens for Ant Design and ECharts; application and page CSS consume those canonical tokens directly. `app.css` keeps only true shell-local state such as the responsive `--shell-sidebar-width`; it no longer publishes compatibility color, spacing, motion, or visualization aliases. Shared components and chart options consume the resolved values.
 
 ## Colors
 
-`--color-bg-page`, `--color-bg-surface`, `--color-text-primary`, `--color-text-secondary`, `--color-border-default`, and `--color-brand-primary` establish light-mode hierarchy. Semantic status colors only express real success, warning, and error meanings. Text on subtle error surfaces uses `--color-danger-foreground` to preserve readable contrast; `--color-danger` remains the indicator and chart color. `--color-data-team-1` through `--color-data-team-8` are fixed entity slots; `--color-data-average` is neutral gray and dashed. `--color-data-maturity-0` through `--color-data-maturity-5` are the ordinal maturity palette, not positive/negative signals. Fact charts label `company_average` as “全公司均值”; maturity charts label the assessment aggregate as “领域平均”. `--color-data-target` is intentionally quiet and can be rendered only when a true target exists.
+`--color-bg-page`, `--color-bg-surface`, `--color-text-primary`, `--color-text-secondary`, `--color-border-default`, and `--color-brand-primary` establish light-mode hierarchy. Semantic status colors only express real success, warning, and error meanings. Text on subtle error surfaces uses `--color-danger-foreground` to preserve readable contrast; `--color-danger` remains the indicator and chart color. `--color-data-team-1` through `--color-data-team-8` are fixed entity slots (blue, green, orange, purple, teal, slate, rose, brown); `--color-data-average` is the neutral dashed benchmark. The maturity `--color-data-maturity-bg-0` through `--color-data-maturity-bg-5` are ordinal cell fills, not positive/negative signals. Fact charts label `company_average` as “全公司均值”; maturity charts label the assessment aggregate as “领域平均”. `--color-data-target` is intentionally quiet and can be rendered only when a true target exists.
 
 Future dark mode changes semantic mappings under a theme selector; pages must not depend on current primitive values. Focus uses the brand role with a visible outline, and selection uses the sidebar-specific semantic roles.
 
 ## Typography
 
-The system stack supports Chinese UI text without a new font dependency. Page title is 28px, section title 20px, card title 16px, body 14px, secondary copy 13px, label 12px, and KPI 32px. Numbers and charts use `font-variant-numeric: tabular-nums`; labels describe what is measured rather than manufacturing a score.
+The system stack supports Chinese UI text without a new font dependency. Page title is 28px, section title 20px, card title 16px, body 14px, secondary copy 13px, label 12px, and KPI values range from 32–38px across the accepted desktop widths. Numbers and charts use `font-variant-numeric: tabular-nums`; labels describe what is measured rather than manufacturing a score.
 
 ## Layout
 
-The desktop content gutter is responsive from 24px to 40px. `.app-shell__content--dashboard` and `--analytics` use the full post-sidebar canvas; the 12-column `.app-page-grid` composes content without stretching every panel equally. `--operational` retains the table/workflow width policy, while `--readable` caps form-oriented content at 1120px. The document owns Analytics vertical scrolling; page content clips only horizontal spill and does not create a second, non-scrolling vertical ancestor. The application keeps the tested 248px/64px desktop navigation and converts it to a 280px drawer at the existing 680px breakpoint. The Topbar is a 56px context-and-account strip; each route owns a content-level page header.
+The Analytics gutter is 24–32px at the 1920×1080 and 2560×1440 acceptance sizes. Analytics uses the full post-sidebar canvas without a fixed narrow maximum width. Four-column KPI rows share equal tracks; a directory-based Analytics page may reserve 220–240px and gives the remaining width to its workspace. Operational pages keep a separate table/workflow pattern; Readable stays available for form-oriented content.
+
+The document owns page-level vertical scrolling. The Sidebar may scroll internally; analytics cards do not. Main content clips horizontal spill without creating a vertical scroll ancestor that breaks sticky navigation. The application keeps 248px/64px desktop navigation and the existing 280px navigation drawer breakpoint. The Topbar is a 56px context-and-account strip; each route owns a content-level page header.
 
 No page gets a fixed document height to make a table fill space. Tables own needed horizontal/vertical overflow; scrollbars remain visible, thin, and tokenised globally.
 
@@ -86,6 +106,8 @@ Controls use `--radius-sm`; independent panels use `--radius-md`; larger compose
 
 ## Components
 
+Runtime ownership stays explicit: `frontend/src/design/tokens.css` is canonical; `frontend/src/design/theme.js` adapts spacing, typography, surfaces, and controls to Ant Design; `frontend/src/charts/chartTheme.js` adapts stable team, benchmark, maturity, and chart-axis colors to ECharts. `frontend/src/components/AnalyticsComponents.jsx` owns AnalyticsSection, ChartCard, BenchmarkLegend, AnalyticsDirectory, MaturityMatrix, and TeamMatrix. `frontend/src/components/MetricCard.jsx` owns MetricKpiCard. These components present caller-provided facts and never calculate metric meaning or permissions.
+
 ### Foundational visual states
 
 Focus-visible always has a 2px brand outline. Hover/pressed states are perceptible without replacing labels or moving layout. Loading, empty, error, not-evaluated, no-permission, and partial-data states use compact stable `feedback-state` regions and explain the condition; a missing fact is never displayed as zero.
@@ -94,9 +116,9 @@ Focus-visible always has a 2px brand outline. Hover/pressed states are perceptib
 
 Ant Design Button remains canonical. Solid brand actions are reserved for page primary actions and confirmed commits; neutral/ghost actions support secondary work; danger stays separated until a destructive confirmation. Busy buttons keep their geometry.
 
-### Navigation and data display
+### Analytics and data display
 
-App navigation is a light, role-filtered sidebar with current-route indication, keyboard focus, and a narrow drawer fallback. Breadcrumbs provide context in Topbar. The shared `FilterToolbar` groups analysis controls by meaning, wraps without per-control boxes, and provides a reset for dimension/granularity/metric/period while preserving the independent maturity month. Activities use a compact sticky directory and flat sections; metric trend panels are the only repeated surfaces, while maturity/no-data content sizes to its actual copy. Team Drilldown uses sticky section navigation and only named catalog metrics in its KPI row. Metric Detail follows Result → Comparison → Evidence, including one-metric team ordering and on-demand raw facts. Tables are operational surfaces with numeric alignment, compact controls, sticky headers where supported, and local horizontal scrolling only when necessary. Charts use line trends, ranked horizontal bars, radar profiles, and status lists/matrices according to data type. Executive Snapshot includes two maturity summaries and two real catalog facts; a separate trend panel shows one selectable metric at a time with the `全公司均值` series beside a single-metric team ranking. The lifecycle uses six user-requested stages with named catalog metrics, current values, and same-metric trends without cross-unit aggregation. The capabilities workspace selects one capability for its current state and evolution. Pie/donut is not a default. The mobile navigation Drawer explicitly restores focus to its opener after close, including Escape and navigation-triggered close.
+App navigation is a light, role-filtered sidebar with current-route indication, keyboard focus, and the existing drawer fallback. Breadcrumbs provide context in Topbar. The shared `FilterToolbar` groups analysis controls by meaning and preserves route-specific URL state and the selected analysis month. Analytics pages use product-owned KPI, chart, benchmark, directory, and matrix patterns; a card only displays one named catalog metric or a business-approved aggregation with a documented formula. The Overview keeps separate selected-month and selected-cycle KPI rows; both use the same four existing catalog metrics with activity and metric labels. Period rate/efficiency values recompute one metric from team raw facts before taking the team-equal mean; count changes use the current-month team-equal value. The core trend shows all teams plus the same metric's `company_average`; the team matrix never combines unlike metrics. `AnalyticsDirectory` uses the shared `.analytics-directory-workspace` in `design-system.css`: a 220–240px sticky directory and a fluid workspace. Activities show one selected activity's outcomes, same-metric trends, team differences, and raw evidence. Capabilities use a different status/evolution/team/evidence/maturity hierarchy based on catalog types. Team Drilldown follows Overall Performance → R&D Lifecycle → Maturity Profile with sticky section navigation; the Team's four selected catalog metrics stay individually named, same-metric `company_average` is the benchmark, and maturity shows the Team against domain averages without filling missing assessments. Maturity has its own selected category, team matrix, and current/previous domain-average radar. Team colors stay fixed across routes, and `company_average` remains a different fact from maturity's `领域平均`. Trend charts show same-metric comparisons; missing values remain gaps. Operational tables keep numeric alignment, compact controls, sticky headers where supported, and local horizontal scrolling only when needed. Pie/donut is not a default.
 
 ### Operational Console
 
@@ -118,19 +140,19 @@ System Management is an Administrative Workspace: medium-high information densit
 
 Teams use a compact master list and selected team detail. Products show Product → Version → Iteration ownership without a custom tree editor. Dashboard metric catalog and IR source metric rules remain separate tabs; activity selection narrows its metric table, and compute output is a configuration check. Users and permissions use the operational table as the page surface with subdued bilingual role labels and a quiet current-account marker.
 
-Settings workspaces use the shared `.settings-master-detail`, `.settings-workspace`, and `.settings-section` patterns in `frontend/src/design/design-system.css`. Dividers and table surfaces express relationships; Cards are reserved for independent objects or floating content. The collection page uses a compact status summary, a schedule section, an optional custom-window disclosure, and an expandable run-history table. Failed outcomes show their message/code and retryable state when the API reports it; no retry action is shown without an API.
+Settings workspaces use the shared `.settings-master-detail`, `.settings-workspace`, and `.settings-section` patterns in `frontend/src/design/design-system.css`. Dividers and table surfaces express relationships; Cards are reserved for independent objects or floating content. The collection page uses the 1600px Operational width for its seven-column run-history workspace; schedule controls stay within a readable 1040px form and manual time-window fields remain disclosed. Gateway settings keep a 1120px Readable form. Failed collection outcomes show their message/code and retryable state when the API reports it; no retry action is shown without an API. Gateway configuration has one PageHeader-owned primary action.
 
 ### Authentication and global status
 
 Login uses one restrained, token-based sign-in panel with the shared radar mark, visible labels, associated errors, password-manager autocomplete, and a stable submit action. Session-expired feedback stays near the form. The shared `StatusPage` pattern covers 403, 404, pending capability, and fatal load errors; it uses a short status label, a clear title, concise explanation, and a relevant action. Pending is neutral/informational, while actual failures use the danger role. Route loading retains App Shell geometry and uses a compact `ContentLoadingState`; action loading stays on its button.
 
-### App Shell and responsive fallback
+### App Shell and existing fallback
 
-Desktop navigation keeps the 248px/64px expanded/collapsed widths and the 56px Breadcrumb/account Topbar. The account area presents the username, one localized role label, and a quiet logout action. The <=680px navigation Drawer preserves the sidebar IA and focus return. At 768–1100px, management master/detail workspaces stack; below 720px, settings summaries and forms wrap, and dense tables keep local horizontal scrolling. No route creates page-level horizontal overflow. The app remains usable at 390px without claiming a mobile dashboard redesign.
+Desktop navigation keeps the 248px/64px expanded/collapsed widths and the 56px Breadcrumb/account Topbar. The account area presents the username, one localized role label, and a quiet logout action. Existing narrow-screen fallback behavior remains for compatibility, but this redesign does not rework or visually accept narrow analytics layouts.
 
 ### Forms and overlays
 
-Ant Design Form, Drawer, Alert, and application App feedback remain canonical. Global route states use the shared `StatusPage` component rather than the library's default oversized Result layout. Select and date controls retain their existing Ant Design/native ownership per route until a later phase intentionally changes it. Drawers retain list context for create/edit/detail operations; validation stays associated with fields and server errors preserve entered values.
+Ant Design Form, Alert, and application App feedback remain canonical. Modal side panels use `FocusRestoringDrawer`, an Ant Design Drawer adapter that restores focus to its invoking control after Escape or close; the mobile navigation Drawer keeps its explicit AppShell opener behavior. Global route states use the shared `StatusPage` component rather than the library's default oversized Result layout. Select and date controls retain their existing Ant Design/native ownership per route until a later phase intentionally changes it. Drawers retain list context for create/edit/detail operations; validation stays associated with fields and server errors preserve entered values.
 
 The `/data/maturity` monthly editor is a batch workflow: score and note stay in the activity table, “复制上月已有值” only populates the draft, and an explicit preview Drawer reviews the full month before confirmation. Blank remains not evaluated; numeric zero remains a valid value. Clearing stays a separately confirmed action.
 

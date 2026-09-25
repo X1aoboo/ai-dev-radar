@@ -30,10 +30,41 @@ def test_compute_endpoint_returns_time_series_and_company_average(authenticated_
     assert [period["id"] for period in body["periods"]] == expected_months
     assert len(body["series"]) == 4
     assert len(body["series"][0]["values"]) == 6
+    assert all("fact_count" in point for series in body["series"] for point in series["values"])
     assert len(body["company_average"]) == 6
     assert len(body["domain_summary"]) == 6
     assert body["domain_summary"][0]["fact_count"] > 0
     assert all(point["value"] is not None for point in body["company_average"])
+
+
+def test_compute_endpoint_filters_time_key_facts_by_version_id(authenticated_client):
+    catalog = authenticated_client.get("/api/catalog").json()
+    metric_id = next(
+        metric["id"]
+        for activity in catalog
+        for metric in activity["metrics"]
+        if metric["code"] == "sa-ir-pen"
+    )
+    version = authenticated_client.get("/api/versions").json()[0]
+    version_id = version["id"]
+
+    all_time = authenticated_client.get(
+        "/api/compute",
+        params={"metric_id": metric_id, "dim": "time", "gran": "month"},
+    )
+    version_time = authenticated_client.get(
+        "/api/compute",
+        params={"metric_id": metric_id, "dim": "time", "gran": "month", "version_id": version_id},
+    )
+    version_iterations = authenticated_client.get(
+        "/api/compute",
+        params={"metric_id": metric_id, "dim": "iteration", "version_id": version_id},
+    )
+
+    assert all_time.status_code == version_time.status_code == version_iterations.status_code == 200
+    count_facts = lambda body: sum(point["fact_count"] for point in body["domain_summary"])
+    assert 0 < count_facts(version_time.json()) < count_facts(all_time.json())
+    assert count_facts(version_time.json()) == count_facts(version_iterations.json())
 
 
 def test_compute_endpoint_uses_iteration_labels_and_version_filter(authenticated_client):

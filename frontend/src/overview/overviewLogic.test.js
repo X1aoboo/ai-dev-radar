@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 
 import {
+  analysisWindowLabel,
+  analysisWindowMonths,
   assignTeamColorSlots,
   bestAndWeakestRows,
   buildMaturityTrendRows,
@@ -126,6 +128,12 @@ test('general activities use the fixed monthly fallback in iteration mode', () =
   })
 })
 
+test('time-based key activity queries retain a selected version while general capabilities ignore it', () => {
+  const filter = { dimension: 'time', granularity: 'month', versionId: '2' }
+  assert.equal(queryForActivity({ kind: 'key' }, filter).versionId, '2')
+  assert.equal(queryForActivity({ kind: 'general' }, filter).versionId, null)
+})
+
 test('key activities preserve the selected iteration query', () => {
   assert.deepEqual(queryForActivity(
     { kind: 'key' },
@@ -152,11 +160,17 @@ test('normalizes filter query values and serializes only supported state', () =>
     versionId: '2',
     periodId: 'p2',
     metricId: '901',
+    cycle: '6m',
   })
   assert.equal(filterToSearchParams(parsed).toString(), 'dimension=iteration&version=2&period=p2&metric=901')
+  const halfYear = filterFromSearchParams(new URLSearchParams('cycle=half'))
+  assert.equal(halfYear.cycle, 'half')
+  assert.equal(filterToSearchParams(halfYear).toString(), 'cycle=half')
+  const timeVersion = normalizeFilter({ dimension: 'time', versionId: '2' }, { versions })
+  assert.equal(filterToSearchParams(timeVersion).toString(), 'version=2')
   assert.deepEqual(
     normalizeFilter({ dimension: 'broken', granularity: 'day', versionId: '99', periodId: 'missing' }, { versions, periods }),
-    { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null, metricId: 'all' },
+    { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null, metricId: 'all', cycle: '6m' },
   )
   assert.equal(filtersEqual(parsed, { ...parsed }), true)
 })
@@ -167,7 +181,7 @@ test('forces month granularity whenever the dimension is iteration', () => {
       versions: [{ id: 2 }],
       periods: [{ id: 'p2' }],
     }),
-    { dimension: 'iteration', granularity: 'month', versionId: '2', periodId: 'p2', metricId: 'all' },
+    { dimension: 'iteration', granularity: 'month', versionId: '2', periodId: 'p2', metricId: 'all', cycle: '6m' },
   )
 })
 
@@ -316,6 +330,16 @@ test('builds a six-month window ending at the selected month without filling gap
   })
   assert.deepEqual(rows[0].values, [null, 0, 0.4])
   assert.equal(rows[0].delta, 0.4)
+})
+
+test('analysis cycle windows end at the selected month and do not invent a full future period', () => {
+  assert.deepEqual(analysisWindowMonths('2026-09', '6m'), ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
+  assert.deepEqual(analysisWindowMonths('2026-09', 'half'), ['2026-07', '2026-08', '2026-09'])
+  assert.deepEqual(analysisWindowMonths('2026-09', 'year').slice(0, 2), ['2026-01', '2026-02'])
+  assert.deepEqual(analysisWindowMonths('2026-09', 'year').slice(-1), ['2026-09'])
+  assert.deepEqual(analysisWindowMonths('2026-01', '6m'), ['2025-08', '2025-09', '2025-10', '2025-11', '2025-12', '2026-01'])
+  assert.equal(analysisWindowLabel('2026-09', 'half'), '2026下半年')
+  assert.deepEqual(analysisWindowMonths('bad', 'year'), [])
 })
 
 test('keeps maturity zero, missing history, and best/weak values distinct', () => {

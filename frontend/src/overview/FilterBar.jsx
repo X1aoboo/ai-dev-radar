@@ -39,7 +39,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
       ...filter,
       dimension,
       granularity: dimension === 'iteration' ? 'month' : filter.granularity,
-      versionId: dimension === 'iteration' ? filter.versionId : 'all',
+      versionId: filter.versionId,
       periodId: null,
     }
     if (dimension === 'iteration') {
@@ -56,7 +56,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
     onChange({
       ...filter,
       versionId,
-      periodId: latestPeriodId(iterationPeriods(versions, versionId)),
+      periodId: isIteration ? latestPeriodId(iterationPeriods(versions, versionId)) : null,
     }, { history: 'push' })
   }
 
@@ -67,7 +67,14 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   return (
     <FilterToolbar className="analytics-filter-toolbar" label="分析筛选" actions={<button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button>}>
       <div className="analytics-page-controls">
-      {month && onMonthChange && <label><span>成熟度月份</span><input aria-label="成熟度月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
+      {month && onMonthChange && <label><span>分析月份</span><input aria-label="分析月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
+      <label className="analytics-filter-group">
+        <span>版本</span>
+        <select aria-label="版本" value={filter.versionId} onChange={(event) => changeVersion(event.target.value)}>
+          <option value="all">全部版本</option>
+          {versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
+        </select>
+      </label>
       <SegmentedControl
         label="统计维度"
         options={[
@@ -78,21 +85,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         onChange={changeDimension}
       />
 
-      {isIteration ? (
-        <label className="analytics-filter-group">
-          <span>版本</span>
-          <select
-            aria-label="版本"
-            value={filter.versionId}
-            onChange={(event) => changeVersion(event.target.value)}
-          >
-            <option value="all">全部版本</option>
-            {versions.map((version) => (
-              <option key={version.id} value={version.id}>{version.name}</option>
-            ))}
-          </select>
-        </label>
-      ) : (
+      {!isIteration && (
         <SegmentedControl
           label="时间粒度"
           options={[

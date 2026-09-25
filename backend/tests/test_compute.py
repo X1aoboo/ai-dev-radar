@@ -236,6 +236,27 @@ def test_time_series_uses_completion_date_and_calculates_company_average_from_te
     assert result["domain_summary"][0]["sample_count"] == 101
 
 
+def test_count_series_keeps_missing_teams_separate_from_recorded_zero():
+    facts = [
+        fact(1, team_id=1, numerator=2, end_date=date(2026, 8, 4)),
+        fact(2, team_id=2, numerator=0, end_date=date(2026, 8, 5)),
+    ]
+    result = build_series(
+        facts=facts,
+        metric_type="count",
+        activity_kind="key",
+        teams=[team(1, "团队A"), team(2, "团队B"), team(3, "团队C")],
+        iterations=[],
+        dimension="time",
+        granularity="month",
+    )
+
+    values = [series["values"][0] for series in result["series"]]
+    assert [(point["value"], point["fact_count"]) for point in values] == [(2, 1), (0, 1), (None, 0)]
+    assert result["company_average"][0]["value"] == 1
+    assert (result["domain_summary"][0]["value"], result["domain_summary"][0]["fact_count"]) == (2, 2)
+
+
 def test_series_sums_efficiency_records_and_returns_null_for_empty_rates():
     facts = [
         fact(1, numerator=10, denominator=0, end_date=date(2026, 1, 8)),

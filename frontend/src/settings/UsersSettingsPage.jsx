@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button as AntButton, Drawer, Empty, Form as AntForm, Input, Popconfirm, Select, Space, Table, Typography } from 'antd'
+import { Alert, Button as AntButton, Empty, Form as AntForm, Input, Popconfirm, Select, Space, Table, Typography } from 'antd'
 import { DeleteOutlined, EditOutlined, PlusOutlined } from '@ant-design/icons'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
+import FocusRestoringDrawer from '../components/FocusRestoringDrawer'
 import StatusPage, { ContentLoadingState } from '../components/StatusPage'
 
 const { Text } = Typography
@@ -26,13 +27,13 @@ function UserEditorDrawer({ editor, teams, onClose, onSubmit, submitting }) {
   useEffect(() => { if (editor) form.setFieldsValue(editor) }, [editor, form])
 
   return (
-    <Drawer title={editor?.id ? '编辑用户角色' : '新增用户'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>{editor?.id ? '保存角色' : '创建账号'}</AntButton></Space>}>
+    <FocusRestoringDrawer title={editor?.id ? '编辑用户角色' : '新增用户'} open={Boolean(editor)} size={440} onClose={onClose} destroyOnClose footer={<Space><AntButton onClick={onClose}>取消</AntButton><AntButton type="primary" loading={submitting} onClick={() => form.submit()}>{editor?.id ? '保存角色' : '创建账号'}</AntButton></Space>}>
       <AntForm noValidate form={form} layout="vertical" onFinish={onSubmit}>
         {!editor?.id && <><AntForm.Item name="username" label="账号" rules={[{ required: true, message: '请输入账号' }]}><Input autoComplete="username" /></AntForm.Item><AntForm.Item name="password" label="初始密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}><Input.Password autoComplete="new-password" /></AntForm.Item></>}
         <AntForm.Item name="role" label="角色" rules={[{ required: true }]}><Select options={Object.entries(ROLE_LABELS).map(([value, label]) => ({ value, label: `${label} · ${value}` }))} /></AntForm.Item>
         <AntForm.Item noStyle shouldUpdate={(prev, next) => prev.role !== next.role}>{({ getFieldValue }) => getFieldValue('role') === 'maintainer' ? <AntForm.Item name="maintainer_team_id" label="绑定团队" rules={[{ required: true, message: '维护者必须绑定团队' }]}><Select options={teams.map((team) => ({ value: String(team.id), label: team.name }))} /></AntForm.Item> : null}</AntForm.Item>
       </AntForm>
-    </Drawer>
+    </FocusRestoringDrawer>
   )
 }
 

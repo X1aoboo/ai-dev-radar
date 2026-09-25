@@ -47,7 +47,9 @@ const legacyRedirects = [
 ]
 
 async function login(page, username = 'admin') {
+  await page.context().clearCookies()
   await page.goto(`${RADAR_URL}/login`)
+  await expect(page.getByLabel('账号')).toBeVisible()
   await page.getByLabel('账号').fill(username)
   await page.getByLabel('密码').fill('e2e-password')
   await page.locator('button[type="submit"]').click()
@@ -151,6 +153,34 @@ test.describe('Phase 5 Browser UI Smoke', () => {
 
     await page.goto(`${RADAR_URL}/route-that-does-not-exist`)
     await expect(page.getByRole('heading', { name: '页面未找到' })).toBeVisible()
+  })
+
+  test('modal Drawers restore focus to the invoking control after Escape', async ({ page }) => {
+    await login(page)
+    await page.goto(`${RADAR_URL}/data/maturity`)
+    await waitForStablePage(page)
+
+    await page.getByRole('combobox', { name: '维护团队' }).click()
+    await page.locator('.ant-select-item-option').first().click()
+    await expect(page.locator('.maturity-editor__table')).toBeVisible()
+    const previewTrigger = page.getByRole('button', { name: '预览保存' })
+    await previewTrigger.click()
+    await expect(page.locator('.ant-drawer-title', { hasText: '保存预览' })).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.locator('.ant-drawer-title', { hasText: '保存预览' })).toBeHidden()
+    await expect(previewTrigger).toBeFocused()
+
+    await page.goto(`${RADAR_URL}/settings/gateway`)
+    await waitForStablePage(page)
+    const draftTrigger = page.getByRole('button', { name: '编辑草稿', exact: true })
+    const configureTrigger = await draftTrigger.count()
+      ? draftTrigger
+      : page.getByRole('button', { name: /编辑配置|配置 Gateway/ }).first()
+    await configureTrigger.click()
+    await expect(page.getByLabel('Bearer Token')).toBeVisible()
+    await page.keyboard.press('Escape')
+    await expect(page.getByLabel('Bearer Token')).toBeHidden()
+    await expect(configureTrigger).toBeFocused()
   })
 
   test('URL state and destructive confirmations remain explicit in the browser', async ({ page }) => {

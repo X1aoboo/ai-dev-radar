@@ -36,16 +36,16 @@
   --color-bg-success-subtle: #ecfdf3;
   --color-border-success: #abefc6;
 
-  --color-data-team-1: #2a78d6;
-  --color-data-team-2: #eb6834;
-  --color-data-team-3: #1baf7a;
-  --color-data-team-4: #eda100;
-  --color-data-team-5: #8256a1;
-  --color-data-team-6: #607d8b;
-  --color-data-team-7: #d14d72;
-  --color-data-team-8: #8c6d3f;
-  --color-data-average: #98a2b3;
-  --color-data-target: #98a2b3;
+  --color-data-team-1: #1f6feb;
+  --color-data-team-2: #168e67;
+  --color-data-team-3: #e88222;
+  --color-data-team-4: #7756d8;
+  --color-data-team-5: #0f9d9a;
+  --color-data-team-6: #5f6b7a;
+  --color-data-team-7: #c3436e;
+  --color-data-team-8: #80533d;
+  --color-data-average: #667085;
+  --color-data-target: #a5adba;
   --color-data-grid: #eaecf0;
   --color-data-axis: #d0d5dd;
   --color-data-maturity-0: #98a2b3;
@@ -54,6 +54,12 @@
   --color-data-maturity-3: #fdb022;
   --color-data-maturity-4: #12b76a;
   --color-data-maturity-5: #039855;
+  --color-data-maturity-bg-0: #f2f4f7;
+  --color-data-maturity-bg-1: #eaecf0;
+  --color-data-maturity-bg-2: #fffaeb;
+  --color-data-maturity-bg-3: #fff4e5;
+  --color-data-maturity-bg-4: #ecfdf3;
+  --color-data-maturity-bg-5: #d1fadf;
 
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   --font-size-label: 12px;
@@ -63,6 +69,7 @@
   --font-size-section-title: 20px;
   --font-size-page-title: 28px;
   --font-size-kpi: 32px;
+  --font-size-kpi-large: 38px;
   --line-height-body: 1.5;
 
   --space-1: 4px;
@@ -76,6 +83,8 @@
   --radius-md: 10px;
   --radius-lg: 14px;
   --shadow-panel: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .05);
+  --size-control-default: 36px;
+  --size-analytics-directory: 232px;
   --duration-fast: 160ms;
   --duration-base: 240ms;
   --easing-standard: cubic-bezier(.2, 0, 0, 1);

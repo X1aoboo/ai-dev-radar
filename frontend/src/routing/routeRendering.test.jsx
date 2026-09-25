@@ -499,7 +499,7 @@ test('assigns a named content mode without changing route ownership', async () =
     ['/analytics/activities', 'analytics', 'viewer'],
     ['/analytics/teams/2', 'analytics', 'viewer'],
     ['/data/requirements/ir', 'operational', 'viewer'],
-    ['/settings/collections', 'readable', 'admin'],
+    ['/settings/collections', 'operational', 'admin'],
     ['/settings/gateway', 'readable', 'admin'],
   ]) {
     const renderer = await renderAt(path, role)

@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [Enterprise Analytics UX/UI 重构 Phase 0–6](enterprise-analytics-ux-redesign.md)：完成全站分析与运营工作台重构，保留指标、API 与权限语义，并通过 1920/2560 浏览器验收及完整项目 gate。
 - [Rolling Demo Seed Coverage](rolling-demo-seed.md)：补齐默认月份、近六个月、成熟度与 IR 的演示数据。
 - [Phase 5: UX/UI Final Release Gate](phase-5-ux-ui-final-release-gate.md)：完成全站 Route/UX QA Matrix、响应式/滚动/Token 收口、可访问性和 Browser Smoke Release Gate。
 - [Phase 4: System Management, Authentication, Global Status, and App Shell](phase-4-system-management-auth-global-shell.md)：完成系统管理、认证反馈、全局状态、App Shell 与响应式收口。

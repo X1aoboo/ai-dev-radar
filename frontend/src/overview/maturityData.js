@@ -13,12 +13,17 @@ export function maturityRecordsUrl(teamId, month) {
   return `/api/maturity/records?${params.toString()}`
 }
 
-export function useMaturityOverview(month, category, onSessionExpired, refreshKey = 0) {
+export function useMaturityOverview(month, category, onSessionExpired, enabled = true) {
   const [state, setState] = useState({ loading: true, data: null, history: [], error: null })
   const sessionExpiredRef = useRef(onSessionExpired)
   sessionExpiredRef.current = onSessionExpired
 
   useEffect(() => {
+    if (!enabled) {
+      setState({ loading: false, data: null, history: [], error: null })
+      return undefined
+    }
+
     const controller = new AbortController()
     let active = true
     const months = monthWindow(month, 6)
@@ -41,7 +46,7 @@ export function useMaturityOverview(month, category, onSessionExpired, refreshKe
       active = false
       controller.abort()
     }
-  }, [category, month, refreshKey])
+  }, [category, enabled, month])
 
   return state
 }

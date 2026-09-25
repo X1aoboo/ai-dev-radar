@@ -286,7 +286,7 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
             <GatewaySummary state={gatewayState} error={gatewayError} />
             <section className="settings-section">
               <div className="settings-section__header"><div><h2 className="settings-section__title">定时采集</h2><p className="settings-section__description">每次运行采集上一个完整周期。</p></div>{statusLabel(schedule.enabled ? 'enabled' : 'disabled', schedule.enabled ? '已启用' : '已禁用')}</div>
-              <form noValidate aria-label="IR 定时计划" className="collection-form" onSubmit={saveSchedule}>
+              <form noValidate aria-label="IR 定时计划" className="collection-form collection-form--schedule" onSubmit={saveSchedule}>
                 <div className="collection-toggle"><Switch aria-label="启用 IR 定时采集" checked={schedule.enabled} disabled={saving} onChange={(enabled) => setSchedule((current) => ({ ...current, enabled }))} /><span>启用 IR 定时采集</span></div>
                 <label>采集周期<select aria-label="采集周期" disabled={saving} value={schedule.cadence} onChange={(event) => updateCadence(event.target.value)}>{CADENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
                 {schedule.cadence === 'hourly' ? <label>每小时第几分钟<input aria-label="每小时第几分钟" disabled={saving} type="number" min="0" max="59" value={schedule.minute} onChange={(event) => setSchedule((current) => ({ ...current, minute: event.target.value === '' ? '' : Number(event.target.value) }))} /></label> : <label>执行时间<input aria-label="执行时间" disabled={saving} type="time" value={scheduledTime} onChange={(event) => updateTime(event.target.value)} /></label>}
@@ -299,7 +299,7 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
 
             <section className="settings-section">
               <div className="settings-section__header"><div><h2 className="settings-section__title">手动采集</h2><p className="settings-section__description">默认使用上一个完整周期；需要时可指定半开区间。</p></div></div>
-              <form noValidate aria-label="手动触发 IR 采集" className="collection-form" onSubmit={runNow}>
+              <form noValidate aria-label="手动触发 IR 采集" className="collection-form collection-form--manual" onSubmit={runNow}>
                 <details className="settings-disclosure">
                   <summary>自定义时间范围</summary>
                   <div className="collection-window-fields">
@@ -312,8 +312,8 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
               </form>
             </section>
 
-            <section className="settings-section">
-              <div className="settings-section__header"><div><h2 className="settings-section__title">运行历史</h2><p className="settings-section__description">查看采集窗口、团队结果和暂存记录。</p></div><span className="settings-workspace__count">{runs.length} 条</span></div>
+            <section className="operational-workspace" aria-labelledby="collection-history-heading">
+              <div className="operational-workspace__header"><div><h2 id="collection-history-heading" className="operational-workspace__title">运行历史</h2><p className="settings-section__description">查看采集窗口、团队结果和暂存记录。</p></div><span className="operational-workspace__count">{runs.length} 条</span></div>
               <Table className="operational-table" rowKey="id" size="small" columns={runColumns} dataSource={runs} pagination={false} expandable={{ expandedRowRender: (run) => <RunTeamDetails run={run} />, rowExpandable: (run) => Boolean(run.team_results?.length), expandRowByClick: false }} locale={{ emptyText: '暂无采集运行记录。' }} scroll={{ x: 900 }} />
             </section>
           </>}

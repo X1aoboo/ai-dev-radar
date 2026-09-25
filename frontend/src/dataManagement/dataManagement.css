@@ -9,8 +9,7 @@
 }
 
 .collection-settings-page {
-  margin-inline: auto;
-  max-width: 1120px;
+  max-width: 1600px;
 }
 
 .gateway-settings-page {
@@ -214,11 +213,22 @@
   max-width: 760px;
 }
 
+.collection-form--schedule {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  max-width: 1040px;
+}
+
 .collection-form > label {
   display: grid;
   gap: var(--space-1);
   max-width: 320px;
 }
+
+.collection-form--schedule > label { max-width: none; }
+.collection-form--schedule > .collection-toggle,
+.collection-form--schedule > .ant-typography { grid-column: 1 / -1; }
+.collection-form > .ant-btn { justify-self: start; min-width: 136px; }
+.collection-form--schedule > .ant-btn { grid-column: 1 / -1; }
 
 .collection-form input:not([type="checkbox"]),
 .collection-form select {
@@ -237,6 +247,8 @@
   gap: var(--space-4);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+
+.settings-section + .operational-workspace { margin-top: var(--space-5); }
 
 .collection-run {
   border-bottom: 1px solid var(--color-border-default);
@@ -273,6 +285,9 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .collection-form--schedule { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .collection-form--schedule > .ant-btn { grid-column: 1 / -1; justify-self: start; }
+
 }
 
 @media (max-width: 720px) {
@@ -293,6 +308,8 @@
   .collection-window-fields {
     grid-template-columns: 1fr;
   }
+
+  .collection-form--schedule { grid-template-columns: 1fr; }
 }
 .maturity-management__toolbar {
   align-items: end;
