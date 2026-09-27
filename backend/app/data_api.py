@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from calendar import monthrange
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from typing import Any, Literal
@@ -21,6 +22,7 @@ from .auth import get_current_user, require_roles
 from .data_management import (
     IR_FIELDS,
     calculate_data_metric,
+    build_ir_overview_series,
     field_diff,
     json_changes,
     merge_empty_fields,
@@ -58,6 +60,7 @@ from .schemas import (
     IRListOut,
     IRRequirementIn,
     IRRequirementOut,
+    IROverviewMetricsOut,
     IRRequirementUpdateIn,
     ImportBatchOut,
     ImportBatchSummaryOut,
@@ -1065,6 +1068,56 @@ def _ir_metric_records(
     if completed_to is not None:
         stmt = stmt.where(IRRequirement.completed_at <= completed_to)
     return db.scalars(stmt).unique().all()
+
+
+@router.get("/data-metrics/overview", response_model=IROverviewMetricsOut)
+def ir_overview_metrics(
+    from_month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    to_month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
+    version_id: str = Query(default="all", pattern=r"^(all|[1-9][0-9]*)$"),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    start_year, start_month = map(int, from_month.split("-"))
+    end_year, end_month = map(int, to_month.split("-"))
+    start_index = start_year * 12 + start_month - 1
+    end_index = end_year * 12 + end_month - 1
+    month_count = end_index - start_index + 1
+    if month_count < 1 or month_count > 12:
+        raise HTTPException(status_code=422, detail="IR overview window must contain 1 to 12 months")
+
+    period_ids = []
+    for offset in range(month_count):
+        month_index = start_month - 1 + offset
+        period_ids.append(f"{start_year + month_index // 12:04d}-{month_index % 12 + 1:02d}")
+
+    resolved_version_id = None if version_id == "all" else int(version_id)
+    if resolved_version_id is not None and db.get(ProductVersion, resolved_version_id) is None:
+        raise HTTPException(status_code=404, detail="version not found")
+
+    start_date = date(start_year, start_month, 1)
+    end_date = date(end_year, end_month, monthrange(end_year, end_month)[1])
+    records = _ir_metric_records(
+        db,
+        current_user,
+        team_id=None,
+        product_id=None,
+        version_id=resolved_version_id,
+        iteration_id=None,
+        responsible_employee_id=None,
+        business_module=None,
+        requirement_scenario=None,
+        completed_from=start_date,
+        completed_to=end_date,
+    )
+
+    team_query = select(Team).order_by(Team.id)
+    if current_user.role == UserRole.MAINTAINER.value:
+        if current_user.maintainer_team_id is None:
+            raise HTTPException(status_code=403, detail="maintainer team is not configured")
+        team_query = team_query.where(Team.id == current_user.maintainer_team_id)
+    teams = db.scalars(team_query).all()
+    return build_ir_overview_series(records, teams, period_ids)
 
 
 @router.get("/data-metrics/compute", response_model=DataMetricComputeOut)

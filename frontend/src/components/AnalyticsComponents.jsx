@@ -1,4 +1,4 @@
-import { useId } from 'react'
+import { Fragment, useId } from 'react'
 
 import EChart from './EChart'
 
@@ -11,11 +11,11 @@ export function sparklineSegments(values = [], width = 128, height = 34) {
   if (numericValues.length < 2) return []
 
   const min = Math.min(...numericValues)
-  const range = Math.max(...numericValues) - min || 1
+  const range = Math.max(...numericValues) - min
   const inset = 2
   const point = (value, index) => ({
     x: inset + (index / Math.max(1, values.length - 1)) * (width - inset * 2),
-    y: height - inset - ((value - min) / range) * (height - inset * 2),
+    y: range ? height - inset - ((value - min) / range) * (height - inset * 2) : height * 0.28,
   })
   const segments = []
   let current = []
@@ -34,7 +34,7 @@ export function sparklineSegments(values = [], width = 128, height = 34) {
       const line = segment.map(({ x, y }, index) => `${index ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
       const first = segment[0]
       const last = segment.at(-1)
-      return { line, area: `${line} L${last.x.toFixed(1)},${(height - 1).toFixed(1)} L${first.x.toFixed(1)},${(height - 1).toFixed(1)} Z` }
+      return { line, area: `${line} L${last.x.toFixed(1)},${(height - 1).toFixed(1)} L${first.x.toFixed(1)},${(height - 1).toFixed(1)} Z`, end: last }
     })
 }
 
@@ -127,12 +127,18 @@ export function MaturityMatrix({ label = '团队成熟度矩阵', columns = [], 
   )
 }
 
-export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = [], selectedId, onSelect }) {
+export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = [], selectedId, onSelect, showChanges = false }) {
   return (
     <div className="team-matrix">
       <div className="team-matrix__scroll" role="region" aria-label={`${label}，可横向滚动`} tabIndex={0}>
-        <table className="team-matrix__table" aria-label={label}>
-          <thead><tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr></thead>
+        <table className={`team-matrix__table${showChanges ? ' team-matrix__table--changes' : ''}`} aria-label={label}>
+          <thead>{showChanges
+            ? <>
+              <tr><th scope="col" rowSpan={2}>团队</th>{columns.map((column) => <th scope="colgroup" colSpan={2} key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>
+              <tr>{columns.map((column) => <Fragment key={column.id}><th scope="col">指标值</th><th scope="col" title="与当前选择范围的前期相比">变化</th></Fragment>)}</tr>
+            </>
+            : <tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>}
+          </thead>
           <tbody>{rows.map((row) => (
             <tr className={`${row.kind === 'average' ? 'team-matrix__row--average' : ''}${String(row.id) === String(selectedId) ? ' team-matrix__row--selected' : ''}`} key={row.id}>
               <th scope="row">
@@ -140,7 +146,12 @@ export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = 
                   ? <button type="button" aria-label={`选择团队：${row.label}`} aria-pressed={String(row.id) === String(selectedId)} onClick={() => onSelect(row.id)}><i style={{ '--team-matrix-color': row.color ?? 'var(--color-data-team-1)' }} aria-hidden="true" />{row.label}</button>
                   : row.label}
               </th>
-              {columns.map((column, index) => <td key={column.id}>{row.values?.[index]?.text ?? '—'}</td>)}
+              {columns.map((column, index) => {
+                const value = row.values?.[index]
+                if (!showChanges) return <td key={column.id}>{value?.text ?? '—'}</td>
+                const tone = value?.changeTone ? ` team-matrix__change--${value.changeTone}` : ''
+                return <Fragment key={column.id}><td className="team-matrix__value">{value?.text ?? '—'}</td><td className={`team-matrix__change${tone}`}>{value?.changeText ?? '—'}</td></Fragment>
+              })}
             </tr>
           ))}</tbody>
         </table>

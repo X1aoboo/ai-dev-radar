@@ -36,7 +36,7 @@ export const FILTER_QUERY_KEYS = {
 
 export const MATURITY_QUERY_KEYS = {
   view: 'view',
-  category: 'category',
+  category: 'maturity_category',
   month: 'month',
   teams: 'teams',
   baseline: 'baseline',
@@ -362,6 +362,16 @@ export function formatMetricValue(metric, value) {
     return value ? '具备' : '不具备'
   }
   return numberFormat(value)
+}
+
+export function formatMetricDelta(metric, value, compact = false) {
+  if (!Number.isFinite(value)) return '—'
+  if (['penetration', 'ratio', 'efficiency'].includes(metric?.type)) {
+    const points = Math.round(value * 100)
+    return `${points > 0 ? '+' : ''}${points}${compact ? 'pp' : ' 个百分点'}`
+  }
+  const formatted = formatMetricValue(metric, value)
+  return value > 0 && !String(formatted).startsWith('+') ? `+${formatted}` : formatted
 }
 
 export function formatFactSummary(metric, point) {

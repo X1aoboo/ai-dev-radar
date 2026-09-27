@@ -2,6 +2,7 @@
 
 from datetime import date
 import io
+from types import SimpleNamespace
 import zipfile
 from uuid import uuid4
 
@@ -9,6 +10,7 @@ import pytest
 from sqlalchemy import delete
 
 from app.db import SessionLocal
+from app.data_management import build_ir_overview_series
 from app.models import AuditLog, DataMetricDefinition, IRRequirement, ImportBatch, ImportRow, Iteration, Product, ProductVersion, TeamMember
 
 
@@ -58,6 +60,54 @@ def login(client, username="admin"):
         json={"username": username, "password": SEED_PASSWORD},
     )
     assert response.status_code == 200
+
+
+def test_ir_overview_series_keeps_unknown_ai_and_incomplete_workload_missing():
+    teams = [SimpleNamespace(id=1, name="团队A"), SimpleNamespace(id=2, name="团队B"), SimpleNamespace(id=3, name="团队C")]
+
+    def record(team, completed_at, ai_assisted, estimated=None, actual=None):
+        return SimpleNamespace(
+            product=SimpleNamespace(team_id=team.id, team=team),
+            completed_at=completed_at,
+            ai_assisted=ai_assisted,
+            estimated_workload=estimated,
+            actual_workload=actual,
+        )
+
+    data = build_ir_overview_series(
+        records=[
+            record(teams[0], date(2026, 8, 4), True, 10, 5),
+            record(teams[0], date(2026, 8, 8), False, 4, 2),
+            record(teams[0], date(2026, 8, 10), None, 100, 0),
+            record(teams[1], date(2026, 8, 12), False, 4, 4),
+            record(teams[1], date(2026, 8, 15), True, 8, None),
+            record(teams[0], date(2026, 9, 2), True, 0, 0),
+        ],
+        teams=teams,
+        period_ids=["2026-08", "2026-09"],
+    )
+
+    assert data["domain_summary"][0] == {
+        "period_id": "2026-08",
+        "fact_count": 5,
+        "known_ai_count": 4,
+        "ai_assisted_count": 2,
+        "ai_workload_count": 1,
+        "ai_estimated_workload": 10,
+        "ai_actual_workload": 5,
+    }
+    team_b_august = data["series"][1]["values"][0]
+    assert team_b_august["ai_assisted_count"] == 1
+    assert team_b_august["ai_workload_count"] == 0
+    assert team_b_august["ai_estimated_workload"] is None
+    team_c_august = data["series"][2]["values"][0]
+    assert team_c_august["fact_count"] == 0
+    assert team_c_august["ai_assisted_count"] is None
+    september = data["domain_summary"][1]
+    assert september["ai_assisted_count"] == 1
+    assert september["ai_workload_count"] == 1
+    assert september["ai_estimated_workload"] == 0
+    assert september["ai_actual_workload"] == 0
 
 
 def create_ir_context(client, team_id=1):
@@ -274,10 +324,14 @@ def test_ir_import_is_atomic_when_any_row_is_invalid(client):
 def test_ir_query_and_metrics_use_valid_formal_records(client):
     login(client)
     product, version, iteration = create_ir_context(client)
-    create_ir_context(client, team_id=2)
+    product_b, version_b, iteration_b = create_ir_context(client, team_id=2)
     assert client.post(
         "/api/data/ir",
         json=ir_payload(product, version, iteration, business_module="CNAE-TEST"),
+    ).status_code == 201
+    assert client.post(
+        "/api/data/ir",
+        json=ir_payload(product_b, version_b, iteration_b, business_module="CNAE-TEST", ai_assisted=False),
     ).status_code == 201
 
     filtered = client.get(
@@ -314,6 +368,43 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
     )
     assert efficiency.status_code == 200
     assert efficiency.json()["value"] == 1
+
+    overview = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-09"})
+    assert overview.status_code == 200, overview.text
+    assert overview.json()["period_ids"] == ["2026-08", "2026-09"]
+    assert overview.json()["domain_summary"][0]["fact_count"] >= 2
+    assert "requirement_no" not in overview.text
+
+    version_scope = client.get(
+        "/api/data-metrics/overview",
+        params={"from_month": "2026-08", "to_month": "2026-08", "version_id": str(version["id"])},
+    )
+    assert version_scope.status_code == 200
+    august = version_scope.json()["domain_summary"][0]
+    assert august["fact_count"] == 1
+    assert august["known_ai_count"] == 1
+    assert august["ai_assisted_count"] == 1
+    assert august["ai_workload_count"] == 1
+    assert august["ai_estimated_workload"] == 10
+    assert august["ai_actual_workload"] == 5
+
+    false_ai_scope = client.get(
+        "/api/data-metrics/overview",
+        params={"from_month": "2026-08", "to_month": "2026-08", "version_id": str(version_b["id"])},
+    )
+    assert false_ai_scope.status_code == 200
+    assert false_ai_scope.json()["domain_summary"][0]["ai_assisted_count"] == 0
+    assert false_ai_scope.json()["domain_summary"][0]["ai_workload_count"] == 0
+    assert false_ai_scope.json()["domain_summary"][0]["ai_estimated_workload"] is None
+
+    login(client, "maintainer.团队A")
+    team_scope = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-08"})
+    assert team_scope.status_code == 200
+    assert {series["team_id"] for series in team_scope.json()["series"]} == {1}
+    assert team_scope.json()["domain_summary"][0]["fact_count"] >= 1
+
+    invalid_window = client.get("/api/data-metrics/overview", params={"from_month": "2026-09", "to_month": "2026-08"})
+    assert invalid_window.status_code == 422
 
 
 def test_ir_file_preview_accepts_csv_and_xlsx_payloads(client):

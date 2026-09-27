@@ -89,13 +89,14 @@ None。继续使用既有 `ai-dev-radar.sidebar-collapsed` 键和值。
 - Expanded/collapsed widths and body offsets measured 248px/248px and 64px/64px. The collapsed navigation remained 39px wide with no horizontal scroll; desktop and mobile document widths matched their viewport widths.
 - Computed contrast was 10.01:1 for navigation text, 5.79:1 for secondary text, and 7.04:1 for selected text. The selected item had no left marker.
 - Browser hover showed `#E8EAED`, `#3C4043`, and scale 1.06. Keyboard focus showed a visible 2px `#174EA6` outline and visible icon. Enter expanded and Space collapsed. Reload restored the collapsed preference.
-- The 390×844 drawer measured 280px wide with the shared `#F8FAFD` surface. Escape closed it and focus returned to the opener after the drawer transition.
+- The current 390×844 Overview check showed all three header filters within the viewport, a 280px drawer, and a 380px document width inside the 390px viewport. Escape closed the drawer and focus returned to the “打开导航” button after the transition.
+- A Chromium context with `prefers-reduced-motion: reduce` active reported `transition-property: none` and `transform: none` for the hovered sidebar toggle; `matchMedia` confirmed the preference was active.
+- A real-browser request count recorded 110 `/api/` requests before the sidebar collapse/expand cycle and 110 afterward (zero added requests).
+- Screenshot evidence for the current narrow Overview header and drawer is in the task evidence directory as `overview-r4-mobile-controls-390.png` and `overview-r4-mobile-drawer-390.png`.
 - The shared Logo rendered at 32px in the application. The browser CSSOM contained the active rule (`#DADCE0`, scale 0.94) and reduced-motion overrides.
 
 ### Unverified Boundaries
 
-- The browser session did not expose a request timeline. The rendering test verified that toggling does not change the `fetch` call count; an independent browser network count was not captured.
-- Reduced-motion CSS parsed with `transition: none` and `transform: none`, but the browser did not expose a media preference emulator, so the `reduce` preference was not activated.
 - The `:active` declaration was inspected in the browser CSSOM, but the browser control could not hold a pointer-down state for a screenshot.
 - Browser URL policy rejected the temporary data URL used to preview the local SVG at 16px and prohibited workarounds. The SVG's 16px favicon appearance therefore remains visually unverified.
 

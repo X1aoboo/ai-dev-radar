@@ -184,7 +184,7 @@ async function main() {
     await waitForHttp(`${radarUrl}/openapi.json`, radar, 'Radar')
 
     const playwrightCli = path.join(ROOT, 'node_modules', '@playwright', 'test', 'cli.js')
-    await run(process.execPath, [playwrightCli, 'test', '--config=playwright.config.mjs'], {
+    await run(process.execPath, [playwrightCli, 'test', '--config=playwright.config.mjs', 'e2e/specs/gateway.e2e.spec.js'], {
       env: {
         ...env,
         E2E_RADAR_URL: radarUrl,

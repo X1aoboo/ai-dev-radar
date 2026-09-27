@@ -614,6 +614,28 @@ class DataMetricComputeOut(BaseModel):
     filters: dict[str, Any]
 
 
+class IROverviewMetricPointOut(BaseModel):
+    period_id: str
+    fact_count: int
+    known_ai_count: int
+    ai_assisted_count: int | None
+    ai_workload_count: int
+    ai_estimated_workload: float | None
+    ai_actual_workload: float | None
+
+
+class IROverviewMetricSeriesOut(BaseModel):
+    team_id: int
+    team_name: str
+    values: list[IROverviewMetricPointOut]
+
+
+class IROverviewMetricsOut(BaseModel):
+    period_ids: list[str]
+    series: list[IROverviewMetricSeriesOut]
+    domain_summary: list[IROverviewMetricPointOut]
+
+
 class FactRecordOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

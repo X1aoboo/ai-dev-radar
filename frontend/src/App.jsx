@@ -1,8 +1,9 @@
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Tooltip } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
-import { LogoutOutlined, MenuFoldOutlined, MenuOutlined, UserOutlined } from '@ant-design/icons'
+import { BellOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, QuestionCircleOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons'
 import {
+  Link,
   Navigate,
   NavLink,
   Outlet,
@@ -10,6 +11,7 @@ import {
   Routes,
   useLocation,
   useNavigate,
+  useNavigationType,
   useOutletContext,
   useParams,
   useSearchParams,
@@ -84,7 +86,7 @@ function LoginPage({ onLogin, error, onClearError }) {
       <form noValidate onSubmit={submit} className="auth-card">
         <div className="auth-card__brand">
           <img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" />
-          <div><h1>ai-dev-radar</h1><p>Enterprise Analytics</p></div>
+          <div><h1>ai-dev-radar</h1><p>AI 研发效能分析平台</p></div>
         </div>
         <p className="auth-card__intro">登录后查看研发团队的 AI 研发效能分析。</p>
         <label className="auth-field" htmlFor="login-username">账号<input ref={usernameInput} id="login-username" name="username" autoComplete="username" value={username} aria-invalid={Boolean(validationError || error)} aria-describedby={validationError || error ? 'login-error' : undefined} onChange={(event) => { setUsername(event.target.value); setValidationError(null); onClearError() }} required /></label>
@@ -200,14 +202,16 @@ function useUrlMaturity(teams) {
 }
 
 function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
-  const { search, pathname } = useLocation()
+  const { search, pathname, hash } = useLocation()
+  const teamDrilldownRoute = pathname.startsWith('/analytics/teams/')
+  const teamSectionSelected = (pathname === '/' && hash === '#team-performance') || teamDrilldownRoute
   const groups = SIDEBAR_GROUPS
     .map((group) => ({ ...group, items: group.items.filter((item) => !item.roles || item.roles.includes(user.role)) }))
     .filter((group) => group.items.length > 0)
 
   return (
     <aside className="app-sidebar" aria-label="主导航">
-      <div className="app-sidebar__header"><div className="app-brand"><img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" /><span className="app-brand__copy"><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">Enterprise Analytics</span></span></div>{onToggle && <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right"><Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} /></Tooltip>}</div>
+      <div className="app-sidebar__header"><div className="app-brand"><img className="app-brand__logo" src="/favicon.svg" alt="" aria-hidden="true" /><span className="app-brand__copy"><span className="app-brand__name">ai-dev-radar</span><span className="app-brand__caption">AI 研发效能分析平台</span></span></div>{onToggle && <Tooltip title={collapsed ? '展开导航' : '折叠导航'} placement="right"><Button className="app-sidebar__toggle" type="text" icon={collapsed ? <MenuOutlined /> : <MenuFoldOutlined />} aria-label={collapsed ? '展开导航' : '折叠导航'} aria-expanded={!collapsed} aria-controls="app-navigation" onClick={onToggle} /></Tooltip>}</div>
       <nav id="app-navigation" className="app-nav">
         {groups.map((group) => (
           <section key={group.label} className="app-nav__group">
@@ -215,8 +219,24 @@ function AppSidebar({ user, collapsed = false, onToggle, onNavigate }) {
             {group.items.map((item) => {
               const Icon = item.icon
               const content = <><span className="app-nav__icon"><Icon /></span><span className="app-nav__text">{item.label}</span></>
+              const sectionActive = item.key === 'team-details'
+                ? teamSectionSelected
+                : item.key === 'overview'
+                  ? (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/')) && !teamSectionSelected
+                  : Boolean(item.activePrefix && pathname.startsWith(item.activePrefix))
+              const target = item.key === 'team-details'
+                ? (teamDrilldownRoute ? appendSearch(pathname, search) : { pathname: '/', search, hash: '#team-performance' })
+                : item.to === '/' ? appendSearch('/', search) : item.to
+              const handleClick = (event) => {
+                onNavigate?.(event)
+                if (item.key === 'team-details' && pathname === '/') globalThis.document?.getElementById('team-performance')?.scrollIntoView({ block: 'start' })
+              }
+              const linkProps = { onClick: handleClick, 'aria-label': item.label, 'data-section-active': sectionActive ? 'true' : undefined, className: 'app-nav__link' }
+              const link = item.key === 'overview' || item.key === 'team-details'
+                ? <Link {...linkProps} aria-current={sectionActive && (item.key !== 'overview' || pathname === '/') ? 'page' : undefined} to={target}>{content}</Link>
+                : <NavLink {...linkProps} to={target} end={item.to === '/'}>{content}</NavLink>
               return <Tooltip key={item.key} title={collapsed ? item.label : undefined} placement="right">
-                <NavLink onClick={onNavigate} aria-label={item.label} data-section-active={(item.key === 'overview' && (pathname === '/' || pathname.startsWith('/analytics/teams/') || pathname.startsWith('/analytics/metrics/'))) || (item.activePrefix && pathname.startsWith(item.activePrefix)) ? 'true' : undefined} to={item.to === '/' ? appendSearch('/', search) : item.to} end={item.to === '/'} className="app-nav__link">{content}</NavLink>
+                {link}
               </Tooltip>
             })}
           </section>
@@ -254,7 +274,41 @@ function AppShell({ user, onLogout }) {
     focusRestoreTimer.current = globalThis.setTimeout(() => navigationButton.current?.focus(), 320)
   }
   const location = useLocation()
-  const meta = getRouteMeta(location.pathname)
+  const navigationType = useNavigationType()
+  const navigate = useNavigate()
+  const previousPathname = useRef(location.pathname)
+  const teamSourceLabel = useRef(null)
+  if (location.pathname.startsWith('/analytics/teams/')) {
+    if (typeof location.state?.returnLabel === 'string') teamSourceLabel.current = location.state.returnLabel
+  } else teamSourceLabel.current = null
+  useLayoutEffect(() => {
+    if (previousPathname.current === location.pathname) return
+    previousPathname.current = location.pathname
+    if (navigationType !== 'POP') globalThis.window?.scrollTo?.(0, 0)
+  }, [location.pathname, navigationType])
+  const routeMeta = getRouteMeta(location.pathname)
+  const meta = teamSourceLabel.current
+    ? { ...routeMeta, items: [...routeMeta.items, { title: `来自${teamSourceLabel.current}` }] }
+    : routeMeta
+  // ponytail: quick search indexes existing routes; add domain data only when its authorized query contract exists.
+  const searchOptions = SIDEBAR_GROUPS.flatMap((group) => group.items)
+    .filter((item) => !item.roles || item.roles.includes(user.role))
+    .map((item) => ({ label: item.label, path: item.to === '/' ? '/' : item.to.startsWith('/') ? item.to : `/${item.to}` }))
+  const [searchValue, setSearchValue] = useState('')
+  const [searchStatus, setSearchStatus] = useState('')
+  function submitNavigationSearch(event) {
+    event.preventDefault()
+    const query = searchValue.trim().toLocaleLowerCase()
+    const target = searchOptions.find((item) => item.label.toLocaleLowerCase() === query)
+      ?? searchOptions.find((item) => item.label.toLocaleLowerCase().includes(query))
+    if (!query || !target) {
+      setSearchStatus(query ? '没有找到匹配的页面。' : '请输入页面或功能名称。')
+      return
+    }
+    setSearchStatus('')
+    setSearchValue('')
+    navigate(target.path)
+  }
   const contentMode = location.pathname === '/'
     ? 'dashboard'
     : location.pathname.startsWith('/analytics/')
@@ -272,7 +326,30 @@ function AppShell({ user, onLogout }) {
         <AppSidebar user={user} onNavigate={closeNavigation} />
       </Drawer>}
       <div className="app-shell__body">
-        <header className="app-topbar"><div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? "app-navigation" : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div><div className="app-topbar__actions"><div className="app-user"><UserOutlined /><span className="app-user__identity"><span className="app-user__name">{user.username}</span><span className="app-user__role">{ROLE_LABELS[user.role] ?? user.role}</span></span></div><Button className="app-logout" type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div></header>
+        <header className="app-topbar">
+          <div className="app-topbar__heading">{narrow && <Button ref={navigationButton} type="text" icon={<MenuOutlined />} aria-label="打开导航" aria-expanded={drawerOpen} aria-controls={drawerOpen ? 'app-navigation' : undefined} onClick={() => setDrawerOpen(true)} />}<div className="app-topbar__context"><Breadcrumb items={meta.items} /></div></div>
+          <div className="app-topbar__actions">
+            <div className="app-topbar__tools">
+              <form noValidate className="app-topbar__search" role="search" aria-label="快速导航搜索" onSubmit={submitNavigationSearch}>
+                <SearchOutlined aria-hidden="true" />
+                <input aria-label="搜索页面或功能" list="app-topbar-search-options" placeholder="搜索页面或功能…" value={searchValue} onChange={(event) => { setSearchValue(event.target.value); setSearchStatus('') }} />
+                <datalist id="app-topbar-search-options">{searchOptions.map((item) => <option key={item.path} value={item.label} />)}</datalist>
+              </form>
+              <span className="app-topbar__notification-wrap"><Tooltip title="通知功能暂未开放" placement="bottom"><span><Button className="app-topbar__utility-button" type="text" disabled icon={<BellOutlined />} aria-label="通知功能暂未开放" /></span></Tooltip></span>
+              <details className="app-topbar__help">
+                <summary aria-label="帮助与常用入口"><QuestionCircleOutlined aria-hidden="true" /></summary>
+                <nav className="app-topbar__help-menu" aria-label="常用入口">
+                  <strong>常用入口</strong>
+                  <NavLink to="/data/requirements/ir">需求数据</NavLink>
+                  <NavLink to="/analytics/activities">研发活动</NavLink>
+                  <NavLink to="/data/maturity">成熟度评估</NavLink>
+                </nav>
+              </details>
+              <span className="app-sr-only" role="status" aria-live="polite">{searchStatus}</span>
+            </div>
+            <div className="app-topbar__account"><div className="app-user"><UserOutlined aria-hidden="true" /><span className="app-user__identity"><span className="app-user__name">{user.username}</span><span className="app-user__role">{ROLE_LABELS[user.role] ?? user.role}</span></span></div><Button className="app-logout" type="text" size="small" icon={<LogoutOutlined />} onClick={onLogout}>退出</Button></div>
+          </div>
+        </header>
         <div id="main-content" className={`app-shell__content app-shell__content--${contentMode}`} role="main" tabIndex={-1}><Suspense fallback={<ContentLoadingState label="加载页面模块…" className="route-loading" />}><Outlet /></Suspense></div>
       </div>
     </div>

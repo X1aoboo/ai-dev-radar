@@ -316,6 +316,40 @@ textarea:focus-visible {
   gap: var(--space-3);
 }
 
+.app-topbar__tools,
+.app-topbar__account { align-items: center; display: flex; gap: var(--space-2); }
+.app-topbar__search {
+  align-items: center;
+  background: var(--color-bg-subtle);
+  border: 1px solid var(--color-border-default);
+  border-radius: 999px;
+  color: var(--color-text-tertiary);
+  display: flex;
+  flex: 0 1 230px;
+  gap: var(--space-2);
+  height: 32px;
+  min-width: 150px;
+  padding: 0 10px;
+}
+.app-topbar__search:focus-within { border-color: var(--color-border-brand); outline: 2px solid var(--color-bg-brand-subtle); outline-offset: 1px; }
+.app-topbar__search input { background: transparent; border: 0; color: var(--color-text-primary); flex: 1; font: inherit; min-width: 0; outline: 0; }
+.app-topbar__search input::placeholder { color: var(--color-text-tertiary); }
+.app-sr-only { clip: rect(0, 0, 0, 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+.app-topbar__notification-wrap,
+.app-topbar__help { align-items: center; display: inline-flex; flex: 0 0 32px; height: 32px; justify-content: center; position: relative; width: 32px; }
+.app-topbar__utility-button.ant-btn.ant-btn-variant-text { color: var(--color-text-secondary); height: 32px; width: 32px; }
+.app-topbar__utility-button.ant-btn:disabled { background: transparent; color: var(--color-text-tertiary); opacity: 1; }
+.app-topbar__help summary { align-items: center; border-radius: 50%; color: var(--color-text-secondary); cursor: pointer; display: inline-flex; height: 32px; justify-content: center; list-style: none; width: 32px; }
+.app-topbar__help summary::-webkit-details-marker { display: none; }
+.app-topbar__help summary:hover,
+.app-topbar__help summary:focus-visible { background: var(--color-bg-subtle); color: var(--color-brand-primary); outline: none; }
+.app-topbar__help summary:focus-visible { box-shadow: 0 0 0 2px var(--color-brand-primary); }
+.app-topbar__help-menu { background: var(--color-bg-surface); border: 1px solid var(--color-border-default); border-radius: var(--radius-md); box-shadow: var(--shadow-panel); display: grid; gap: 4px; min-width: 180px; padding: 8px; position: absolute; right: 0; top: calc(100% + 8px); z-index: 8; }
+.app-topbar__help-menu strong { color: var(--color-text-tertiary); font-size: var(--font-size-label); padding: 4px 8px; }
+.app-topbar__help-menu a { border-radius: var(--radius-sm); color: var(--color-text-primary); font-size: var(--font-size-secondary); padding: 7px 8px; text-decoration: none; }
+.app-topbar__help-menu a:hover,
+.app-topbar__help-menu a:focus-visible { background: var(--color-bg-subtle); color: var(--color-brand-primary); outline: none; }
+
 .app-user {
   align-items: center;
   color: var(--color-text-secondary);
@@ -323,6 +357,18 @@ textarea:focus-visible {
   font-size: 12px;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.app-user > .anticon {
+  align-items: center;
+  background: var(--color-brand-primary);
+  border-radius: 50%;
+  color: var(--color-text-on-brand);
+  display: inline-flex;
+  flex: 0 0 28px;
+  height: 28px;
+  justify-content: center;
+  width: 28px;
 }
 
 .app-user__identity {
@@ -498,6 +544,8 @@ textarea:focus-visible {
     padding-right: var(--space-5);
   }
 
+  .app-topbar__search { flex-basis: 190px; }
+
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -535,4 +583,10 @@ textarea:focus-visible {
     width: 100%;
     justify-content: space-between;
   }
+
+  .app-topbar__tools { flex: 1; min-width: 0; }
+  .app-topbar__search { flex-basis: 145px; max-width: 170px; min-width: 100px; }
+  .app-topbar__notification-wrap { display: none; }
+  .app-topbar__account { gap: var(--space-1); }
+  .app-user__role { display: none; }
 }

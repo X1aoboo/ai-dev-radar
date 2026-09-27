@@ -1,13 +1,4 @@
-import { analysisWindowMonths, assignTeamColorSlots } from '../overview/overviewLogic.js'
-import { EXECUTIVE_KPI_CODES, metricCompanyAverageForWindow, metricDataForPeriods } from '../overview/executiveLogic.js'
-
-export const TEAM_KPI_CODES = [...EXECUTIVE_KPI_CODES]
-
-export function teamKpiEntries(entries = []) {
-  return TEAM_KPI_CODES
-    .map((code) => entries.find(({ metric }) => metric.code === code))
-    .filter(Boolean)
-}
+import { assignTeamColorSlots } from '../overview/overviewLogic.js'
 
 function numeric(value) {
   return typeof value === 'number' && Number.isFinite(value)
@@ -19,15 +10,18 @@ export function teamAccentColor(teamId, teamIds = [teamId], previousSlots = {}) 
   return assigned.colors[String(teamId)] ?? null
 }
 
-export function maturityProfileSeries({ activities = [], records = [], teamName, teamColor, domainColor }) {
-  const recordsByActivity = new Map(records.map((record) => [
+export function maturityProfileSeries({ activities = [], records = [], previousRecords = [], teamName, teamColor, domainColor }) {
+  const mapScores = (rows) => new Map(rows.map((record) => [
     String(record.activity_id),
     record.score_raw !== null && record.score_raw !== undefined && record.score_raw !== '' && Number.isFinite(Number(record.score_raw))
       ? Number(record.score_raw)
       : null,
   ]))
+  const recordsByActivity = mapScores(records)
+  const previousRecordsByActivity = mapScores(previousRecords)
   return [
-    { id: 'team', name: teamName, color: teamColor, values: activities.map((activity) => recordsByActivity.get(String(activity.activity_id)) ?? null) },
+    { id: 'team-current', name: `${teamName} · 本期`, color: teamColor, values: activities.map((activity) => recordsByActivity.get(String(activity.activity_id)) ?? null) },
+    { id: 'team-previous', name: `${teamName} · 上期`, color: teamColor, dashed: true, values: activities.map((activity) => previousRecordsByActivity.get(String(activity.activity_id)) ?? null) },
     { id: 'domain', name: '领域平均', color: domainColor, dashed: true, values: activities.map((activity) => Number.isFinite(activity.score) ? activity.score : null) },
   ]
 }
@@ -111,29 +105,6 @@ export function deltaForSelection(data, metric, teamId, periodId) {
   const current = valueForSelection(data, metric, teamId, periods[index].id)
   const previous = valueForSelection(data, metric, teamId, periods[index - 1].id)
   return numeric(current) && numeric(previous) ? current - previous : null
-}
-
-export function teamMetricSummary({ data, metric, teamId, month, cycle = '6m' } = {}) {
-  const monthIds = analysisWindowMonths(month, '6m')
-  const periodIds = analysisWindowMonths(month, cycle)
-  const valueForWindow = (ids) => valueForSelection(metricDataForPeriods(data, ids), metric, teamId, 'all')
-  const monthValue = valueForSelection(data, metric, teamId, month)
-  const periodValue = valueForWindow(periodIds)
-  const previousPeriodValue = valueForWindow(periodIds.slice(0, -1))
-  const companyAverage = new Map((data?.company_average ?? []).map((point) => [String(point.period_id), point.value]))
-  return {
-    monthValue,
-    monthDelta: deltaForSelection(data, metric, teamId, month),
-    monthBenchmark: companyAverage.get(String(month)) ?? null,
-    monthTrend: monthIds.map((periodId) => valueForSelection(data, metric, teamId, periodId)),
-    periodValue,
-    periodDelta: metric?.type === 'count'
-      ? monthValue
-      : numeric(periodValue) && numeric(previousPeriodValue) ? periodValue - previousPeriodValue : null,
-    periodBenchmark: metricCompanyAverageForWindow(data, metric, periodIds),
-    periodTrend: periodIds.map((_, index) => valueForWindow(periodIds.slice(0, index + 1))),
-    periodIds,
-  }
 }
 
 function dateInPeriod(value, period) {

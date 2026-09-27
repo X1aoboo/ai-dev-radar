@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { afterEach, test } from 'vitest'
+import { afterEach, expect, test } from 'vitest'
 import { act, create } from 'react-test-renderer'
 
 import { AnalyticsDirectory, AnalyticsSection, ChartCard, MaturityMatrix, TeamMatrix, sparklineSegments } from './AnalyticsComponents.jsx'
@@ -18,17 +18,40 @@ test('sparkline splits gaps and scales constant values without invalid coordinat
 
   assert.equal(gapSegments.length, 2)
   assert.equal(flatSegments.length, 1)
+  assert.equal(flatSegments[0].line, 'M2.0,9.5 L64.0,9.5 L126.0,9.5')
+  assert.equal(Math.round(flatSegments[0].end.y), 10)
   assert.doesNotMatch(flatSegments[0].line, /NaN|Infinity/)
 })
 
 test('MetricKpiCard preserves zero, labels its trend, and does not fill missing data', async () => {
   await act(async () => {
-    renderer = create(<MetricKpiCard label="AI需求渗透率" value="0%" comparison="3 / 4 团队有事实" trendValues={[0, 0.2, null, 0.3, 0.4]} trendLabel="需求渗透率趋势" />)
+    renderer = create(<MetricKpiCard label="AI需求渗透率" value="0%" comparison="3 / 4 团队有事实" delta="环比 +5%" deltaTone="positive" trendValues={[0, 0.2, null, 0.3, 0.4]} trendLabel="需求渗透率趋势" />)
   })
 
-  assert.equal(renderer.root.findByProps({ className: 'metric-card__value' }).children[0], '0%')
+  const valueRow = renderer.root.findByProps({ className: 'metric-card__value-row' })
+  assert.equal(valueRow.findByProps({ className: 'metric-card__value' }).children[0], '0%')
+  assert.equal(valueRow.findByProps({ className: 'metric-card__delta metric-card__delta--positive' }).children.at(-1), '环比 +5%')
+  assert.equal(valueRow.findByProps({ className: 'metric-card__delta-mark' }).props['aria-hidden'], 'true')
   assert.equal(renderer.root.findByProps({ role: 'img' }).props['aria-label'], '需求渗透率趋势')
   assert.equal(renderer.root.findAllByType('path').length, 4)
+  assert.equal(renderer.root.findAllByProps({ className: 'metric-card__sparkline-end' }).length, 2)
+})
+
+test('MetricKpiCard keeps a neutral trend area when a value and history are missing', async () => {
+  await act(async () => {
+    renderer = create(<MetricKpiCard label="AI需求渗透率" value="—" comparison="有效团队 0 / 4" />)
+  })
+
+  assert.equal(renderer.root.findByProps({ className: 'metric-card__empty-trend' }).props['aria-label'], 'AI需求渗透率暂无趋势数据')
+})
+
+test('MetricKpiCard keeps its decorative KPI icon out of the accessibility name', async () => {
+  await act(async () => {
+    renderer = create(<MetricKpiCard icon={<span>icon</span>} label="AI需求渗透率" value="50%" />)
+  })
+
+  assert.equal(renderer.root.findByProps({ className: 'metric-card__icon' }).props['aria-hidden'], 'true')
+  assert.equal(renderer.root.findByProps({ className: 'metric-card__label' }).children[0], 'AI需求渗透率')
 })
 
 test('AnalyticsDirectory exposes selected anchors and named selection controls', async () => {
@@ -74,6 +97,23 @@ test('TeamMatrix keeps selected teams and direct metric cells accessible', async
   await act(async () => { buttons[1].props.onClick() })
   assert.equal(selected, 2)
   assert.deepEqual(renderer.root.findAllByType('td').map((node) => node.children.join('')), ['42%', '0%', '—'])
+})
+
+test('TeamMatrix can show a separate, signed change value for each metric', async () => {
+  await act(async () => {
+    renderer = create(<TeamMatrix label="团队表现" showChanges columns={[{ id: 'penetration', label: 'AI需求渗透率', context: 'IR需求' }]} rows={[
+      { id: 'average', label: '全公司均值', kind: 'average', values: [{ text: '50%', changeText: '+5%', changeTone: 'positive' }] },
+      { id: 1, label: '团队A', kind: 'team', values: [{ text: '45%', changeText: '—', changeTone: 'neutral' }] },
+    ]} />)
+  })
+
+  const headers = renderer.root.findAllByType('th')
+  expect(headers[0].children.join('')).toBe('团队')
+  expect(headers[1].findByType('span').children.join('')).toBe('AI需求渗透率')
+  expect(headers[2].children.join('')).toBe('指标值')
+  expect(headers[3].children.join('')).toBe('变化')
+  expect(renderer.root.findAllByType('td').map((node) => node.children.join(''))).toEqual(['50%', '+5%', '45%', '—'])
+  expect(renderer.root.findByProps({ className: 'team-matrix__change team-matrix__change--positive' })).toBeDefined()
 })
 
 test('ChartCard and AnalyticsSection expose named, stable regions', async () => {

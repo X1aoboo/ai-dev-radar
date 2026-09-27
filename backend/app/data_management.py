@@ -280,6 +280,52 @@ def calculate_data_metric(records: Iterable[Any], definition: Any, filters: Mapp
     }
 
 
+def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], period_ids: Sequence[str]) -> dict[str, Any]:
+    records_by_team_period: dict[tuple[int, str], list[Any]] = {}
+    records_by_period: dict[str, list[Any]] = {}
+    team_ids = {team.id for team in teams}
+    for record in records:
+        team_id = record.product.team_id
+        period_id = record.completed_at.strftime("%Y-%m")
+        if team_id not in team_ids or period_id not in period_ids:
+            continue
+        records_by_team_period.setdefault((team_id, period_id), []).append(record)
+        records_by_period.setdefault(period_id, []).append(record)
+
+    def point(period_id: str, period_records: Sequence[Any]) -> dict[str, Any]:
+        known_ai_records = [record for record in period_records if record.ai_assisted is not None]
+        ai_records = [record for record in known_ai_records if record.ai_assisted is True]
+        workload_records = [
+            record for record in ai_records
+            if all(
+                isinstance(value, (int, float)) and math.isfinite(value)
+                for value in (record.estimated_workload, record.actual_workload)
+            )
+        ]
+        return {
+            "period_id": period_id,
+            "fact_count": len(period_records),
+            "known_ai_count": len(known_ai_records),
+            "ai_assisted_count": len(ai_records) if known_ai_records else None,
+            "ai_workload_count": len(workload_records),
+            "ai_estimated_workload": sum(record.estimated_workload for record in workload_records) if workload_records else None,
+            "ai_actual_workload": sum(record.actual_workload for record in workload_records) if workload_records else None,
+        }
+
+    return {
+        "period_ids": list(period_ids),
+        "series": [
+            {
+                "team_id": team.id,
+                "team_name": team.name,
+                "values": [point(period_id, records_by_team_period.get((team.id, period_id), [])) for period_id in period_ids],
+            }
+            for team in teams
+        ],
+        "domain_summary": [point(period_id, records_by_period.get(period_id, [])) for period_id in period_ids],
+    }
+
+
 def _xml_local_name(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 

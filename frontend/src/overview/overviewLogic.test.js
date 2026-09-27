@@ -16,6 +16,7 @@ import {
   filterFromSearchParams,
   filterToSearchParams,
   filtersEqual,
+  formatMetricDelta,
   formatMetricValue,
   latestPeriodId,
   maturityAverageScore,
@@ -97,6 +98,14 @@ test('metric values use the domain display formats', () => {
   assert.equal(formatMetricValue({ type: 'boolean' }, false), '不具备')
   assert.equal(formatMetricValue({ type: 'count' }, 0), '0')
   assert.equal(formatMetricValue({ type: 'penetration' }, null), '—')
+})
+
+test('metric deltas express ratio changes in percentage points and keep compact rows scannable', () => {
+  assert.equal(formatMetricDelta({ type: 'penetration' }, 0.05), '+5 个百分点')
+  assert.equal(formatMetricDelta({ type: 'efficiency' }, -0.1), '-10 个百分点')
+  assert.equal(formatMetricDelta({ type: 'ratio' }, 0.03, true), '+3pp')
+  assert.equal(formatMetricDelta({ type: 'count' }, 4), '+4')
+  assert.equal(formatMetricDelta({ type: 'count' }, null), '—')
 })
 
 test('currentSnapshot returns the selected team and company values from one slice', () => {
@@ -251,14 +260,15 @@ test('maturity URL state keeps the current month, selection limit, and baseline 
   assert.equal(state.showBaseline, false)
   const params = maturityStateToSearchParams(state)
   assert.equal(params.get('view'), 'team')
-  assert.equal(params.get('category'), 'general')
+  assert.equal(params.get('maturity_category'), 'general')
+  assert.equal(params.get('category'), null)
   assert.equal(params.get('month'), '2026-08')
   assert.equal(params.get('teams'), '1,2,3')
   assert.equal(params.get('baseline'), '0')
   assert.equal(params.get('sort'), 'score')
 
   assert.deepEqual(
-    maturityStateFromSearchParams(new URLSearchParams('view=team&category=broken&month=bad&teams=1,2,3,4&baseline=0'), { teams: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] }),
+    maturityStateFromSearchParams(new URLSearchParams('view=team&maturity_category=broken&month=bad&teams=1,2,3,4&baseline=0'), { teams: [{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }] }),
     { view: 'team', category: 'key', month: expectCurrentMonth(), compareTeamIds: ['1', '2', '3'], showBaseline: false, sort: 'order' },
   )
 })

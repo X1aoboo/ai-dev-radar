@@ -55,15 +55,16 @@ export const LEGACY_REDIRECT_TARGETS = Object.freeze({
 
 export const SIDEBAR_GROUPS = [
   {
-    label: '洞察',
+    label: '分析',
     items: [
       { key: 'overview', label: '研发总览', to: ROUTE_PATHS.overview, icon: BarChartOutlined, roles: ANALYTICS_ROLES },
       { key: 'activities', label: '研发活动', to: `/${ROUTE_PATHS.activitiesAnalytics}`, activePrefix: '/analytics/activities', icon: BarChartOutlined, roles: ANALYTICS_ROLES },
       { key: 'capabilities', label: '研发能力', to: `/${ROUTE_PATHS.capabilitiesAnalytics}`, activePrefix: '/analytics/capabilities', icon: BarChartOutlined, roles: ANALYTICS_ROLES },
+      { key: 'team-details', label: '团队详情', to: '/#team-performance', icon: TeamOutlined, roles: ANALYTICS_ROLES },
     ],
   },
   {
-    label: '数据管理',
+    label: '数据',
     items: [
       { key: 'requirements', label: '需求', to: '/data/requirements/ir', activePrefix: '/data/requirements/', icon: FileTextOutlined, roles: DATA_READ_ROLES },
       { key: 'maturity', label: '成熟度评估', to: `/${ROUTE_PATHS.maturity}`, icon: BarChartOutlined, roles: DATA_READ_ROLES },
@@ -73,7 +74,7 @@ export const SIDEBAR_GROUPS = [
     ],
   },
   {
-    label: '系统管理',
+    label: '管理',
     items: [
       { key: 'teams', label: '团队与人员', to: `/${ROUTE_PATHS.teams}`, icon: TeamOutlined, roles: SETTINGS_READ_ROLES },
       { key: 'products', label: '产品与版本', to: `/${ROUTE_PATHS.products}`, icon: AppstoreOutlined, roles: SETTINGS_READ_ROLES },
@@ -87,22 +88,22 @@ export const SIDEBAR_GROUPS = [
 
 export function getRouteMeta(pathname) {
   const normalizedPathname = pathname === '/' ? '/' : String(pathname || '/').replace(/\/+$/, '') || '/'
-  if (normalizedPathname === '/') return { title: '研发总览', items: [{ title: '洞察' }, { title: '研发总览' }] }
-  if (normalizedPathname === '/analytics/activities') return { title: '研发活动', items: [{ title: '洞察' }, { title: '研发活动' }] }
-  if (normalizedPathname === '/analytics/capabilities') return { title: '研发能力', items: [{ title: '洞察' }, { title: '研发能力' }] }
+  if (normalizedPathname === '/') return { title: '研发总览', items: [{ title: '分析' }, { title: '研发总览' }] }
+  if (normalizedPathname === '/analytics/activities') return { title: '研发活动', items: [{ title: '分析' }, { title: '研发活动' }] }
+  if (normalizedPathname === '/analytics/capabilities') return { title: '研发能力', items: [{ title: '分析' }, { title: '研发能力' }] }
   if (/^\/analytics\/teams\//.test(normalizedPathname)) {
-    return { title: '团队下钻', items: [{ title: '洞察' }, { title: '研发总览' }, { title: '团队下钻' }] }
+    return { title: '团队详情', items: [{ title: '分析' }, { title: '团队详情' }] }
   }
   if (/^\/analytics\/metrics\//.test(normalizedPathname)) {
-    return { title: '指标详情', items: [{ title: '洞察' }, { title: '研发总览' }, { title: '指标详情' }] }
+    return { title: '指标详情', items: [{ title: '分析' }, { title: '研发总览' }, { title: '指标详情' }] }
   }
   const requirementMatch = normalizedPathname.match(/^\/data\/requirements\/(ir|ar|sr)$/i)
-  if (requirementMatch) return { title: `${requirementMatch[1].toUpperCase()} 需求`, items: [{ title: '数据管理' }, { title: '需求' }, { title: requirementMatch[1].toUpperCase() }] }
+  if (requirementMatch) return { title: `${requirementMatch[1].toUpperCase()} 需求`, items: [{ title: '数据' }, { title: '需求' }, { title: requirementMatch[1].toUpperCase() }] }
   const sourceLabel = { '/data/issues': '问题单', '/data/mr': 'MR', '/data/code-review': '代码检视' }[normalizedPathname]
   if (sourceLabel) {
-    return { title: `${sourceLabel}数据`, items: [{ title: '数据管理' }, { title: sourceLabel }] }
+    return { title: `${sourceLabel}数据`, items: [{ title: '数据' }, { title: sourceLabel }] }
   }
-  if (normalizedPathname === '/data/maturity') return { title: '成熟度评估', items: [{ title: '数据管理' }, { title: '成熟度评估' }] }
+  if (normalizedPathname === '/data/maturity') return { title: '成熟度评估', items: [{ title: '数据' }, { title: '成熟度评估' }] }
   const settingsMeta = {
     '/settings/teams': ['团队与人员', '团队与人员'],
     '/settings/products': ['产品与版本', '产品与版本'],
@@ -111,6 +112,6 @@ export function getRouteMeta(pathname) {
     '/settings/users': ['用户与权限', '用户与权限'],
     '/settings/collections': ['数据采集', '数据采集'],
   }[normalizedPathname]
-  if (settingsMeta) return { title: settingsMeta[0], items: [{ title: '系统管理' }, { title: settingsMeta[1] }] }
+  if (settingsMeta) return { title: settingsMeta[0], items: [{ title: '管理' }, { title: settingsMeta[1] }] }
   return { title: '页面未找到', items: [{ title: '系统' }, { title: '页面未找到' }] }
 }

@@ -7,6 +7,14 @@ function numeric(value) {
 export const EXECUTIVE_TREND_CODES = ['cd-ar-pen', 'cd-eff', 'mrr-rate']
 export const EXECUTIVE_KPI_CODES = ['cd-ar-pen', 'cd-eff', 'tce-count', 'tcg-rate']
 
+export function lifecycleMetricSlots(activity) {
+  const metrics = activity?.metrics ?? []
+  return [
+    { id: 'penetration', label: 'AI需求渗透率', metric: metrics.find((metric) => metric.type === 'penetration') },
+    { id: 'efficiency', label: 'AI研发提效', metric: metrics.find((metric) => metric.type === 'efficiency') },
+  ]
+}
+
 export function factCoverage(rows = []) {
   const available = rows.filter((row) => row.hasData).length
   return { available, total: rows.length }
@@ -24,15 +32,21 @@ function pointHasRawValue(point) {
 
 export function metricDataForPeriods(data, periodIds = []) {
   const selected = new Set(periodIds.map(String))
+  const availablePeriods = data?.periods?.length ? data.periods : periodIds.map((id) => ({ id: String(id), label: String(id) }))
+  const periods = availablePeriods.filter((period) => selected.has(String(period.id)))
+  const align = (values = []) => {
+    const byPeriod = new Map(values.map((point) => [String(point.period_id), point]))
+    return periods.map((period) => byPeriod.get(String(period.id)) ?? { period_id: period.id, value: null, fact_count: 0 })
+  }
   return {
     ...data,
-    periods: (data?.periods ?? []).filter((period) => selected.has(String(period.id))),
+    periods,
     series: (data?.series ?? []).map((series) => ({
       ...series,
-      values: (series.values ?? []).filter((point) => selected.has(String(point.period_id))),
+      values: align(series.values),
     })),
-    company_average: (data?.company_average ?? []).filter((point) => selected.has(String(point.period_id))),
-    domain_summary: (data?.domain_summary ?? []).filter((point) => selected.has(String(point.period_id))),
+    company_average: align(data?.company_average),
+    domain_summary: align(data?.domain_summary),
   }
 }
 

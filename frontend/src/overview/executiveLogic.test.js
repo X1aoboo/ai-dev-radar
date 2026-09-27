@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { executiveKpiRows, executiveMetricSummary, factCoverage, factTrendSnapshot, maturityMatrixData, metricCompanyAverageForWindow, metricTeamValuesForWindow, rankedTeams } from './executiveLogic.js'
+import { executiveKpiRows, executiveMetricSummary, factCoverage, factTrendSnapshot, maturityMatrixData, metricCompanyAverageForWindow, metricDataForPeriods, metricTeamValuesForWindow, rankedTeams } from './executiveLogic.js'
 
 test('executive helpers retain missing values and rank only one actual metric', () => {
   const row = {
@@ -30,6 +30,21 @@ test('fact trends preserve gaps', () => {
   assert.equal(snapshot.validTeamCount, 2)
   assert.equal(snapshot.teamMin, 0.2)
   assert.equal(snapshot.teamMax, 0.6)
+})
+
+test('selected FactRecord windows keep sparse team points aligned with the period axis', () => {
+  const windowed = metricDataForPeriods({
+    periods: [{ id: 'p1' }, { id: 'p2' }, { id: 'p3' }],
+    series: [{ team_id: 1, values: [
+      { period_id: 'p1', value: 0, fact_count: 1 },
+      { period_id: 'p3', value: 0.4, fact_count: 1 },
+    ] }],
+    company_average: [{ period_id: 'p1', value: 0 }, { period_id: 'p3', value: 0.4 }],
+  }, ['p1', 'p2', 'p3'])
+
+  assert.deepEqual(windowed.series[0].values.map((point) => point.value), [0, null, 0.4])
+  assert.equal(windowed.series[0].values[1].fact_count, 0)
+  assert.deepEqual(windowed.company_average.map((point) => point.value), [0, null, 0.4])
 })
 
 test('executive KPI selection points to four exact catalog metrics', () => {

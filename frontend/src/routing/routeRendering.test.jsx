@@ -53,6 +53,7 @@ vi.mock('@ant-design/icons', () => {
     ApiOutlined: Icon,
     AppstoreOutlined: Icon,
     BarChartOutlined: Icon,
+    BellOutlined: Icon,
     BugOutlined: Icon,
     CodeOutlined: Icon,
     DeleteOutlined: Icon,
@@ -64,6 +65,8 @@ vi.mock('@ant-design/icons', () => {
     MenuFoldOutlined,
     MenuOutlined,
     PlusOutlined: Icon,
+    QuestionCircleOutlined: Icon,
+    SearchOutlined: Icon,
     TeamOutlined: Icon,
     UserOutlined: Icon,
   }
@@ -93,7 +96,7 @@ const routeComponents = {
 
 function LocationProbe() {
   const location = useLocation()
-  return <span data-current-path={location.pathname} data-current-search={location.search} />
+  return <span data-current-path={location.pathname} data-current-search={location.search} data-current-hash={location.hash} />
 }
 
 function HistoryBack() {
@@ -149,6 +152,10 @@ function currentPath(renderer) {
 
 function currentSearch(renderer) {
   return renderer.root.find((node) => node.props['data-current-search'] !== undefined).props['data-current-search']
+}
+
+function currentHash(renderer) {
+  return renderer.root.find((node) => node.props['data-current-hash'] !== undefined).props['data-current-hash']
 }
 
 function hasPage(renderer, page) {
@@ -247,14 +254,20 @@ test('desktop preference persists across mounts and storage failures are harmles
   await act(async () => renderer.unmount())
 })
 
-test('overview owns drilldown routes without claiming to be the exact page', async () => {
-  for (const pathname of ['/analytics/teams/42', '/analytics/metrics/99']) {
-    const renderer = await renderAt(pathname)
-    const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === '研发总览')
-    expect(link.props['data-section-active']).toBe('true')
-    expect(link.props['aria-current']).toBeUndefined()
-    await act(async () => renderer.unmount())
-  }
+test('Team Drill-down selects Team Details while metric detail remains grouped under Overview', async () => {
+  const teamRenderer = await renderAt('/analytics/teams/42')
+  const teamLink = teamRenderer.root.findAllByType('a').find(node => node.props['aria-label'] === '团队详情')
+  const overviewLink = teamRenderer.root.findAllByType('a').find(node => node.props['aria-label'] === '研发总览')
+  expect(teamLink.props['data-section-active']).toBe('true')
+  expect(teamLink.props['aria-current']).toBe('page')
+  expect(overviewLink.props['data-section-active']).toBeUndefined()
+  await act(async () => teamRenderer.unmount())
+
+  const metricRenderer = await renderAt('/analytics/metrics/99')
+  const metricOverviewLink = metricRenderer.root.findAllByType('a').find(node => node.props['aria-label'] === '研发总览')
+  expect(metricOverviewLink.props['data-section-active']).toBe('true')
+  expect(metricOverviewLink.props['aria-current']).toBeUndefined()
+  await act(async () => metricRenderer.unmount())
 })
 
 test('data sources are direct navigation entries for all roles', async () => {
@@ -540,6 +553,35 @@ test('preserves the analysis query through team compatibility redirects', async 
   expect(currentPath(renderer)).toBe('/analytics/teams/42')
   expect(currentSearch(renderer)).toBe('?dimension=iteration&version=2&period=p2')
   renderer.unmount()
+})
+
+test('team detail navigation opens the Overview team section and preserves filters', async () => {
+  const renderer = await renderAt('/?month=2026-09&cycle=half', 'admin')
+  const link = renderer.root.findAllByType('a').find(node => node.props['aria-label'] === '团队详情')
+  expect(link.props.href).toBe('/?month=2026-09&cycle=half#team-performance')
+  await act(async () => link.props.onClick({ button: 0, preventDefault() {} }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  expect(currentPath(renderer)).toBe('/')
+  expect(currentSearch(renderer)).toBe('?month=2026-09&cycle=half')
+  expect(currentHash(renderer)).toBe('#team-performance')
+  expect(link.props['data-section-active']).toBe('true')
+  expect(renderer.root.findAllByType('a').filter((node) => node.props.className === 'app-nav__link' && node.props['aria-current'] === 'page')).toEqual([link])
+  await act(async () => renderer.unmount())
+})
+
+test('topbar quick search navigates only through visible page entries and labels unavailable notifications', async () => {
+  const renderer = await renderAt('/', 'admin')
+  const searchInput = renderer.root.findByProps({ 'aria-label': '搜索页面或功能' })
+  await act(async () => searchInput.props.onChange({ target: { value: '研发活动' } }))
+  const searchForm = renderer.root.findByProps({ role: 'search' })
+  await act(async () => searchForm.props.onSubmit({ preventDefault: vi.fn() }))
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+
+  expect(currentPath(renderer)).toBe('/analytics/activities')
+  expect(hasPage(renderer, 'activities')).toBe(true)
+  expect(renderer.root.findByProps({ 'aria-label': '通知功能暂未开放' }).props.disabled).toBe(true)
+  expect(renderer.root.findByProps({ className: 'app-topbar__help-menu' })).toBeDefined()
+  await act(async () => renderer.unmount())
 })
 
 test('provides one main landmark and a keyboard skip link in the app shell', async () => {

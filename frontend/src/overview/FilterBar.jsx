@@ -22,7 +22,7 @@ function SegmentedControl({ label, options, value, onChange }) {
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions }) {
+export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions, showCycle = false, showPrimaryControls = true }) {
   const isIteration = filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
@@ -33,6 +33,11 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   )
     ? String(filter.periodId)
     : 'all'
+  const advancedFiltersActive = isIteration
+    || filter.granularity !== 'month'
+    || (filter.metricId ?? 'all') !== 'all'
+    || periodValue === 'all'
+    || (periodValue !== '__latest__' && periodValue !== String(latestPeriodId(availablePeriods)))
 
   function changeDimension(dimension) {
     const next = {
@@ -65,58 +70,46 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   }
 
   return (
-    <FilterToolbar className="analytics-filter-toolbar" label="分析筛选" actions={<button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button>}>
-      <div className="analytics-page-controls">
-      {month && onMonthChange && <label><span>分析月份</span><input aria-label="分析月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
-      <label className="analytics-filter-group">
-        <span>版本</span>
-        <select aria-label="版本" value={filter.versionId} onChange={(event) => changeVersion(event.target.value)}>
-          <option value="all">全部版本</option>
-          {versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
-        </select>
-      </label>
-      <SegmentedControl
-        label="统计维度"
-        options={[
-          { value: 'time', label: '按时间' },
-          { value: 'iteration', label: '按版本/迭代' },
-        ]}
-        value={filter.dimension}
-        onChange={changeDimension}
-      />
-
-      {!isIteration && (
-        <SegmentedControl
-          label="时间粒度"
-          options={[
-          { value: 'month', label: '月' },
-          { value: 'week', label: '周' },
-          { value: 'day', label: '日' },
-          ]}
-          value={filter.granularity}
-          onChange={changeGranularity}
-        />
-      )}
-
-      {metricOptions && <label><span>指标</span><select aria-label="指标" value={filter.metricId ?? 'all'} onChange={(event) => onChange({ ...filter, metricId: event.target.value, periodId: null }, { history: 'push' })}><option value="all">全部指标</option>{metricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
-
-      <label>
-        <span>周期</span>
-        <select
-          aria-label="周期"
-          value={periodValue}
-          onChange={(event) => onChange({ ...filter, periodId: event.target.value }, { history: 'push' })}
-          disabled={filter.periodId === null || (loading && availablePeriods.length === 0)}
-        >
-          {filter.periodId === null && <option value="__latest__" disabled>正在选择最新周期…</option>}
-          <option value="all">全部周期</option>
-          {availablePeriods.map((period) => (
-            <option key={period.id} value={period.id}>{period.label}</option>
-          ))}
-        </select>
-      </label>
+    <FilterToolbar className="analytics-filter-toolbar activity-filter-toolbar" label={showPrimaryControls ? '分析筛选' : ''} actions={<button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button>}>
+      <div className="activity-filter-groups">
+        {showPrimaryControls && <div className="analytics-page-controls activity-filter-groups__primary">
+          {month && onMonthChange && <label><span>分析月份</span><input aria-label="分析月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
+          {showCycle && <SegmentedControl label="统计周期" options={[{ value: '6m', label: '近6个月' }, { value: 'half', label: '本半年度' }, { value: 'year', label: '年度累计' }]} value={filter.cycle ?? '6m'} onChange={(cycle) => onChange({ ...filter, cycle }, { history: 'push' })} />}
+          <label className="analytics-filter-group">
+            <span>版本</span>
+            <select aria-label="版本" value={filter.versionId} onChange={(event) => changeVersion(event.target.value)}>
+              <option value="all">全部版本</option>
+              {versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
+            </select>
+          </label>
+        </div>}
+        <details className="activity-filter-groups__advanced" open={advancedFiltersActive || undefined}>
+          <summary>原始指标筛选</summary>
+          <div className="analytics-page-controls">
+            <SegmentedControl
+              label="统计维度"
+              options={[{ value: 'time', label: '按时间' }, { value: 'iteration', label: '按版本/迭代' }]}
+              value={filter.dimension}
+              onChange={changeDimension}
+            />
+            {!isIteration && <SegmentedControl
+              label="时间粒度"
+              options={[{ value: 'month', label: '月' }, { value: 'week', label: '周' }, { value: 'day', label: '日' }]}
+              value={filter.granularity}
+              onChange={changeGranularity}
+            />}
+            {metricOptions && <label><span>指标</span><select aria-label="指标" value={filter.metricId ?? 'all'} onChange={(event) => onChange({ ...filter, metricId: event.target.value, periodId: null }, { history: 'push' })}><option value="all">全部指标</option>{metricOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>}
+            <label>
+              <span>事实周期</span>
+              <select aria-label="周期" value={periodValue} onChange={(event) => onChange({ ...filter, periodId: event.target.value }, { history: 'push' })} disabled={filter.periodId === null || (loading && availablePeriods.length === 0)}>
+                {filter.periodId === null && <option value="__latest__" disabled>正在选择最新周期…</option>}
+                <option value="all">全部周期</option>
+                {availablePeriods.map((period) => <option key={period.id} value={period.id}>{period.label}</option>)}
+              </select>
+            </label>
+          </div>
+        </details>
       </div>
-
     </FilterToolbar>
   )
 }

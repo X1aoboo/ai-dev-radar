@@ -26,6 +26,8 @@ npm run test:docs
 
 Project E2E 是 L3：Chromium 浏览器操作 Radar 前端，经 Radar 后端和真实 TCP/HTTP 访问仓库内独立运行的 `e2e/mock_gateway` 进程。运行器在临时 SQLite 上启动/关闭进程，使用动态 localhost 端口，并在成功或失败时清理服务和数据库。Mock Gateway Provider Contract Test 直接以 `docs/contracts/ai-dev-data-gateway/baseline/openapi.json` 校验 Mock 响应；MockProvider 不能导入 Radar Consumer DTO 或 HTTP Client。`httpx.MockTransport` 和 FastAPI TestClient 仅用于 L1/L2，不能替代 L3。
 
+`npm run test:e2e:gateway` 只运行 `e2e/specs/gateway.e2e.spec.js`，使用 Gateway 专用的临时数据库和 fixture。`phase5-smoke.e2e.spec.js` 是使用完整种子目录的 UI 回归套件，应通过独立 demo 数据库与 `E2E_RADAR_URL` 单独运行；不要让 Gateway 测试创建的临时活动影响 UI 目录断言。
+
 Playwright 默认使用 Headless Chromium。失败时保留 trace、截图、浏览器 console、Radar 日志和 Mock Gateway 日志到被 Git 忽略的 `e2e-results/`。运行器和门禁使用 Node 子进程编排，不能依赖 Bash、`jq`、`pkill` 或 `killall`。
 
 L3 通过只证明 Radar 与 Mock Gateway 的项目级 HTTP 链路。L4 的 Radar + 真实 Gateway，以及 Gateway + GDEMate/CodeHub/DTS 内部平台仍需在真实部署环境分别验收；没有内网环境时明确报告 `NOT VERIFIED`。
