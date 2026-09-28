@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ClockCircleOutlined, FileTextOutlined, PieChartOutlined, ThunderboltOutlined } from '@ant-design/icons'
+import { ClockCircleOutlined, CodeOutlined, FileTextOutlined, PieChartOutlined, TeamOutlined, ThunderboltOutlined } from '@ant-design/icons'
 import { Button } from 'antd'
 import { useLocation } from 'react-router'
 
@@ -50,6 +50,14 @@ const IR_KPI_ICONS = {
   'ai-rd-efficiency': <ThunderboltOutlined />,
   'ai-covered-ir-count': <FileTextOutlined />,
   'ai-efficiency-workload': <ClockCircleOutlined />,
+}
+const LIFECYCLE_ICONS = {
+  sa: <FileTextOutlined />,
+  se: <TeamOutlined />,
+  dd: <PieChartOutlined />,
+  cd: <CodeOutlined />,
+  tcg: <ClockCircleOutlined />,
+  tce: <ThunderboltOutlined />,
 }
 
 function useTeamFacts(teamId, onSessionExpired) {
@@ -500,8 +508,15 @@ function TeamDrilldownContent({
         notes.set(key, note)
       }
     }
-    return [...notes.values()].map(({ period, teamName, metrics }) =>
-      `${period} ${metrics.join('、')}各自的等权均值仅含${teamName}（1/${teams.length}），暂不可进行多团队对照。`,
+    const coverageGroups = new Map()
+    for (const { period, teamName, metrics } of notes.values()) {
+      const key = `${teamName}:${metrics.join(',')}`
+      const group = coverageGroups.get(key) ?? { periods: [], teamName, metrics }
+      group.periods.push(period)
+      coverageGroups.set(key, group)
+    }
+    return [...coverageGroups.values()].map(({ periods, teamName, metrics }) =>
+      `${periods.join('、')}${metrics.length === IR_OVERVIEW_KPIS.length ? '4项 KPI' : metrics.join('、')}等权均值仅含${teamName}（1/${teams.length}），不可多团队对照。`,
     )
   }, [teamKpiSummaries, teams.length])
   const overallTrendEntries = useMemo(() => IR_OVERVIEW_KPIS.slice(0, 2).map((metric) => {
@@ -509,13 +524,21 @@ function TeamDrilldownContent({
     const windowed = fullData ? metricDataForPeriods(fullData, periodMonths) : null
     const data = dataForTeam(windowed, team.id)
     const outlierAxisLabel = hasEfficiencyOutlier(data, metric) ? efficiencyOutlierAxisLabel(data, metric) : null
+    const option = data && hasNumericValues(data)
+      ? buildTrendOption({ data, metric, teamColors: { [String(team.id)]: accent }, selectedPeriodId: 'all', averageLabel: '有数据团队等权均值', compact: true, showPointMarkers: true })
+      : null
+    const readableOption = option && {
+      ...option,
+      grid: { ...option.grid, top: 20, bottom: 8 },
+      legend: { ...option.legend, textStyle: { ...option.legend.textStyle, fontSize: 12 } },
+      xAxis: { ...option.xAxis, axisLabel: { ...option.xAxis.axisLabel, fontSize: 12 } },
+      yAxis: { ...option.yAxis, axisLabel: { ...option.yAxis.axisLabel, fontSize: 12 } },
+    }
     return {
       metric,
       data,
       outlierAxisLabel,
-      option: data && hasNumericValues(data)
-        ? buildTrendOption({ data, metric, teamColors: { [String(team.id)]: accent }, selectedPeriodId: 'all', averageLabel: '有数据团队等权均值', showPointMarkers: true })
-        : null,
+      option: readableOption,
     }
   }), [accent, irDataByMetric, periodMonths, team.id])
 
@@ -579,6 +602,7 @@ function TeamDrilldownContent({
             month={maturityMonth}
             onMonthChange={changeMonth}
             showCycle
+            showAdvancedControls={false}
           />
           <button type="button" className="drilldown-back-button" onClick={() => onNavigate(backPath)}>{backLabel}</button>
         </div>}
@@ -592,8 +616,7 @@ function TeamDrilldownContent({
         ].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSectionId === id ? 'location' : undefined}>{label}</a>)}
       </nav>
 
-      <AnalyticsPanel id="team-overall" className="drilldown-story-section drilldown-overall-section" title="整体表现" description={`${team.name} 为主序列；四项 KPI 和核心趋势使用临时 IR 口径，原始目录事实保留在研发关键环节及明细中。`}>
-        {singleTeamBenchmarkNotes.map((note) => <p key={note} className="analytics-empty analytics-empty--current" role="status">{note}</p>)}
+      <AnalyticsPanel id="team-overall" className="drilldown-story-section drilldown-overall-section" title="整体表现" description={<>{`${team.name} 的四项 KPI 与核心趋势采用临时 IR 口径；原始目录事实见研发关键环节和明细。`}{singleTeamBenchmarkNotes.length > 0 && <span className="drilldown-team-note" role="status"> {singleTeamBenchmarkNotes.join('；')}</span>}</>}>
         <div className="drilldown-kpi-sections">
           <section className="drilldown-kpi-section">
             <header><h3>月度核心成效 · {maturityMonth}</h3><p>当前团队贡献与有数据团队等权均值对照。</p></header>
@@ -645,9 +668,9 @@ function TeamDrilldownContent({
           <div className="drilldown-overall-trends">{overallTrendEntries.map(({ metric, outlierAxisLabel, option }) => <ChartCard
             key={metric.code}
             title={`${team.name} · ${metric.name}`}
-            description={`来源：IR 需求临时口径${outlierAxisLabel ? ` · 图轴 ${outlierAxisLabel}，越界点贴边并保留悬浮原值` : ''}`}
+            description={outlierAxisLabel ? `图轴 ${outlierAxisLabel}，越界点贴边并保留悬浮原值` : undefined}
             option={option}
-            height={180}
+            height={140}
             ariaLabel={`${team.name} ${metric.name}与有数据团队等权均值趋势`}
             loading={irOverview.loading}
             error={irOverview.error ? `IR 指标加载失败：${irOverview.error.message}` : undefined}
@@ -656,17 +679,17 @@ function TeamDrilldownContent({
         </section>
       </AnalyticsPanel>
 
-      <AnalyticsPanel id="team-lifecycle" className="drilldown-story-section drilldown-lifecycle-section" title="研发关键环节" description={`${team.name} 与有事实团队等权均值在各关键活动的 AI需求渗透率、AI研发提效对照；缺失类型不以其他指标替代。`}>
+      <AnalyticsPanel id="team-lifecycle" className="drilldown-story-section drilldown-lifecycle-section" title="研发关键环节" description={`${team.name} 与有事实团队等权均值在各关键活动的 AI需求渗透率、AI研发提效对照；缺失类型不以其他指标替代。`} action={<FilterBar filter={filter} onChange={setFilter} versions={versions} periods={timePeriods} loading={computed.loading || irOverview.loading} showPrimaryControls={false} />}>
         {detailPeriodId === 'all' && <div className="analytics-empty">选择单一周期查看关键环节当前值；全部周期仍可查看下方趋势。</div>}
         <div className="drilldown-lifecycle-cards" role="group" aria-label="选择研发关键活动">
           {keyActivities.map((activity) => <button key={activity.id} type="button" className="drilldown-lifecycle-card" aria-pressed={String(activity.id) === String(selectedLifecycleActivity?.id)} onClick={() => setSelectedLifecycleActivityId(activity.id)}>
-            <strong>{activity.name}</strong>
+            <strong><span className="drilldown-lifecycle-card__icon" aria-hidden="true">{LIFECYCLE_ICONS[activity.code] ?? <CodeOutlined />}</span>{activity.name}</strong>
             {lifecycleMetricSlots(activity).map((slot) => {
               const metric = slot.metric
               const data = metric ? computed.data[metric.id] : undefined
               const teamValue = metric && detailPeriodId !== 'all' ? valueForSelection(data, metric, team.id, detailPeriodId) : null
               const benchmark = metric && detailPeriodId !== 'all' ? data?.company_average?.find((point) => String(point.period_id) === String(detailPeriodId))?.value : null
-              return <span className={`drilldown-lifecycle-metric${metric ? '' : ' is-missing'}`} key={slot.id}><small>{slot.label}</small><b>{metric ? formatMetricValue(metric, teamValue) : '—'}</b><em>{metric ? `来源：${metric.name} · 均值 ${formatMetricValue(metric, benchmark)}` : '目录未配置该类型指标'}</em></span>
+              return <span className={`drilldown-lifecycle-metric${metric ? '' : ' is-missing'}`} key={slot.id}><small>{slot.id === 'penetration' ? '渗透率' : '提效'}</small><b>{metric ? formatMetricValue(metric, teamValue) : '—'}</b><em title={metric ? `${metric.name} · 均值 ${formatMetricValue(metric, benchmark)}` : undefined}>{metric ? `均值 ${formatMetricValue(metric, benchmark)}` : '目录未配置该类型指标'}</em></span>
             })}
           </button>)}
         </div>

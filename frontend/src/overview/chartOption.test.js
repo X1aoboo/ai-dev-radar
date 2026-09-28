@@ -55,7 +55,7 @@ test('trend option uses a crosshair and de-emphasized company average', () => {
   assert.equal(option.tooltip.axisPointer.type, 'cross')
   assert.equal(option.tooltip.axisPointer.label.show, false)
   assert.equal(option.series.length, 2)
-  assert.equal(option.series[0].lineStyle.width, 2.75)
+  assert.equal(option.series[0].lineStyle.width, 2.5)
   assert.equal(option.series[1].name, '全公司均值')
   assert.equal(option.series[1].lineStyle.type, 'dashed')
   assert.equal(option.series[0].data[1].symbol, 'circle')
@@ -164,11 +164,11 @@ test('compact trend options reserve plot height while keeping every period label
   const option = buildTrendOption({ data, metric: { type: 'penetration' }, teamColors: { 1: '#2a78d6' }, selectedPeriodId: 'all', compact: true })
 
   assert.equal(option.grid.top, 28)
-  assert.equal(option.legend.textStyle.fontSize, 10)
+  assert.equal(option.legend.textStyle.fontSize, 11)
   assert.deepEqual(option.xAxis.data, ['2026-01', '2026-02'])
   assert.equal(option.xAxis.axisLabel.formatter('2026-02'), '26/02')
   assert.equal(option.xAxis.axisLabel.hideOverlap, true)
-  assert.equal(option.yAxis.axisLabel.fontSize, 10)
+  assert.equal(option.yAxis.axisLabel.fontSize, 11)
 })
 
 test('efficiency outliers use an explicit visual bound while tooltips retain raw values', () => {

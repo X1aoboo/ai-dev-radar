@@ -80,8 +80,8 @@ async function assertOverviewCardComposition(page) {
   await expect(page.locator('.executive-lifecycle > .analytics-panel__header')).toContainText('研发关键环节')
   await expect(page.locator('#team-performance > .analytics-panel__header')).toContainText('团队表现')
   await expect(page.locator('.executive-maturity-section > .analytics-panel__header')).toContainText('成熟度')
-  await expect(page.locator('.executive-overall-trend .analytics-panel__description')).toContainText('多团队对照暂不可用')
-  await expect(page.locator('.executive-kpi-grid .metric-card__delta').filter({ hasText: '较纳入本月前累计' })).toHaveCount(2)
+  await expect(page.locator('.executive-overall-trend .analytics-panel__description')).toContainText('暂不可多团队对照')
+  await expect(page.locator('.executive-kpi-grid .metric-card__delta').filter({ hasText: '较前累计' })).toHaveCount(2)
   await expect(page.locator('#team-performance .executive-team-preview__charts .analytics-chart-card')).toHaveCount(2)
   await expect(page.locator('#team-performance .team-matrix__table thead')).toContainText('变化')
   await expect(page.locator('.executive-maturity-scale')).toBeVisible()
@@ -94,19 +94,52 @@ async function assertOverviewCardComposition(page) {
     return {
       master: box('.executive-overall-trend'),
       lifecycle: box('.executive-lifecycle'),
+      maturity: box('.executive-maturity-section'),
+      team: box('#team-performance'),
+      sidebarWidth: document.querySelector('.app-sidebar').getBoundingClientRect().width,
+      topbarHeight: document.querySelector('.app-topbar').getBoundingClientRect().height,
+      contentGutter: Number.parseFloat(getComputedStyle(document.querySelector('.app-shell__content')).paddingLeft),
       kpiHeight: document.querySelector('.executive-kpi-grid .metric-card').getBoundingClientRect().height,
+      kpiHeights: [...document.querySelectorAll('.executive-kpi-grid .metric-card')].map((card) => card.getBoundingClientRect().height),
+      sparklineRatio: (() => { const card = document.querySelector('.executive-kpi-grid .metric-card'); const spark = card.querySelector('.metric-card__sparkline, .metric-card__empty-trend'); return spark.getBoundingClientRect().width / card.getBoundingClientRect().width })(),
       kpiIconSize: Number.parseFloat(getComputedStyle(document.querySelector('.executive-kpi-grid .metric-card__icon .anticon')).fontSize),
       maturityBottomGap: Math.round(
         document.querySelector('.executive-maturity-section').getBoundingClientRect().bottom
         - document.querySelector('.executive-maturity-grid').getBoundingClientRect().bottom,
       ),
+      radarPlotRatio: (() => {
+        const panel = document.querySelector('.executive-maturity-section').getBoundingClientRect()
+        const radar = document.querySelector('.executive-maturity-section .maturity-radar svg')
+        const plot = radar.querySelector('.maturity-radar__rings polygon:last-child').getBBox()
+        const bounds = radar.getBoundingClientRect()
+        const scale = Math.min(bounds.width / 420, bounds.height / 320)
+        return plot.height * scale / Math.min(panel.width, panel.height)
+      })(),
+      teamPreviewChartHeight: Math.max(...[...document.querySelectorAll('#team-performance .executive-team-preview__charts .analytics-chart-card')].map((card) => card.getBoundingClientRect().height)),
     }
   })
   expect(Math.abs(geometry.master.top - geometry.lifecycle.top)).toBeLessThanOrEqual(1)
   expect(Math.abs(geometry.master.bottom - geometry.lifecycle.bottom)).toBeLessThanOrEqual(1)
-  expect(geometry.kpiHeight).toBeGreaterThanOrEqual(136)
-  expect(geometry.kpiIconSize).toBeGreaterThanOrEqual(24)
+  expect(geometry.master.height).toBeGreaterThanOrEqual(300)
+  expect(geometry.master.height).toBeLessThanOrEqual(340)
+  expect(geometry.kpiHeight).toBeGreaterThanOrEqual(116)
+  expect(geometry.kpiHeight).toBeLessThanOrEqual(128)
+  expect(Math.max(...geometry.kpiHeights) - Math.min(...geometry.kpiHeights)).toBeLessThanOrEqual(1)
+  expect(geometry.sidebarWidth).toBeGreaterThanOrEqual(208)
+  expect(geometry.sidebarWidth).toBeLessThanOrEqual(224)
+  expect(geometry.topbarHeight).toBeLessThanOrEqual(56)
+  expect(geometry.contentGutter).toBeGreaterThanOrEqual(20)
+  expect(geometry.contentGutter).toBeLessThanOrEqual(28)
+  expect(geometry.sparklineRatio).toBeGreaterThanOrEqual(.35)
+  expect(geometry.sparklineRatio).toBeLessThanOrEqual(.45)
+  expect(geometry.kpiIconSize).toBeGreaterThanOrEqual(14)
+  expect(geometry.kpiIconSize).toBeLessThanOrEqual(20)
   expect(geometry.maturityBottomGap).toBeLessThanOrEqual(32)
+  expect(geometry.maturity.height).toBeLessThanOrEqual(320)
+  expect(geometry.team.height).toBeLessThanOrEqual(320)
+  expect(geometry.radarPlotRatio).toBeGreaterThanOrEqual(.6)
+  expect(geometry.radarPlotRatio).toBeLessThanOrEqual(.75)
+  expect(geometry.teamPreviewChartHeight).toBeLessThanOrEqual(110)
 }
 
 async function assertCanReachBottom(page) {
@@ -158,8 +191,9 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     await page.setViewportSize({ width: 1920, height: 1080 })
     await page.goto(`${RADAR_URL}/analytics/capabilities?month=2026-09&cycle=half`)
     await waitForStablePage(page)
-    await expect(page.locator('.analytics-filter-scope-note')).toContainText('统计周期：近6个月趋势')
-    await expect(page.locator('.analytics-filter-scope-note')).toContainText('版本：不适用')
+    await expect(page.getByLabel('时间粒度')).toHaveValue('month')
+    await expect(page.locator('.capability-version-card')).toContainText('不适用')
+    await expect(page.locator('.analytics-page-head .page-header__description')).toContainText('成熟度按自然月')
     await expect(page.locator('.capability-kpi-grid .metric-card')).toHaveCount(4)
     await expect(page.locator('.analytics-maturity-summary__matrix .maturity-matrix__table tbody tr')).toHaveCount(5)
     await expect(page.locator('.analytics-maturity-summary__matrix .maturity-matrix__table thead th')).toHaveCount(8)
@@ -172,20 +206,18 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     await expect(page.getByRole('heading', { name: '团队A · 团队下钻' })).toBeVisible()
     await expect(page.locator('.drilldown-page-head')).toContainText('统计范围：全局 KPI 统计周期')
     await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0)
-    await expect(page.getByRole('group', { name: '统计周期' })).toHaveCount(1)
-    await expect(page.getByRole('group', { name: '统计周期' }).getByRole('button', { name: '本半年度' })).toHaveAttribute('aria-pressed', 'true')
-    await page.getByRole('group', { name: '统计周期' }).getByRole('button', { name: '年度累计' }).click()
+    const cycleSelect = page.getByLabel('统计周期')
+    await expect(cycleSelect).toHaveValue('half')
+    await cycleSelect.selectOption('year')
     await expect.poll(() => new URL(page.url()).searchParams.get('cycle')).toBe('year')
-    await page.getByRole('group', { name: '统计周期' }).getByRole('button', { name: '本半年度' }).click()
+    await cycleSelect.selectOption('half')
     await expect.poll(() => new URL(page.url()).searchParams.get('cycle')).toBe('half')
     const teamKpiRows = page.locator('#team-overall .drilldown-kpi-row')
     await expect(teamKpiRows).toHaveCount(2)
-    const singleTeamBenchmark = page.locator('#team-overall [role="status"]').filter({ hasText: '暂不可进行多团队对照' })
-    await expect(singleTeamBenchmark).toHaveCount(2)
+    const singleTeamBenchmark = page.locator('#team-overall [role="status"]').filter({ hasText: '不可多团队对照' })
+    await expect(singleTeamBenchmark).toHaveCount(1)
     await expect(singleTeamBenchmark.nth(0)).toContainText('1/4')
-    await expect(singleTeamBenchmark.nth(0)).toContainText('各自的等权均值')
-    await expect(singleTeamBenchmark.nth(1)).toContainText('1/4')
-    await expect(singleTeamBenchmark.nth(1)).toContainText('各自的等权均值')
+    await expect(singleTeamBenchmark.nth(0)).toContainText('月度、周期')
     const teamKpiHeight = await teamKpiRows.first().locator('.metric-card').first().evaluate((card) => card.getBoundingClientRect().height)
     expect(teamKpiHeight).toBeLessThanOrEqual(140)
     const globalKpiLabels = ['AI需求渗透率', 'AI研发提效', 'AI覆盖需求数', 'AI提效工作量']
@@ -242,12 +274,19 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     ]
 
     const overviewEvidence = []
+    const activityEvidence = []
+    const capabilityEvidence = []
     const teamEvidence = []
     for (const { viewport, routes } of screenshotPlan) {
       await page.setViewportSize(viewport)
       for (const path of routes) {
         await page.goto(`${RADAR_URL}${path}`)
         await waitForStablePage(page)
+        if (path === '/analytics/teams/1') {
+          await expect(page.locator('.drilldown-overall-trends .overview-chart')).toHaveCount(2)
+          await expect(page.locator('.drilldown-lifecycle-trends .overview-chart')).toHaveCount(2)
+          await expect(page.locator('.drilldown-lifecycle-trends .drilldown-empty').filter({ hasText: '正在更新指标数据…' })).toHaveCount(0)
+        }
         await assertNoPageOverflow(page)
         if (path === '/' && ['1920', '2560'].includes(viewport.name)) {
           await assertOverviewCardComposition(page)
@@ -256,13 +295,42 @@ test.describe('Phase 5 Browser UI Smoke', () => {
               const rect = document.querySelector(selector).getBoundingClientRect()
               return { top: Math.round(rect.top), bottom: Math.round(rect.bottom), height: Math.round(rect.height) }
             }
+            const size = (selector) => {
+              const rect = document.querySelector(selector).getBoundingClientRect()
+              return { width: Math.round(rect.width), height: Math.round(rect.height) }
+            }
+            const radar = document.querySelector('.executive-maturity-section .maturity-radar svg')
+            const radarPlot = radar?.querySelector('.maturity-radar__rings polygon:last-child')?.getBBox()
+            const radarRect = radar?.getBoundingClientRect()
+            const radarScale = radarRect ? Math.min(radarRect.width / 420, radarRect.height / 320) : 0
             return {
               viewport: viewportName,
               inner: { width: innerWidth, height: innerHeight },
               document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+              sidebarWidth: Math.round(document.querySelector('.app-sidebar').getBoundingClientRect().width),
+              topbarHeight: Math.round(document.querySelector('.app-topbar').getBoundingClientRect().height),
+              contentGutter: getComputedStyle(document.querySelector('.app-shell__content')).paddingLeft,
               month: document.querySelector('input[type="month"]')?.value,
               kpiCardHeights: [...document.querySelectorAll('.executive-kpi-grid .metric-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+              kpiSparklineRatios: [...document.querySelectorAll('.executive-kpi-grid .metric-card')].map((card) => {
+                const spark = card.querySelector('.metric-card__sparkline')
+                return spark ? Math.round(spark.getBoundingClientRect().width / card.getBoundingClientRect().width * 100) : null
+              }),
               pairedPanels: { master: box('.executive-overall-trend'), lifecycle: box('.executive-lifecycle') },
+              lifecycleStageHeight: Math.round(document.querySelector('.executive-lifecycle__item').getBoundingClientRect().height),
+              lifecycleTrendGrid: size('.executive-lifecycle__trend-grid'),
+              lifecycleTrendCards: [...document.querySelectorAll('.executive-lifecycle__trend-grid .analytics-chart-card')].map((card) => ({
+                height: Math.round(card.getBoundingClientRect().height),
+                plotHeight: Math.round(card.querySelector('.overview-chart').getBoundingClientRect().height),
+              })),
+              lowerPanels: { maturity: box('.executive-maturity-section'), team: box('.executive-team-section') },
+              maturityMatrix: size('.executive-maturity-section .maturity-matrix__table'),
+              maturityRadar: size('.executive-maturity-section .maturity-radar svg'),
+              maturityRadarPlot: radarPlot ? { width: Math.round(radarPlot.width * radarScale), height: Math.round(radarPlot.height * radarScale) } : null,
+              maturityRadarPlotPercentOfPanelShortSide: radarPlot ? Math.round(radarPlot.height * radarScale / Math.min(document.querySelector('.executive-maturity-section').getBoundingClientRect().width, document.querySelector('.executive-maturity-section').getBoundingClientRect().height) * 100) : null,
+              teamMatrix: size('#team-performance .team-matrix__table'),
+              teamPreview: box('#team-performance .executive-team-preview'),
+              teamPreviewCharts: [...document.querySelectorAll('#team-performance .executive-team-preview__charts .analytics-chart-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
               lifecycleStages: [...document.querySelectorAll('.executive-lifecycle__item')].map((item) => item.innerText.split('\n')[0]),
               maturityScale: Boolean(document.querySelector('.executive-maturity-scale')),
               teamChangeColumns: document.querySelectorAll('#team-performance .team-matrix__table thead tr:nth-child(2) th').length,
@@ -274,6 +342,51 @@ test.describe('Phase 5 Browser UI Smoke', () => {
         if (path === '/' && ['1920', '2560'].includes(viewport.name)) {
           await page.screenshot({ path: testInfo.outputPath(filename.replace('.png', '-viewport.png')) })
         }
+        if (path === '/analytics/activities' && ['1920', '2560'].includes(viewport.name)) {
+          const evidence = await page.evaluate((viewportName) => {
+            const box = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) } }
+            return {
+              viewport: viewportName,
+              inner: { width: innerWidth, height: innerHeight },
+              document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+              sidebarWidth: Math.round(document.querySelector('.app-sidebar').getBoundingClientRect().width),
+              topbarHeight: Math.round(document.querySelector('.app-topbar').getBoundingClientRect().height),
+              contentGutter: getComputedStyle(document.querySelector('.app-shell__content')).paddingLeft,
+              directory: box('.activity-directory'),
+              workspace: box('.activity-workspace'),
+              kpiHeights: [...document.querySelectorAll('.activity-outcome-grid .metric-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+              kpiSparklineRatios: [...document.querySelectorAll('.activity-outcome-grid .metric-card')].map((card) => {
+                const trend = card.querySelector('.metric-card__sparkline, .metric-card__empty-trend')
+                const style = getComputedStyle(card)
+                const contentWidth = card.getBoundingClientRect().width - Number.parseFloat(style.paddingLeft) - Number.parseFloat(style.paddingRight)
+                return trend ? Math.round(trend.getBoundingClientRect().width / contentWidth * 100) : null
+              }),
+              charts: [...document.querySelectorAll('.activity-trend-grid .analytics-analysis-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+              teamDifferencePanel: box('.activity-team-matrix'),
+              teamDifferenceTable: box('.activity-team-matrix .team-matrix__table'),
+              teamDifferenceHeader: box('.activity-team-matrix .team-matrix__table thead'),
+              teamDifferenceRows: [...document.querySelectorAll('.activity-team-matrix .team-matrix__table tbody tr')].map((row) => Math.round(row.getBoundingClientRect().height)),
+              lowerColumns: [...document.querySelectorAll('.activity-lower-grid > *')].map((card) => Math.round(card.getBoundingClientRect().width)),
+              lowerColumnHeights: [...document.querySelectorAll('.activity-lower-grid > *')].map((card) => Math.round(card.getBoundingClientRect().height)),
+            }
+          }, viewport.name)
+          activityEvidence.push(evidence)
+          expect(evidence.directory.width).toBeGreaterThanOrEqual(210)
+          expect(evidence.directory.width).toBeLessThanOrEqual(230)
+          expect(Math.max(...evidence.kpiHeights) - Math.min(...evidence.kpiHeights)).toBeLessThanOrEqual(1)
+          expect(Math.min(...evidence.kpiHeights)).toBeGreaterThanOrEqual(116)
+          expect(Math.max(...evidence.kpiHeights)).toBeLessThanOrEqual(128)
+          expect(evidence.kpiSparklineRatios.every((ratio) => ratio >= 35 && ratio <= 45)).toBe(true)
+          expect(evidence.charts).toHaveLength(2)
+          expect(Math.min(...evidence.charts)).toBeGreaterThanOrEqual(260)
+          expect(Math.max(...evidence.charts)).toBeLessThanOrEqual(320)
+          expect(evidence.teamDifferencePanel.height).toBeLessThanOrEqual(190)
+          expect(evidence.teamDifferenceTable.height).toBeLessThanOrEqual(145)
+          expect(Math.max(...evidence.lowerColumns) / Math.min(...evidence.lowerColumns)).toBeLessThanOrEqual(1.2)
+          expect(Math.max(...evidence.lowerColumnHeights) - Math.min(...evidence.lowerColumnHeights)).toBeLessThanOrEqual(1)
+          expect(Math.max(...evidence.lowerColumnHeights)).toBeLessThanOrEqual(220)
+          await page.screenshot({ path: testInfo.outputPath(filename.replace('.png', '-viewport.png')) })
+        }
         if (path === '/analytics/teams/1' && ['1920', '2560'].includes(viewport.name)) {
           await page.screenshot({ path: testInfo.outputPath(filename.replace('.png', '-viewport.png')) })
           const evidence = await page.evaluate((viewportName) => ({
@@ -282,12 +395,105 @@ test.describe('Phase 5 Browser UI Smoke', () => {
             document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
             contentWidth: Math.round(document.querySelector('.drilldown-shell').getBoundingClientRect().width),
             kpiCardHeights: [...document.querySelectorAll('.drilldown-kpi-row .metric-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+            kpiRowWidths: [...document.querySelectorAll('.drilldown-kpi-row')].map((row) => [...row.querySelectorAll('.metric-card')].map((card) => Math.round(card.getBoundingClientRect().width))),
+            coreTrendCardHeights: [...document.querySelectorAll('.drilldown-overall-trends .analytics-chart-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+            lifecycleStageHeights: [...document.querySelectorAll('.drilldown-lifecycle-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+            lifecycleStageIconCount: document.querySelectorAll('.drilldown-lifecycle-card__icon').length,
+            truncatedLifecycleBenchmarks: [...document.querySelectorAll('.drilldown-lifecycle-metric em')].filter((item) => item.textContent.startsWith('均值') && item.scrollWidth > item.clientWidth).length,
+            teamNote: document.querySelector('.drilldown-team-note')?.textContent ?? '',
             storyPanels: ['team-overall', 'team-lifecycle', 'team-maturity'].map((id) => Math.round(document.getElementById(id).getBoundingClientRect().height)),
+            maturityMatrixRadarWidths: [...document.querySelectorAll('.drilldown-maturity__category-grid')].map((grid) => {
+              const matrix = grid.children[0].getBoundingClientRect()
+              const radar = grid.children[1].getBoundingClientRect()
+              const svg = grid.children[1].querySelector('.maturity-radar svg')
+              const svgRect = svg.getBoundingClientRect()
+              const polygon = svg.querySelector('.maturity-radar__rings polygon:last-child').getBBox()
+              const scale = Math.min(svgRect.width / 420, svgRect.height / 320)
+              return {
+                matrix: Math.round(matrix.width),
+                radar: Math.round(radar.width),
+                matrixRatio: Math.round(matrix.width / (matrix.width + radar.width) * 100),
+                plotPercentOfPanelShortSide: Math.round(Math.min(polygon.width, polygon.height) * scale / Math.min(radar.width, radar.height) * 100),
+              }
+            }),
           }), viewport.name)
           teamEvidence.push(evidence)
-          if (viewport.name === '2560') expect(evidence.contentWidth).toBeLessThanOrEqual(2160)
+          expect(evidence.kpiCardHeights).toHaveLength(8)
+          expect(Math.max(...evidence.kpiCardHeights) - Math.min(...evidence.kpiCardHeights)).toBeLessThanOrEqual(1)
+          expect(evidence.kpiCardHeights.every((height) => height >= 116 && height <= 128)).toBe(true)
+          expect(evidence.kpiRowWidths).toHaveLength(2)
+          expect(evidence.kpiRowWidths.every((widths) => widths.length === 4 && Math.max(...widths) - Math.min(...widths) <= 1)).toBe(true)
+          expect(evidence.teamNote.split('1/4').length - 1).toBe(1)
+          expect(evidence.coreTrendCardHeights).toHaveLength(2)
+          expect(Math.max(...evidence.coreTrendCardHeights) - Math.min(...evidence.coreTrendCardHeights)).toBeLessThanOrEqual(1)
+          expect(evidence.coreTrendCardHeights.every((height) => height >= 160 && height <= 200)).toBe(true)
+          expect(evidence.lifecycleStageHeights.length).toBeGreaterThanOrEqual(4)
+          expect(evidence.lifecycleStageIconCount).toBe(evidence.lifecycleStageHeights.length)
+          expect(evidence.truncatedLifecycleBenchmarks).toBe(0)
+          expect(Math.max(...evidence.lifecycleStageHeights) - Math.min(...evidence.lifecycleStageHeights)).toBeLessThanOrEqual(1)
+          expect(evidence.lifecycleStageHeights.every((height) => height >= 100 && height <= 128)).toBe(true)
+          expect(evidence.maturityMatrixRadarWidths.length).toBeGreaterThan(0)
+          expect(evidence.maturityMatrixRadarWidths.every(({ matrixRatio }) => matrixRatio >= 48 && matrixRatio <= 52)).toBe(true)
+          expect(evidence.maturityMatrixRadarWidths.every(({ plotPercentOfPanelShortSide }) => plotPercentOfPanelShortSide >= 60 && plotPercentOfPanelShortSide <= 75)).toBe(true)
+          if (viewport.name === '2560') expect(evidence.contentWidth).toBeGreaterThan(2160)
         }
         if (path === '/analytics/capabilities' && ['1920', '2560'].includes(viewport.name)) {
+          const evidence = await page.evaluate((viewportName) => {
+            const box = (selector) => { const rect = document.querySelector(selector).getBoundingClientRect(); return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) } }
+            const radarElement = document.querySelector('.analytics-maturity-summary__radar .maturity-radar svg')
+            const radar = radarElement.getBoundingClientRect()
+            const radarPlot = radarElement.querySelector('.maturity-radar__rings polygon:last-child').getBBox()
+            const radarScale = Math.min(radar.width / 420, radar.height / 320)
+            const matrixPanel = box('.analytics-maturity-summary__matrix')
+            const radarPanel = box('.analytics-maturity-summary__radar')
+            return {
+              viewport: viewportName,
+              inner: { width: innerWidth, height: innerHeight },
+              document: { width: document.documentElement.scrollWidth, height: document.documentElement.scrollHeight },
+              sidebarWidth: Math.round(document.querySelector('.app-sidebar').getBoundingClientRect().width),
+              topbarHeight: Math.round(document.querySelector('.app-topbar').getBoundingClientRect().height),
+              contentGutter: getComputedStyle(document.querySelector('.app-shell__content')).paddingLeft,
+              directory: box('.analytics-directory-workspace > .analytics-directory'),
+              workspace: box('.analytics-directory-workspace > .analytics-workspace'),
+              workspaceHeader: box('.capability-page .analytics-workspace > .analytics-page-head'),
+              kpiHeights: [...document.querySelectorAll('.capability-kpi-grid .metric-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+              evolutionCharts: [...document.querySelectorAll('.capability-evolution-grid .analytics-analysis-card')].map((card) => Math.round(card.getBoundingClientRect().height)),
+              comparisonPanels: [...document.querySelectorAll('.capability-comparison-grid > *')].map((panel) => Math.round(panel.getBoundingClientRect().height)),
+              teamBenchmarkCells: document.querySelectorAll('.capability-comparison-grid .team-matrix__cell--benchmark-above, .capability-comparison-grid .team-matrix__cell--benchmark-below').length,
+              teamBenchmarkDeltas: document.querySelectorAll('.capability-comparison-grid .team-matrix__benchmark-delta').length,
+              supportingEvidenceCards: document.querySelectorAll('.capability-evidence-card').length,
+              supportingEvidenceCharts: document.querySelectorAll('.capability-evidence-card .overview-chart').length,
+              maturityPanels: { matrix: matrixPanel, radar: radarPanel },
+              maturityPanelWidthRatio: Math.round(matrixPanel.width / (matrixPanel.width + radarPanel.width) * 100),
+              radarPlotPercentOfPanelShortSide: Math.round(radarPlot.height * radarScale / Math.min(radarPanel.width, radarPanel.height) * 100),
+              matrixWidth: matrixPanel.width,
+              radar: { width: Math.round(radar.width), height: Math.round(radar.height) },
+            }
+          }, viewport.name)
+          capabilityEvidence.push(evidence)
+          expect(evidence.directory.width).toBeGreaterThanOrEqual(210)
+          expect(evidence.directory.width).toBeLessThanOrEqual(230)
+          expect(evidence.workspaceHeader.x).toBeGreaterThanOrEqual(evidence.directory.x + evidence.directory.width)
+          expect(evidence.kpiHeights).toHaveLength(4)
+          expect(Math.max(...evidence.kpiHeights) - Math.min(...evidence.kpiHeights)).toBeLessThanOrEqual(1)
+          expect(Math.min(...evidence.kpiHeights)).toBeGreaterThanOrEqual(116)
+          expect(Math.max(...evidence.kpiHeights)).toBeLessThanOrEqual(128)
+          expect(evidence.evolutionCharts).toHaveLength(2)
+          expect(Math.min(...evidence.evolutionCharts)).toBeGreaterThanOrEqual(260)
+          expect(Math.max(...evidence.evolutionCharts)).toBeLessThanOrEqual(320)
+          expect(evidence.comparisonPanels).toHaveLength(2)
+          expect(Math.max(...evidence.comparisonPanels) - Math.min(...evidence.comparisonPanels)).toBeLessThanOrEqual(8)
+          expect(Math.max(...evidence.comparisonPanels)).toBeLessThanOrEqual(240)
+          expect(evidence.teamBenchmarkCells).toBeGreaterThan(0)
+          expect(evidence.teamBenchmarkDeltas).toBeGreaterThan(0)
+          expect(evidence.supportingEvidenceCards).toBe(3)
+          expect(evidence.supportingEvidenceCharts).toBe(2)
+          expect(Math.abs(evidence.maturityPanels.matrix.height - evidence.maturityPanels.radar.height)).toBeLessThanOrEqual(8)
+          expect(Math.max(evidence.maturityPanels.matrix.height, evidence.maturityPanels.radar.height)).toBeLessThanOrEqual(260)
+          expect(evidence.maturityPanelWidthRatio).toBeGreaterThanOrEqual(48)
+          expect(evidence.maturityPanelWidthRatio).toBeLessThanOrEqual(55)
+          expect(evidence.radarPlotPercentOfPanelShortSide).toBeGreaterThanOrEqual(60)
+          expect(evidence.radarPlotPercentOfPanelShortSide).toBeLessThanOrEqual(75)
           await page.screenshot({ path: testInfo.outputPath(filename.replace('.png', '-viewport.png')) })
         }
         await page.screenshot({ path: testInfo.outputPath(filename), fullPage: true })
@@ -370,6 +576,8 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     await page.screenshot({ path: testInfo.outputPath('qa-1920-team-general-maturity-viewport.png') })
     await page.screenshot({ path: testInfo.outputPath('qa-1920-team-general-maturity.png'), fullPage: true })
     await writeFile(testInfo.outputPath('overview-browser-evidence.json'), `${JSON.stringify(overviewEvidence, null, 2)}\n`, 'utf8')
+    await writeFile(testInfo.outputPath('activity-browser-evidence.json'), `${JSON.stringify(activityEvidence, null, 2)}\n`, 'utf8')
+    await writeFile(testInfo.outputPath('capability-browser-evidence.json'), `${JSON.stringify(capabilityEvidence, null, 2)}\n`, 'utf8')
     await writeFile(testInfo.outputPath('team-r3-browser-evidence.json'), `${JSON.stringify(teamEvidence, null, 2)}\n`, 'utf8')
   })
 

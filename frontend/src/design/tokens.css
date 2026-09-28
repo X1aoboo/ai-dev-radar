@@ -65,11 +65,11 @@
   --font-size-label: 12px;
   --font-size-secondary: 13px;
   --font-size-body: 14px;
-  --font-size-card-title: 16px;
+  --font-size-card-title: 15px;
   --font-size-section-title: 20px;
   --font-size-page-title: 28px;
   --font-size-kpi: 32px;
-  --font-size-kpi-large: 38px;
+  --font-size-kpi-large: 36px;
   --line-height-body: 1.5;
 
   --space-1: 4px;
@@ -82,12 +82,12 @@
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
-  --shadow-panel: 0 1px 2px rgba(16, 24, 40, .04), 0 1px 3px rgba(16, 24, 40, .05);
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, .06), 0 2px 5px rgba(16, 24, 40, .06);
   --size-control-default: 36px;
-  --size-analytics-directory: 232px;
+  --size-analytics-directory: 224px;
   --duration-fast: 160ms;
   --duration-base: 240ms;
   --easing-standard: cubic-bezier(.2, 0, 0, 1);
   --size-topbar: 56px;
-  --size-sidebar: 248px;
+  --size-sidebar: 216px;
 }

@@ -57,7 +57,8 @@ Analytics 页面采用真正的 Fluid Layout：
 - 页面内容占满 Sidebar 之外的可用宽度。
 - 宽屏增加图表有效绘图区、矩阵/表格可视范围和合理间距，而不是产生左右大面积空白。
 - 采用 24 栅格或等价 CSS Grid；4 个 KPI 卡固定 `6 + 6 + 6 + 6`。
-- 常规 Card gap 约 16px，Section gap 约 24px，页面 gutter 约 24–32px。
+- Desktop Geometry Lock：展开侧栏 208–224px；Topbar 48–56px；1920px 页面左右 gutter 20–28px；Section gap 20–28px；Card gap 12–16px。内容必须流式占满侧栏后的空间，不设页面级 max-width。
+- 禁止无业务意义的 32px 以上垂直空隙、空背景和卡片死空白。
 
 ### 2.3 滚动所有权
 
@@ -86,6 +87,7 @@ Analytics 页面采用真正的 Fluid Layout：
 - 左侧 Sidebar 为主导航。
 - Topbar 轻量，承担 Breadcrumb/搜索/用户/少量全局动作。
 - Page Header 负责页面名称、说明、Global Filters。
+- Page Title 26–30px/700；Description 13–14px；全局筛选在标题右侧组成紧凑选择器卡，每个控件包含 icon、小标签、当前值和 chevron。
 
 导航分组：
 
@@ -157,6 +159,10 @@ ai-dev-radar 自己负责产品级 Design System：
 
 KPI 数字必须成为视觉主角，不能与普通正文同权重。
 
+Page Title 26–30px/700，Section Title 18–20px/650–700，Card/Chart Title 13–15px/600–650，Primary KPI 30–36px/700，Delta 12–14px/600，Supporting Metadata 11–13px，Axis/Legend 11–12px。
+
+Analytics Card 使用白色 surface、轻边框、柔和可见阴影和 10–14px radius；Section 靠标题、间距、栅格分层，不全部再包一层 Card。
+
 ## 6. KPI Card 规范
 
 统一 `MetricKpiCard` 结构：
@@ -176,6 +182,8 @@ Mini Trend 风格：
 - 曲线下使用柔和 Area Fill / Gradient。
 - 默认无密集 point symbol，Hover 时显示。
 - 高度约占 Card 下部 25–35%。
+
+KPI Card 高度 116–128px、padding 16–20px；迷你趋势高 28–42px，占内容宽度 35–45% 或横跨卡片底边。四张卡等宽、等高且主值基线一致。
 
 ### 6.1 顶部固定四个 KPI
 
@@ -285,7 +293,7 @@ KPI 卡片应留出充足高度；图标、主值和变化信息有清楚层级�
 - Legend 可显隐。
 - Tooltip 展示当前值、领域平均、差值、变化。
 
-核心趋势与研发关键环节左右并排，卡片顶部和底部对齐；主图提供足够的纵向绘图区。
+核心趋势与研发关键环节左右并排，卡片顶部和底部对齐；主行卡片高约 300–340px，并为主图保留足够绘图区。
 
 ### 8.4 研发关键环节
 
@@ -328,7 +336,7 @@ KPI 卡片应留出充足高度；图标、主值和变化信息有清楚层级�
 
 Radar 不承担大量团队同时对比。
 
-成熟度矩阵与领域 Radar 在同一张成熟度卡片中紧邻并排；成熟度说明放在卡片内，并与矩阵说明合并。矩阵下方保留 0.0 有效零分提示与 1.0–5.0 色阶。
+成熟度矩阵与领域 Radar 在同一张成熟度卡片中紧邻并排；Radar 直径占可用短边的 60–75%。成熟度说明放在卡片内，并与矩阵说明合并。矩阵增加 cell padding 和列宽；矩阵下方保留 0.0 有效零分提示与 1.0–5.0 色阶。
 
 业务目录将 `MR代码检视` 定义为通用研发能力时，其成熟度只显示在“通用研发能力”模式；不得并入关键研发活动矩阵。
 
@@ -407,7 +415,7 @@ Radar 最多三条：
 
 采用“窄目录 + 右侧全宽 Analytics Workspace”。
 
-左侧分析目录约 220–240px，只负责对象导航；右侧必须 `flex:1; min-width:0`，不得产生右侧无意义空白。
+左侧分析目录约 210–230px，只负责对象导航；右侧必须 `flex:1; min-width:0`，不得产生右侧无意义空白。
 
 研发活动始终保持**领域视角**，不通过顶部 Team Selector 把页面变成团队详情。
 
@@ -420,6 +428,8 @@ Radar 最多三条：
 - 指标拆解 / 业务量 / 原始指标证据
 
 点击团队进入 Team Drill-down，并可定位到对应研发活动。
+
+月度与周期 KPI 共用 Overview 几何。两张趋势卡并排，每张高约 260–320px。团队差异使用紧凑 analytics matrix/table surface；底部拆解、工作量趋势和原始指标证据为对齐的三列分析组合。
 
 ## 11. 研发能力页
 
@@ -437,18 +447,23 @@ Radar 最多三条：
 
 能力页面同样使用领域整体 + 所有团队的趋势分析；团队问题下钻至 Team Detail。
 
+Ability Status 四张 KPI 同行；双趋势图各高约 260–320px。Team Difference 与 Supporting Evidence 并排，底部 Maturity Matrix 与 Radar 作为同一分析层展示，并维持 60–75% 雷达直径占比。
+
 ## 12. Analytics 图表统一规范
 
 整体为 Visual-forward Modern Analytics：
 
-- 主线 2.5–3px；普通系列略细。
+- 主序列线宽 2.25–2.75px；普通团队线宽 1.75–2.25px。
 - Grid line 极淡但可见。
 - 主序列可使用柔和 Area Fill；不得给多团队全部铺面积导致遮挡。
 - 点默认隐藏或弱化，Hover 时出现。
 - 领域平均始终使用固定 Benchmark 样式。
+- Benchmark 用独立 neutral blue/gray dashed style；网格线很淡但可辨，默认尽量少点，Hover/selected 时出现点。
 - Tooltip 为结构化数据卡，不是 ECharts 默认 tooltip。
+- Tooltip 清楚展示 series、value；适用时展示领域均值及 delta/difference。
 - 效率值超出图轴边界时，图上显示边界点；Tooltip 同时标出当前图上值与原始值，并提供全公司均值差及前期变化，不能只显示与图轴不一致的原值。
 - Legend 紧凑，并支持系列显隐。
+- Legend 使用 11–12px 字号并留足间距；单主序列可使用 subtle area fill，多团队不全部填充面积。
 - Bar 可有轻圆角，避免 3D/Glow/重渐变。
 - Radar 使用低透明度 fill，Series 数量严格控制。
 

@@ -1,4 +1,5 @@
 import { INITIAL_FILTER, iterationPeriods, latestPeriodId } from './overviewLogic'
+import { CalendarOutlined, ClockCircleOutlined, DownOutlined, TagOutlined } from '@ant-design/icons'
 import FilterToolbar from '../components/FilterToolbar'
 
 function SegmentedControl({ label, options, value, onChange }) {
@@ -22,7 +23,7 @@ function SegmentedControl({ label, options, value, onChange }) {
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions, showCycle = false, showPrimaryControls = true }) {
+export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions, showCycle = false, showPrimaryControls = true, showAdvancedControls = true }) {
   const isIteration = filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
@@ -70,20 +71,28 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   }
 
   return (
-    <FilterToolbar className="analytics-filter-toolbar activity-filter-toolbar" label={showPrimaryControls ? '分析筛选' : ''} actions={<button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button>}>
+    <FilterToolbar className="analytics-filter-toolbar activity-filter-toolbar" label={showPrimaryControls ? '分析筛选' : ''} actions={showAdvancedControls ? <button type="button" className="analytics-filter-reset" onClick={resetFilters}>重置统计条件</button> : undefined}>
       <div className="activity-filter-groups">
         {showPrimaryControls && <div className="analytics-page-controls activity-filter-groups__primary">
-          {month && onMonthChange && <label><span>分析月份</span><input aria-label="分析月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /></label>}
-          {showCycle && <SegmentedControl label="统计周期" options={[{ value: '6m', label: '近6个月' }, { value: 'half', label: '本半年度' }, { value: 'year', label: '年度累计' }]} value={filter.cycle ?? '6m'} onChange={(cycle) => onChange({ ...filter, cycle }, { history: 'push' })} />}
-          <label className="analytics-filter-group">
-            <span>版本</span>
-            <select aria-label="版本" value={filter.versionId} onChange={(event) => changeVersion(event.target.value)}>
+          {month && onMonthChange && <label className="analytics-filter-card">
+            <span className="analytics-filter-card__label"><CalendarOutlined aria-hidden="true" />月份</span>
+            <span className="analytics-filter-card__value"><input aria-label="月份" type="month" value={month} onChange={(event) => onMonthChange(event.target.value)} /><DownOutlined aria-hidden="true" /></span>
+          </label>}
+          {showCycle && <label className="analytics-filter-card">
+            <span className="analytics-filter-card__label"><ClockCircleOutlined aria-hidden="true" />统计周期</span>
+            <span className="analytics-filter-card__value"><select aria-label="统计周期" value={filter.cycle ?? '6m'} onChange={(event) => onChange({ ...filter, cycle: event.target.value }, { history: 'push' })}>
+              <option value="6m">近6个月</option><option value="half">本半年度</option><option value="year">年度累计</option>
+            </select><DownOutlined aria-hidden="true" /></span>
+          </label>}
+          <label className="analytics-filter-card">
+            <span className="analytics-filter-card__label"><TagOutlined aria-hidden="true" />版本</span>
+            <span className="analytics-filter-card__value"><select aria-label="版本" value={filter.versionId} onChange={(event) => changeVersion(event.target.value)}>
               <option value="all">全部版本</option>
               {versions.map((version) => <option key={version.id} value={version.id}>{version.name}</option>)}
-            </select>
+            </select><DownOutlined aria-hidden="true" /></span>
           </label>
         </div>}
-        <details className="activity-filter-groups__advanced" open={advancedFiltersActive || undefined}>
+        {showAdvancedControls && <details className="activity-filter-groups__advanced" open={advancedFiltersActive || undefined}>
           <summary>原始指标筛选</summary>
           <div className="analytics-page-controls">
             <SegmentedControl
@@ -108,7 +117,7 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
               </select>
             </label>
           </div>
-        </details>
+        </details>}
       </div>
     </FilterToolbar>
   )

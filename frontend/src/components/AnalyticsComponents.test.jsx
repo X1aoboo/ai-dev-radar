@@ -96,7 +96,10 @@ test('TeamMatrix keeps selected teams and direct metric cells accessible', async
   assert.equal(buttons[0].props['aria-pressed'], true)
   await act(async () => { buttons[1].props.onClick() })
   assert.equal(selected, 2)
-  assert.deepEqual(renderer.root.findAllByType('td').map((node) => node.children.join('')), ['42%', '0%', '—'])
+  assert.deepEqual(renderer.root.findAllByType('td').map((node) => {
+    const value = node.findAllByType('span')[0]
+    return value ? value.children.join('') : node.children.join('')
+  }), ['42%', '0%', '—'])
 })
 
 test('TeamMatrix can show a separate, signed change value for each metric', async () => {

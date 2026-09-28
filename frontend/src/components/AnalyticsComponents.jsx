@@ -148,7 +148,12 @@ export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = 
               </th>
               {columns.map((column, index) => {
                 const value = row.values?.[index]
-                if (!showChanges) return <td key={column.id}>{value?.text ?? '—'}</td>
+                if (!showChanges) {
+                  const relation = ['above', 'below', 'equal'].includes(value?.benchmarkRelation) ? value.benchmarkRelation : null
+                  const relationLabel = relation === 'above' ? '高于全公司均值' : relation === 'below' ? '低于全公司均值' : relation === 'equal' ? '等于全公司均值' : undefined
+                  const difference = value?.benchmarkDelta ? `相对全公司均值 ${value.benchmarkDelta}` : undefined
+                  return <td className={relation ? `team-matrix__cell--benchmark-${relation} team-matrix__cell--benchmark` : undefined} key={column.id} title={difference ?? relationLabel}>{value?.text !== null && value?.text !== undefined ? <><span>{value.text}</span>{value.benchmarkDelta && <small className="team-matrix__benchmark-delta">{value.benchmarkDelta}</small>}</> : '—'}</td>
+                }
                 const tone = value?.changeTone ? ` team-matrix__change--${value.changeTone}` : ''
                 return <Fragment key={column.id}><td className="team-matrix__value">{value?.text ?? '—'}</td><td className={`team-matrix__change${tone}`}>{value?.changeText ?? '—'}</td></Fragment>
               })}

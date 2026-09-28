@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [Visual Convergence Round 2 — Geometry & Fidelity Lock](visual-convergence-round-2.md)：完成总览、活动、能力与团队下钻的几何/视觉收敛，通过逐页 Macro/Visual Gate、Global Consistency、浏览器与项目质量 Gate。
 - [Visual + UX Convergence](visual-ux-convergence.md)：完成四页逐页视觉收敛、独立评审与全局一致性验收，校准临时 IR KPI 及其文档，并保留一项可接受的基准标签差异。
 - [Enterprise Analytics UX/UI 重构 Phase 0–6](enterprise-analytics-ux-redesign.md)：完成全站分析与运营工作台重构，保留指标、API 与权限语义，并通过 1920/2560 浏览器验收及完整项目 gate。
 - [Rolling Demo Seed Coverage](rolling-demo-seed.md)：补齐默认月份、近六个月、成熟度与 IR 的演示数据。

@@ -299,7 +299,7 @@ textarea:focus-visible {
   gap: var(--space-5);
   justify-content: space-between;
   min-height: var(--size-topbar);
-  padding: var(--space-3) var(--space-6);
+  padding: 10px var(--space-6);
   position: sticky;
   top: 0;
   z-index: 5;
@@ -403,9 +403,9 @@ textarea:focus-visible {
 .app-shell__content--dashboard,
 .app-shell__content--analytics {
   max-width: none;
-  padding-left: clamp(24px, calc(1vw + 8px), 32px);
-  padding-right: clamp(24px, calc(1vw + 8px), 32px);
-  padding-top: var(--space-5);
+  padding-left: clamp(20px, calc(.75vw + 8px), 28px);
+  padding-right: clamp(20px, calc(.75vw + 8px), 28px);
+  padding-top: 16px;
 }
 
 .app-shell__content--operational {

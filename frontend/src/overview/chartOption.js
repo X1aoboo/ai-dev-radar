@@ -61,7 +61,7 @@ export function efficiencyOutlierAxisLabel(data, metric) {
   return '下限 −100%'
 }
 
-function buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars, overflowLimit, showPointMarkers }) {
+function buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars, overflowLimit, showPointMarkers, lineWidth }) {
   const color = teamColors[String(series.team_id)]
   const data = (series.values ?? []).map((point) => chartPoint(point, selectedPeriodId, metric, 'circle', overflowLimit, showPointMarkers))
   if (isCountMetric(metric, countAsBars)) {
@@ -81,7 +81,7 @@ function buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAs
     type: 'line',
     data,
     color,
-    lineStyle: { width: 2.75, cap: 'round', join: 'round' },
+    lineStyle: { width: lineWidth, cap: 'round', join: 'round' },
     itemStyle: { color },
     symbol: 'circle',
     symbolSize: 6,
@@ -98,8 +98,9 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
     ...(data?.company_average ?? []),
   ].map((point) => point?.value).filter(Number.isFinite)
   const overflowLimit = hasEfficiencyOutlier(data, metric) ? 1 : null
+  const teamLineWidth = (data?.series?.length ?? 0) <= 1 ? 2.5 : 2
   const teamSeries = (data?.series ?? []).map((series) => (
-    buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars, overflowLimit, showPointMarkers })
+    buildTeamSeries({ series, metric, teamColors, selectedPeriodId, countAsBars, overflowLimit, showPointMarkers, lineWidth: teamLineWidth })
   ))
   const companyColor = DATAVIZ_COLORS.companyAverage
   const companyData = (data?.company_average ?? []).map((point) => chartPoint(point, selectedPeriodId, metric, 'diamond', overflowLimit, showPointMarkers))
@@ -116,7 +117,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
     type: 'line',
     data: companyData,
     color: companyColor,
-    lineStyle: { width: 2.5, type: 'dashed', cap: 'round' },
+    lineStyle: { width: 2.25, type: 'dashed', cap: 'round' },
     itemStyle: { color: companyColor },
     symbol: 'diamond',
     symbolSize: 7,
@@ -142,7 +143,7 @@ export function buildTrendOption({ data, metric, teamColors, selectedPeriodId, c
   ]
   const hasNegativeOverflow = overflowLimit !== null && allValues.some((value) => value < -overflowLimit)
   const hasPositiveOverflow = overflowLimit !== null && allValues.some((value) => value > overflowLimit)
-  const axisFontSize = compact ? 10 : 12
+  const axisFontSize = compact ? 11 : 12
 
   return {
     animationDuration: 180,
@@ -285,14 +286,14 @@ export function buildInsightOption({ periods = [], series = [], formatValue = (v
       data: periodLabels,
       axisLine: { lineStyle: { color: DATAVIZ_COLORS.axis } },
       axisTick: { show: false },
-      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 10, hideOverlap: true },
+    axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, hideOverlap: true },
     },
     yAxis: {
       type: 'value',
       min: yMin,
       max: yMax,
       splitLine: { lineStyle: { color: DATAVIZ_COLORS.grid } },
-      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 10, formatter: (value) => formatValue(value, 0) },
+      axisLabel: { color: DATAVIZ_COLORS.muted, fontSize: 11, formatter: (value) => formatValue(value, 0) },
     },
     series: series.map((entry) => ({
       name: entry.name,
@@ -303,9 +304,9 @@ export function buildInsightOption({ periods = [], series = [], formatValue = (v
       showSymbol: true,
       symbol: 'circle',
       symbolSize: 5,
-      lineStyle: { width: 2.5, cap: 'round', join: 'round' },
+      lineStyle: { width: entry.primary ? 2.5 : 2, cap: 'round', join: 'round' },
       itemStyle: { color: entry.color ?? DATAVIZ_COLORS.team[0] },
-      endLabel: { show: series.length < 4, formatter: '{a}', color: DATAVIZ_COLORS.inkSecondary, fontSize: 10 },
+      endLabel: { show: series.length < 4, formatter: '{a}', color: DATAVIZ_COLORS.inkSecondary, fontSize: 11 },
       labelLayout: { moveOverlap: 'shiftY' },
     })),
   }

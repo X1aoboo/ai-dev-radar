@@ -6,8 +6,8 @@ function numeric(value) {
 
 function pointFor(index, value, count, width, height) {
   const centerX = width / 2
-  const centerY = height / 2 + 8
-  const radius = Math.min(width * 0.34, height * 0.38)
+  const centerY = height / 2
+  const radius = Math.min(width * 0.45, height * 0.48)
   const angle = -Math.PI / 2 + (index / Math.max(1, count)) * Math.PI * 2
   const distance = radius * (value / 5)
   return {
@@ -44,7 +44,7 @@ function openSegments(values, count, width, height) {
 }
 
 export default function MaturityRadar({ activities = [], series = [], ariaLabel = '成熟度雷达' }) {
-  const width = 520
+  const width = 420
   const height = 320
   const count = activities.length
   if (!count) return <div className="maturity-radar maturity-radar--empty">暂无可用成熟度轴。</div>
@@ -62,7 +62,7 @@ export default function MaturityRadar({ activities = [], series = [], ariaLabel 
           {activities.map((activity, index) => {
             const center = axisPoint(index, count, width, height, 0)
             const end = axisPoint(index, count, width, height)
-            const label = axisPoint(index, count, width, height, 5.65)
+            const label = axisPoint(index, count, width, height, 4.8)
             const anchor = label.x < width * 0.35 ? 'start' : label.x > width * 0.65 ? 'end' : 'middle'
             return (
               <g key={activity.activity_id}>
@@ -73,7 +73,7 @@ export default function MaturityRadar({ activities = [], series = [], ariaLabel 
           })}
         </g>
         <g className="maturity-radar__levels" aria-hidden="true">
-          {[1, 2, 3, 4, 5].map((level) => <text key={level} x={width / 2 + 5} y={height / 2 + 8 - Math.min(width * 0.34, height * 0.38) * (level / 5) - 4}>{level}</text>)}
+          {[1, 2, 3, 4, 5].map((level) => <text key={level} x={width / 2 + 5} y={height / 2 + 8 - Math.min(width * 0.34, height * 0.36) * (level / 5) - 4}>{level}</text>)}
         </g>
         {series.map((entry) => (
           <g key={entry.id ?? entry.name} className="maturity-radar__series">
