@@ -2,7 +2,7 @@
 
 ## 职责与接口
 
-`data_api.py` 负责组织层级、正式 IR、临时导入/采集批次、审计查询和源数据指标的 HTTP 编排；`data_management.py` 提供规范化、CSV/XLSX 标准库解析、差异、空字段合并、有效记录筛选和计算。`ir_imports.py` 承接文件导入与采集共用的逐行校验和批次创建。`gateway_api.py` 是 admin-only Gateway 配置、检测、激活、放弃及审计 API；`gateway_config.py` 管理唯一 Active/Draft、revision、Token 复用和不可变 runtime snapshot；`gateway_health.py` 校验 Readiness 响应、保存最新状态并提供 stale/状态转换；`gateway_contracts.py` 是 Readiness 消费端模型。`source_collection.py` 管理窗口、团队隔离和运行记录；`collector_gateway.py` 只负责接收 runtime snapshot 并发同步 Bearer HTTPS 请求，`collector_contracts.py` 是 IR v1 的消费端模型。`schemas.py` 定义 Radar API DTO，`models.py` 定义存储；本模块复用 `auth.py` 与 `db.py`。
+`data_api.py` 负责组织层级、正式 IR、临时导入/采集批次、审计查询、源数据指标和本地 AI MR 检视意见的 HTTP 编排；`data_management.py` 提供 IR 规范化、CSV/XLSX 标准库解析、差异、空字段合并、有效记录筛选和计算。`AIReviewOpinion` 保存最小意见来源字段，`/api/data/code-review/opinions` 提供带团队权限和日期/分页过滤的读取，稳定 `source_id` 的 PUT 执行幂等新增/更新；派生指标由 `/api/compute` 调用 `code_review_metrics.py` 聚为团队/日事实，并复用现有序列计算器。该本地 API 不表示 Gateway 已实现代码检视采集。`ir_imports.py` 承接文件导入与采集共用的逐行校验和批次创建。`gateway_api.py` 是 admin-only Gateway 配置、检测、激活、放弃及审计 API；`gateway_config.py` 管理唯一 Active/Draft、revision、Token 复用和不可变 runtime snapshot；`gateway_health.py` 校验 Readiness 响应、保存最新状态并提供 stale/状态转换；`gateway_contracts.py` 是 Readiness 消费端模型。`source_collection.py` 管理窗口、团队隔离和运行记录；`collector_gateway.py` 只负责接收 runtime snapshot 并发同步 Bearer HTTPS 请求，`collector_contracts.py` 是 IR v1 的消费端模型。`schemas.py` 定义 Radar API DTO，`models.py` 定义存储；本模块复用 `auth.py` 与 `db.py`。
 
 前端按需求、问题单、MR、代码检视组织数据源入口。`DataManagementPage` 在需求工作台组合 IR、AR、SR 页签；当前只有 IR 页签连接本模块 API，其他来源使用明确的待定义页面。旧 IR/AR/SR/DTS/MR 页面路径由路由层兼容映射，不改变后端接口。
 

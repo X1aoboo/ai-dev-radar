@@ -23,8 +23,8 @@ function SegmentedControl({ label, options, value, onChange }) {
   )
 }
 
-export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions, showCycle = false, showPrimaryControls = true, showAdvancedControls = true }) {
-  const isIteration = filter.dimension === 'iteration'
+export default function FilterBar({ filter, onChange, versions, periods, loading, month, onMonthChange, metricOptions, showCycle = false, showPrimaryControls = true, showAdvancedControls = true, allowIteration = true }) {
+  const isIteration = allowIteration && filter.dimension === 'iteration'
   const availablePeriods = isIteration ? iterationPeriods(versions, filter.versionId) : periods
   const validPeriodIds = new Set(availablePeriods.map((period) => String(period.id)))
   const periodValue = filter.periodId === null
@@ -55,14 +55,14 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
   }
 
   function changeGranularity(granularity) {
-    onChange({ ...filter, granularity, periodId: null }, { history: 'push' })
+    onChange({ ...filter, ...(allowIteration ? {} : { dimension: 'time', versionId: 'all' }), granularity, periodId: null }, { history: 'push' })
   }
 
   function changeVersion(versionId) {
     onChange({
       ...filter,
       versionId,
-      periodId: isIteration ? latestPeriodId(iterationPeriods(versions, versionId)) : null,
+      periodId: isIteration ? latestPeriodId(iterationPeriods(versions, versionId)) : filter.periodId,
     }, { history: 'push' })
   }
 
@@ -95,12 +95,12 @@ export default function FilterBar({ filter, onChange, versions, periods, loading
         {showAdvancedControls && <details className="activity-filter-groups__advanced" open={advancedFiltersActive || undefined}>
           <summary>原始指标筛选</summary>
           <div className="analytics-page-controls">
-            <SegmentedControl
+            {allowIteration && <SegmentedControl
               label="统计维度"
               options={[{ value: 'time', label: '按时间' }, { value: 'iteration', label: '按版本/迭代' }]}
               value={filter.dimension}
               onChange={changeDimension}
-            />
+            />}
             {!isIteration && <SegmentedControl
               label="时间粒度"
               options={[{ value: 'month', label: '月' }, { value: 'week', label: '周' }, { value: 'day', label: '日' }]}

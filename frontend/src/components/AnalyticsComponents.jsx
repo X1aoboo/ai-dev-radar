@@ -54,7 +54,7 @@ export function AnalyticsSection({ title, description, action, children, classNa
   )
 }
 
-export function ChartCard({ title, eyebrow, description, option, ariaLabel, height = 245, onClick, action, children, loading = false, error, empty, className = '' }) {
+export function ChartCard({ title, eyebrow, description, option, ariaLabel, height = 245, onClick, action, children, loading = false, error, empty, reservePlotSpace = false, className = '' }) {
   const headingId = useId()
   const hasChart = Boolean(option) && !loading && !error
   return (
@@ -68,10 +68,15 @@ export function ChartCard({ title, eyebrow, description, option, ariaLabel, heig
         {action}
       </header>
       {children}
-      {loading && <div className="feedback-state" role="status">正在加载图表数据…</div>}
-      {error && <div className="feedback-state feedback-state--error" role="alert">{error}</div>}
+      {!reservePlotSpace && loading && <div className="feedback-state" role="status">正在加载图表数据…</div>}
+      {!reservePlotSpace && error && <div className="feedback-state feedback-state--error" role="alert">{error}</div>}
       {!loading && !error && hasChart && <EChart option={option} height={height} ariaLabel={ariaLabel} onClick={onClick} />}
-      {!loading && !error && !hasChart && !children && <div className="feedback-state" role="status">{empty ?? '当前没有可展示的数据。'}</div>}
+      {reservePlotSpace && (loading || error || (!hasChart && !children)) && <div className="analytics-chart-card__plot-state" style={{ height }}>
+        {loading && <div className="feedback-state" role="status">正在加载图表数据…</div>}
+        {error && <div className="feedback-state feedback-state--error" role="alert">{error}</div>}
+        {!loading && !error && <div className="feedback-state" role="status">{empty ?? '当前没有可展示的数据。'}</div>}
+      </div>}
+      {!reservePlotSpace && !loading && !error && !hasChart && !children && <div className="feedback-state" role="status">{empty ?? '当前没有可展示的数据。'}</div>}
     </article>
   )
 }
@@ -85,12 +90,13 @@ export function BenchmarkLegend({ label = '全公司均值', color = 'var(--colo
   )
 }
 
-export function AnalyticsDirectory({ label, title, count, items = [], groups = [], selectedId, onSelect, orientation = 'vertical', className = '' }) {
+export function AnalyticsDirectory({ label, title, count, items = [], groups = [], selectedId, pendingId, onSelect, orientation = 'vertical', className = '' }) {
   function renderItem(item) {
     const selected = String(item.id) === String(selectedId)
-    const content = <><span>{item.label}</span>{item.meta && <small>{item.meta}</small>}</>
+    const pending = String(item.id) === String(pendingId)
+    const content = <><span className="analytics-directory__label">{item.icon && <span className="analytics-directory__icon" aria-hidden="true">{item.icon}</span>}<span className="analytics-directory__label-text">{item.label}</span></span>{(item.meta || pending) && <small className={pending ? 'analytics-directory__pending' : undefined} role={pending ? 'status' : undefined}>{pending ? '切换中' : item.meta}</small>}</>
     if (item.href) return <a key={item.id} className="analytics-directory__item" href={item.href} aria-current={selected ? 'location' : undefined}>{content}</a>
-    return <button key={item.id} className="analytics-directory__item" type="button" aria-label={item.ariaLabel} aria-pressed={selected} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{content}</button>
+    return <button key={item.id} className="analytics-directory__item" type="button" aria-label={item.ariaLabel} aria-pressed={selected} aria-busy={pending || undefined} disabled={item.disabled} onClick={() => onSelect?.(item.id)}>{content}</button>
   }
 
   return (
@@ -103,13 +109,13 @@ export function AnalyticsDirectory({ label, title, count, items = [], groups = [
   )
 }
 
-export function MaturityMatrix({ label = '团队成熟度矩阵', columns = [], rows = [] }) {
+export function MaturityMatrix({ label = '团队成熟度矩阵', rowHeading = '团队', columns = [], rows = [] }) {
   return (
     <div className="maturity-matrix">
       <div className="maturity-matrix__scroll" role="region" aria-label={`${label}，可横向滚动`} tabIndex={0}>
         <table className="maturity-matrix__table">
           <caption>{label}</caption>
-          <thead><tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}>{column.label}</th>)}</tr></thead>
+          <thead><tr><th scope="col">{rowHeading}</th>{columns.map((column) => <th scope="col" key={column.id}>{column.label}</th>)}</tr></thead>
           <tbody>{rows.map((row) => (
             <tr className={row.kind === 'average' ? 'maturity-matrix__row--average' : undefined} key={row.id}>
               <th scope="row">{row.label}</th>
@@ -127,15 +133,16 @@ export function MaturityMatrix({ label = '团队成熟度矩阵', columns = [], 
   )
 }
 
-export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = [], selectedId, onSelect, showChanges = false }) {
+export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = [], selectedId, onSelect, showChanges = false, visibleChangeHeaders = false, groupedChangeLayout = false, heatmap = false }) {
   return (
-    <div className="team-matrix">
+    <div className={`team-matrix${heatmap ? ' team-matrix--heatmap' : ''}`}>
       <div className="team-matrix__scroll" role="region" aria-label={`${label}，可横向滚动`} tabIndex={0}>
-        <table className={`team-matrix__table${showChanges ? ' team-matrix__table--changes' : ''}`} aria-label={label}>
+        <table className={`team-matrix__table${showChanges ? ' team-matrix__table--changes' : ''}${groupedChangeLayout ? ' team-matrix__table--grouped' : ''}`} aria-label={label}>
+          {showChanges && groupedChangeLayout && <colgroup><col className="team-matrix__team-column" />{columns.flatMap((column) => [<col className="team-matrix__value-column" key={`${column.id}-value`} />, <col className="team-matrix__change-column" key={`${column.id}-change`} />])}</colgroup>}
           <thead>{showChanges
             ? <>
               <tr><th scope="col" rowSpan={2}>团队</th>{columns.map((column) => <th scope="colgroup" colSpan={2} key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>
-              <tr>{columns.map((column) => <Fragment key={column.id}><th scope="col">指标值</th><th scope="col" title="与当前选择范围的前期相比">变化</th></Fragment>)}</tr>
+              <tr>{columns.map((column) => <Fragment key={column.id}><th scope="col"><span className={visibleChangeHeaders ? undefined : 'app-sr-only'}>指标值</span></th><th scope="col" title="与当前选择范围的前期相比"><span className={visibleChangeHeaders ? undefined : 'app-sr-only'}>变化</span></th></Fragment>)}</tr>
             </>
             : <tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>}
           </thead>
@@ -152,7 +159,11 @@ export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = 
                   const relation = ['above', 'below', 'equal'].includes(value?.benchmarkRelation) ? value.benchmarkRelation : null
                   const relationLabel = relation === 'above' ? '高于全公司均值' : relation === 'below' ? '低于全公司均值' : relation === 'equal' ? '等于全公司均值' : undefined
                   const difference = value?.benchmarkDelta ? `相对全公司均值 ${value.benchmarkDelta}` : undefined
-                  return <td className={relation ? `team-matrix__cell--benchmark-${relation} team-matrix__cell--benchmark` : undefined} key={column.id} title={difference ?? relationLabel}>{value?.text !== null && value?.text !== undefined ? <><span>{value.text}</span>{value.benchmarkDelta && <small className="team-matrix__benchmark-delta">{value.benchmarkDelta}</small>}</> : '—'}</td>
+                  const cellClass = [
+                    relation ? `team-matrix__cell--benchmark-${relation} team-matrix__cell--benchmark` : '',
+                    value?.unconfigured ? 'team-matrix__cell--unconfigured' : '',
+                  ].filter(Boolean).join(' ')
+                  return <td className={cellClass || undefined} data-heatmap-level={heatmap && Number.isInteger(value?.heatmapLevel) ? value.heatmapLevel : undefined} key={column.id} title={value?.reason ?? difference ?? relationLabel}>{value?.text !== null && value?.text !== undefined ? <><span>{value.text}</span>{value.benchmarkDelta && <small className="team-matrix__benchmark-delta">{value.benchmarkDelta}</small>}</> : '—'}</td>
                 }
                 const tone = value?.changeTone ? ` team-matrix__change--${value.changeTone}` : ''
                 return <Fragment key={column.id}><td className="team-matrix__value">{value?.text ?? '—'}</td><td className={`team-matrix__change${tone}`}>{value?.changeText ?? '—'}</td></Fragment>

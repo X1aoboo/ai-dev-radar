@@ -7,10 +7,13 @@ from .auth import hash_password
 from .config import SEED_PASSWORD
 from .db import SessionLocal, engine
 from .models import (
+    AIReviewOpinion,
+    Activity,
     GatewayConfigAudit,
     GatewayConfiguration,
     GatewayHealthStatus,
     MaturityRecord,
+    Metric,
     User,
 )
 
@@ -91,6 +94,44 @@ def ensure_maturity_schema(db_engine: Engine = engine) -> None:
     """只补齐成熟度存储，不根据旧事实或指标数据生成评估记录。"""
 
     MaturityRecord.__table__.create(db_engine, checkfirst=True)
+
+
+def ensure_ai_review_opinion_schema(
+    db_engine: Engine = engine,
+    session_factory: sessionmaker[Session] = SessionLocal,
+) -> None:
+    """Create the local opinion source and add missing derived-metric catalog rows."""
+    AIReviewOpinion.__table__.create(db_engine, checkfirst=True)
+    from .code_review_metrics import EFFECTIVE_REVIEW_METRIC_DEFINITIONS
+
+    with session_factory(bind=db_engine) as db:
+        activity = db.scalar(select(Activity).where(Activity.code == "mrr"))
+        if activity is None:
+            return
+        existing_by_code = {
+            metric.code: metric
+            for metric in db.scalars(
+                select(Metric).where(Metric.activity_id == activity.id)
+            ).all()
+        }
+        for sort_order, definition in enumerate(EFFECTIVE_REVIEW_METRIC_DEFINITIONS, start=2):
+            code, name, metric_type, numerator_semantic, denominator_semantic = definition
+            existing = existing_by_code.get(code)
+            if existing is not None:
+                if existing.name != name or existing.type != metric_type:
+                    raise RuntimeError(f"catalog metric {code} conflicts with the AI review-opinion contract")
+                continue
+            db.add(Metric(
+                activity_id=activity.id,
+                code=code,
+                name=name,
+                type=metric_type,
+                numerator_semantic=numerator_semantic,
+                denominator_semantic=denominator_semantic,
+                collect_method="manual_only",
+                sort_order=sort_order,
+            ))
+        db.commit()
 
 
 def ensure_gateway_schema(db_engine: Engine = engine) -> None:

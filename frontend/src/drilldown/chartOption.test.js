@@ -25,7 +25,21 @@ test('team and iteration charts align edge-period labels inside the plot', () =>
     { seriesName: '团队A', marker: '●', value: 0.4, data: options[0].series[0].data[1], dataIndex: 1, seriesIndex: 0, axisValue: '2026-08' },
     { seriesName: '有事实团队等权均值', marker: '◆', value: 0.35, data: options[0].series.at(-1).data[1], dataIndex: 1, seriesIndex: 1, axisValue: '2026-08' },
   ])
-  assert.match(tooltip, /差有事实团队等权均值 \+5 个百分点/)
+  assert.match(tooltip, /变化差值单位：百分点（pp）/)
+  assert.match(tooltip, /均差 \+5pp/)
+})
+
+test('version-scoped trends name the unversioned comparison as a domain reference and show only two series', () => {
+  const averageLabel = '领域参照（所有团队，不限版本）'
+  const line = buildTeamTrendOption({ data, metric: { type: 'penetration' }, teamId: 1, selectedPeriodId: 'all', accent: '#2a78d6', averageLabel })
+  const bars = buildIterationCompareOption({ data, metric: { type: 'penetration' }, teamId: 1, accent: '#2a78d6', averageLabel })
+
+  assert.equal(line.series.length, 2)
+  assert.equal(line.series.at(-1).name, averageLabel)
+  assert.deepEqual(line.series.at(-1).data.map(({ value }) => value), [0.25, 0.35])
+  assert.equal(bars.series.length, 2)
+  assert.equal(bars.series[1].name, averageLabel)
+  assert.deepEqual(bars.series[1].data.map(({ value }) => value), [0.25, 0.35])
 })
 
 test('team efficiency trends and iteration bars cap plotted outliers but retain raw hover values', () => {

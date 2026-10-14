@@ -32,8 +32,8 @@ function pointHasRawValue(point) {
 
 export function metricDataForPeriods(data, periodIds = []) {
   const selected = new Set(periodIds.map(String))
-  const availablePeriods = data?.periods?.length ? data.periods : periodIds.map((id) => ({ id: String(id), label: String(id) }))
-  const periods = availablePeriods.filter((period) => selected.has(String(period.id)))
+  const availablePeriods = new Map((data?.periods ?? []).map((period) => [String(period.id), period]))
+  const periods = periodIds.map((id) => availablePeriods.get(String(id)) ?? { id: String(id), label: String(id) })
   const align = (values = []) => {
     const byPeriod = new Map(values.map((point) => [String(point.period_id), point]))
     return periods.map((period) => byPeriod.get(String(period.id)) ?? { period_id: period.id, value: null, fact_count: 0 })

@@ -554,7 +554,7 @@ def build_series(
         domain_point["sample_count"] = (
             sums.denominator
             if resolved_metric_type in {"penetration", "ratio"}
-            else len(domain_facts)
+            else sum(_number(getattr(fact, "sample_count", 1)) for fact in domain_facts)
         )
         domain_summary.append(domain_point)
 

@@ -172,25 +172,54 @@ export function latestPeriodId(periods) {
   return periods?.length ? idKey(periods[periods.length - 1].id) : 'all'
 }
 
-function validIdOrDefault(candidate, items, fallback) {
+function validIdOrDefault(candidate, items, fallback, allowUnknownWhenEmpty = true) {
   if (candidate === 'all') return 'all'
   if (candidate === null || candidate === undefined || candidate === '') return fallback
-  if (!items.length || items.some((item) => idKey(item.id) === idKey(candidate))) return idKey(candidate)
+  if (!items.length) return allowUnknownWhenEmpty ? idKey(candidate) : fallback
+  if (items.some((item) => idKey(item.id) === idKey(candidate))) return idKey(candidate)
   return fallback
 }
 
-export function normalizeFilter(input = {}, { versions = [], periods = [] } = {}) {
+export function teamProductVersions(versions = [], teamId) {
+  if (teamId === null || teamId === undefined) return []
+  return versions.filter((version) => (
+    version.product_id !== null
+    && version.product_id !== undefined
+    && String(version.team_id) === String(teamId)
+  ))
+}
+
+export function normalizeFilter(input = {}, { versions = [], periods = [], overview = false, activity = false, capability = false, teamId = null, versionsReady = false } = {}) {
+  const cycle = ['half', 'year'].includes(input.cycle) ? input.cycle : '6m'
+  if (overview) return { dimension: 'time', granularity: 'month', versionId: 'all', periodId: null, metricId: 'all', cycle }
+
+  if (activity) {
+    const fromIteration = input.dimension === 'iteration'
+    const granularity = fromIteration
+      ? 'month'
+      : ANALYSIS_GRANULARITIES.includes(input.granularity) ? input.granularity : 'month'
+    const periodId = fromIteration
+      ? null
+      : input.periodId === 'all' ? 'all' : validIdOrDefault(input.periodId, periods, null)
+    const metricId = input.metricId && input.metricId !== 'all' ? idKey(input.metricId) : 'all'
+    return { dimension: 'time', granularity, versionId: 'all', periodId, metricId, cycle }
+  }
+
+  if (capability) {
+    const granularity = ANALYSIS_GRANULARITIES.includes(input.granularity) ? input.granularity : 'month'
+    return { dimension: 'time', granularity, versionId: 'all', periodId: null, metricId: 'all', cycle }
+  }
+
   const dimension = input.dimension === 'iteration' ? 'iteration' : 'time'
   const granularity = dimension === 'iteration'
     ? 'month'
     : ANALYSIS_GRANULARITIES.includes(input.granularity) ? input.granularity : 'month'
-  const versionId = validIdOrDefault(input.versionId, versions, 'all')
+  const scopedVersions = teamId === null ? versions : teamProductVersions(versions, teamId)
+  const versionId = validIdOrDefault(input.versionId, scopedVersions, 'all', teamId === null || !versionsReady)
   const periodId = input.periodId === 'all'
     ? 'all'
     : validIdOrDefault(input.periodId, periods, null)
   const metricId = input.metricId && input.metricId !== 'all' ? idKey(input.metricId) : 'all'
-  const cycle = ['half', 'year'].includes(input.cycle) ? input.cycle : '6m'
-
   return { dimension, granularity, versionId, periodId, metricId, cycle }
 }
 

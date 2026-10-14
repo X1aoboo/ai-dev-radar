@@ -33,6 +33,9 @@ export default function EChart({ option, height = 240, ariaLabel, onClick, onKey
     chartRef.current.setOption(reducedMotion
       ? { ...themedOption, animation: false, animationDuration: 0, animationDurationUpdate: 0 }
       : themedOption, true)
+    const plot = chartRef.current.getModel().getComponent('grid')?.coordinateSystem?.getRect?.()
+    if (plot) elementRef.current.dataset.plotBounds = [plot.x, plot.y, plot.width, plot.height].map((value) => Number(value.toFixed(2))).join(',')
+    else delete elementRef.current.dataset.plotBounds
   }, [option])
 
   const interactive = typeof onClick === 'function'
@@ -43,5 +46,5 @@ export default function EChart({ option, height = 240, ariaLabel, onClick, onKey
     else clickRef.current?.({})
   }
 
-  return <div ref={elementRef} className="overview-chart" role={interactive ? 'button' : 'img'} tabIndex={interactive ? 0 : undefined} aria-label={interactive ? `${ariaLabel}，按 Enter 键激活` : ariaLabel} onKeyDown={handleKeyDown} style={{ height }} />
+  return <div ref={elementRef} className="overview-chart" role={interactive ? 'button' : 'img'} tabIndex={interactive ? 0 : undefined} aria-label={interactive ? `${ariaLabel}，按 Enter 键激活` : ariaLabel} onKeyDown={handleKeyDown} style={{ height, width: '100%' }} />
 }

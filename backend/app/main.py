@@ -19,6 +19,7 @@ from .data_api import router as data_management_router
 from .gateway_api import redact_gateway_validation_errors, router as gateway_management_router
 from .db import Base, SessionLocal, engine
 from .migrations import (
+    ensure_ai_review_opinion_schema,
     ensure_auth_schema,
     ensure_data_management_schema,
     ensure_fact_schema,
@@ -101,6 +102,7 @@ async def lifespan(app: FastAPI):
         if db.scalar(select(func.count()).select_from(Activity)) == 0:
             from .seed import run_seed
             run_seed(db)
+    ensure_ai_review_opinion_schema()
 
     ensure_ir_collection_schedule()
     with SessionLocal() as db:

@@ -8,6 +8,8 @@ ai-dev-radar 管理和展示团队级 AI 研发效能。React 客户端调用单
 
 视觉系统与跨页面交互契约见 [Design System](../DESIGN.md) 和 [UX Contract](../UX-CONTRACT.md)；运行时 token、Ant Design 适配和共享视觉模式位于 `frontend/src/design/`。
 UX 重构目标与已评审的参考效果图见 [UX Redesign Specification](ux/UX-REDESIGN-SPEC.md)。
+本轮已确认的区块几何、交互、空数据合同及冲突清单见 [Visual Acceptance Baseline](ux/visual-acceptance-baseline.md)；总览实施及后续复验状态见其 Open Issue Ledger。
+四页最终用户确认用整页对照、当前待决差异和几何/交互证据见 [Four-Page Final Visual Review — 2026-10-10](ux/four-page-user-review-2026-10-10.md)；[2026-10-08 历史包](ux/four-page-user-review-2026-10-08.md) 保留作历史记录。
 
 ## Business Design
 

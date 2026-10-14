@@ -14,11 +14,13 @@ from .auth import (
     require_team_access,
     verify_password,
 )
+from .code_review_metrics import EFFECTIVE_REVIEW_METRIC_CODES, build_opinion_metric_facts
 from .compute import build_series, select_current_facts
 from .db import get_db
 from .maturity import build_maturity_overview, normalise_month, record_payload, score_text
 from .models import (
     Activity,
+    AIReviewOpinion,
     FactRecord,
     FactSource,
     Iteration,
@@ -482,11 +484,25 @@ def compute_metric(
         if unknown_iteration_ids:
             raise HTTPException(status_code=404, detail="iteration not found")
 
-    facts = db.scalars(
-        select(FactRecord)
-        .where(FactRecord.metric_id == metric_id)
-        .order_by(FactRecord.id)
-    ).all()
+    if metric.code in EFFECTIVE_REVIEW_METRIC_CODES:
+        opinion_rows = db.scalars(
+            select(AIReviewOpinion).order_by(
+                AIReviewOpinion.opinion_date,
+                AIReviewOpinion.team_id,
+                AIReviewOpinion.source_id,
+            )
+        ).all()
+        facts = build_opinion_metric_facts(
+            opinion_rows,
+            metric_id=metric.id,
+            metric_code=metric.code,
+        )
+    else:
+        facts = db.scalars(
+            select(FactRecord)
+            .where(FactRecord.metric_id == metric_id)
+            .order_by(FactRecord.id)
+        ).all()
 
     try:
         result = build_series(

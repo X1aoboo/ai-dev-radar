@@ -55,11 +55,16 @@
   --color-data-maturity-4: #12b76a;
   --color-data-maturity-5: #039855;
   --color-data-maturity-bg-0: #f2f4f7;
-  --color-data-maturity-bg-1: #eaecf0;
-  --color-data-maturity-bg-2: #fffaeb;
-  --color-data-maturity-bg-3: #fff4e5;
-  --color-data-maturity-bg-4: #ecfdf3;
-  --color-data-maturity-bg-5: #d1fadf;
+  --color-data-maturity-bg-1: #fff2b5;
+  --color-data-maturity-bg-2: #e7f4c8;
+  --color-data-maturity-bg-3: #bdebdc;
+  --color-data-maturity-bg-4: #9fe2e8;
+  --color-data-maturity-bg-5: #72c9f0;
+  --color-data-capability-heatmap-1: #eef4ff;
+  --color-data-capability-heatmap-2: #dceeff;
+  --color-data-capability-heatmap-3: #c9e9f4;
+  --color-data-capability-heatmap-4: #afe5dc;
+  --color-data-capability-heatmap-5: #83d9ca;
 
   --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
   --font-size-label: 12px;

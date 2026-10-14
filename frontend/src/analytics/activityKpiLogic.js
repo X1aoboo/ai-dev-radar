@@ -11,6 +11,12 @@ function numeric(value) {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
+export function yearOverYearGrowth(current, previousYear) {
+  return numeric(current) && numeric(previousYear) && previousYear > 0
+    ? (current - previousYear) / previousYear
+    : null
+}
+
 function factPoints(points, periodIds) {
   const selected = new Set(periodIds.map(String))
   return (points ?? []).filter((point) => selected.has(String(point.period_id)) && point.fact_count > 0)

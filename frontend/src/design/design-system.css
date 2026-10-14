@@ -160,7 +160,7 @@ body { font-family: var(--font-sans); }
 .analytics-filter-card__value > .anticon:last-child { color: var(--color-text-tertiary); flex: 0 0 auto; font-size: 10px; pointer-events: none; }
 .analytics-filter-card__value .ant-select .ant-select-selector { background: transparent !important; border: 0 !important; box-shadow: none !important; color: inherit; font: inherit; min-height: 20px !important; padding: 0 !important; }
 .analytics-filter-card__value .ant-select .ant-select-selection-item { line-height: 20px !important; padding-inline-end: 16px; }
-.analytics-filter-card__value .ant-select .ant-select-arrow { color: var(--color-text-tertiary); inset-inline-end: 0; }
+.analytics-filter-card__value .ant-select .ant-select-suffix { color: var(--color-text-tertiary); }
 .analytics-granularity__options { align-items: center; display: flex; gap: .15rem; }
 .analytics-granularity button,
 .analytics-filter-reset { background: transparent; border: 0; border-radius: var(--radius-sm); color: var(--color-text-secondary); cursor: pointer; font: inherit; min-height: 36px; padding: .35rem .55rem; }
@@ -243,6 +243,10 @@ body { font-family: var(--font-sans); }
 .analytics-directory__item:disabled { color: var(--color-text-tertiary); cursor: default; }
 .analytics-directory__item:disabled:hover { background: transparent; }
 .analytics-directory__item > span { min-width: 0; }
+.analytics-directory__label { align-items: center; display: flex; flex: 1 1 auto; gap: var(--space-2); min-width: 0; }
+.analytics-directory__icon { align-items: center; color: var(--color-brand-primary); display: inline-flex; flex: 0 0 16px; font-size: 14px; height: 16px; justify-content: center; width: 16px; }
+.analytics-directory__icon .anticon { font-size: inherit; }
+.analytics-directory__label-text { min-width: 0; }
 .analytics-directory--vertical { align-content: start; background: var(--color-bg-subtle); border-radius: var(--radius-md); display: grid; gap: var(--space-2); padding: var(--space-3); position: sticky; top: calc(var(--size-topbar) + var(--space-4)); }
 .analytics-directory--horizontal { align-items: center; background: var(--color-bg-page); border-bottom: 1px solid var(--color-border-default); display: flex; flex-wrap: wrap; gap: var(--space-1); position: sticky; top: calc(var(--size-topbar) + var(--space-2)); z-index: 4; }
 .analytics-directory--horizontal .analytics-directory__item { flex: 0 0 auto; justify-content: center; }

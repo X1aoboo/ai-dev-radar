@@ -35,6 +35,7 @@ import { lifecycleMetricSlots, metricDataForPeriods } from '../overview/executiv
 import { buildIterationCompareOption, buildTeamTrendOption } from './chartOption'
 import {
   maturityProfileSeries,
+  iterationReferenceAverage,
   mergePeriods,
   pointForSelection,
   sourceForPeriod,
@@ -127,12 +128,15 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
   const [kind, setKind] = useState('key')
 
   function profile(kind, overview, label) {
-    const activities = (overview?.activities ?? catalog
+    const transient = maturity.loading || Boolean(maturity.error)
+    const placeholder = maturity.loading ? '…' : '—'
+    const sourceActivities = (overview?.activities ?? catalog
       .filter((activity) => activity.kind === kind)
       .map((activity) => ({ activity_id: activity.id, activity_name: activity.name, score: null })))
       .map((activity) => ({ ...activity, activity_id: activity.activity_id ?? activity.id, activity_name: activity.activity_name ?? activity.name }))
-    const records = maturity.records.filter((record) => record.kind === kind)
-    const previousRecords = maturity.previousRecords.filter((record) => record.kind === kind)
+    const activities = transient ? sourceActivities.map((activity) => ({ ...activity, score: null, score_display: placeholder, grade: null })) : sourceActivities
+    const records = transient ? [] : maturity.records.filter((record) => record.kind === kind)
+    const previousRecords = transient ? [] : maturity.previousRecords.filter((record) => record.kind === kind)
     const recordsByActivity = new Map(records.map((record) => [String(record.activity_id), record]))
     const previousRecordsByActivity = new Map(previousRecords.map((record) => [String(record.activity_id), record]))
     const matrixRows = [
@@ -141,7 +145,7 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
         label: `${team.name} · 本期 ${month}`,
         values: activities.map((activity) => {
           const record = recordsByActivity.get(String(activity.activity_id))
-          return { text: record?.score_display, level: record?.grade }
+          return { text: transient ? placeholder : record?.score_display, level: transient ? null : record?.grade }
         }),
       },
       {
@@ -149,14 +153,14 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
         label: `${team.name} · 上期 ${previousMonth}`,
         values: activities.map((activity) => {
           const record = previousRecordsByActivity.get(String(activity.activity_id))
-          return { text: record?.score_display, level: record?.grade }
+          return { text: transient ? placeholder : record?.score_display, level: transient ? null : record?.grade }
         }),
       },
       {
         id: 'domain-average',
         label: '领域平均 · 本期',
         kind: 'average',
-        values: activities.map((activity) => ({ text: activity.score_display, level: activity.grade })),
+        values: activities.map((activity) => ({ text: transient ? placeholder : activity.score_display, level: transient ? null : activity.grade })),
       },
     ]
     return (
@@ -164,7 +168,7 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
         <h3>{label}</h3>
         <div className="drilldown-maturity__category-grid">
           <div className="drilldown-maturity__module">
-            <header><h4>团队成熟度矩阵</h4><p>{team.name} 本期、上期与领域本期并列；未评估不补零。</p></header>
+            <header><h4>团队成熟度矩阵</h4><p className={transient ? 'drilldown-maturity__feedback' : undefined} role={maturity.loading ? 'status' : maturity.error ? 'alert' : undefined}>{maturity.loading ? '正在加载成熟度画像…' : maturity.error ? '成熟度画像加载失败，暂不可用。' : `${team.name} 本期、上期与领域本期并列；未评估不补零。`}</p></header>
             <MaturityMatrix label={`${month} ${label}团队成熟度矩阵`} columns={activities.map((activity) => ({ id: activity.activity_id, label: activity.activity_name }))} rows={matrixRows} />
           </div>
           <div className="drilldown-maturity__module">
@@ -181,32 +185,38 @@ function TeamMaturityProfile({ catalog, month, onSessionExpired, team, teamColor
       <Button size="small" type={kind === 'key' ? 'primary' : 'default'} aria-pressed={kind === 'key'} onClick={() => setKind('key')}>关键研发活动</Button>
       <Button size="small" type={kind === 'general' ? 'primary' : 'default'} aria-pressed={kind === 'general'} onClick={() => setKind('general')}>通用研发能力</Button>
     </div>}>
-      {maturity.loading && <div className="analytics-empty" role="status">正在加载成熟度画像…</div>}
-      {maturity.error && <div className="analytics-empty analytics-empty--error" role="alert">成熟度画像加载失败：{maturity.error.message}</div>}
-      {!maturity.loading && !maturity.error && <div className="drilldown-maturity__categories">{kind === 'key' ? profile('key', maturity.key, '关键研发活动') : profile('general', maturity.general, '通用研发能力')}</div>}
+      <div className="drilldown-maturity__categories">{kind === 'key' ? profile('key', maturity.key, '关键研发活动') : profile('general', maturity.general, '通用研发能力')}</div>
     </AnalyticsPanel>
   )
 }
 
-function ErrorMessage({ error }) {
-  return <div className="drilldown-empty drilldown-error" role="alert">数据加载失败：{error?.message ?? '未知错误'}</div>
+function ErrorMessage({ message = '数据暂时无法加载。' }) {
+  return (
+    <div className="drilldown-empty drilldown-error" role="alert">
+      <span>{message}</span>
+      <Button type="link" size="small" onClick={() => window.location.reload()}>重试</Button>
+    </div>
+  )
 }
 
-function IterationCompare({ data, metric, teamId, accent, loading, error }) {
+function IterationCompare({ data, metric, teamId, accent, loading, error, benchmarkAverage, benchmarkError, benchmarkLabel }) {
   if (loading) return <div className="drilldown-detail-loading">正在加载迭代对比…</div>
-  if (error) return <ErrorMessage error={error} />
-  if (!hasNumericValues(data)) return <div className="drilldown-detail-empty">当前指标暂无迭代事实数据。</div>
-  const selectedData = dataForTeam(data, teamId)
+  if (error) return <ErrorMessage message={benchmarkError ? '本团队与领域参照数据暂时无法加载，请重试。' : '本团队数据暂时无法加载，请重试。'} />
+  const selectedTeamData = dataForTeam(data, teamId)
+  const selectedData = selectedTeamData ? { ...selectedTeamData, company_average: benchmarkAverage ?? [] } : null
+  if (!hasNumericValues(selectedData)) return <div className="drilldown-detail-empty">当前指标暂无迭代事实数据。</div>
   const outlierAxisLabel = hasEfficiencyOutlier(selectedData, metric) ? efficiencyOutlierAxisLabel(selectedData, metric) : null
 
   return (
     <section className="drilldown-detail-section">
       <h4>迭代分片对比 · {metric.name}</h4>
+      <p className="drilldown-fact-note">本团队值按所选版本迭代读取；{benchmarkLabel}按相同起止日期、所有团队不限版本重算。</p>
       <EChart
-        option={buildIterationCompareOption({ data: selectedData, metric, teamId, accent })}
-          height={180}
+        option={buildIterationCompareOption({ data: selectedData, metric, teamId, accent, averageLabel: benchmarkLabel })}
+        height={180}
         ariaLabel={`${metric.name} 迭代分片对比`}
       />
+      {benchmarkError && <p className="drilldown-fact-note">领域参照加载失败；本团队迭代值仍保留。</p>}
       {outlierAxisLabel && <p className="drilldown-fact-note">图轴 {outlierAxisLabel}；越界值贴边显示，悬浮可查看原值。</p>}
     </section>
   )
@@ -255,7 +265,7 @@ function FactTable({ activity, trendData, facts, factsLoading, factsError, teamI
   const periods = mergePeriods(metrics.map((metric) => trendData[metric.id]))
 
   if (factsLoading) return <div className="drilldown-detail-loading">正在加载事实记录…</div>
-  if (factsError) return <ErrorMessage error={factsError} />
+  if (factsError) return <ErrorMessage message="本团队事实记录暂时无法加载，请重试。" />
   if (!metrics.length || !periods.length) return <div className="drilldown-detail-empty">当前活动暂无可展示的事实记录。</div>
 
   return (
@@ -306,32 +316,68 @@ function ActivityTrendCard({
   teamId,
   accent,
   trendData,
+  benchmarkData,
+  benchmarkError,
+  benchmarkLabel,
   trendErrors,
   trendLoading,
   iterationData,
   iterationErrors,
   iterationLoading,
+  onSessionExpired,
   facts,
   factsLoading,
   factsError,
 }) {
   const [showDetail, setShowDetail] = useState(false)
   const data = metric ? trendData[metric.id] : undefined
-  const selectedData = useMemo(() => dataForTeam(data, teamId), [data, teamId])
+  const referenceData = metric ? benchmarkData?.[metric.id] : undefined
+  const targetPeriodIds = useMemo(
+    () => (referenceData?.periods ?? data?.periods ?? []).map((period) => period.id),
+    [data?.periods, referenceData?.periods],
+  )
+  const alignedData = useMemo(() => (
+    data && targetPeriodIds.length ? metricDataForPeriods(data, targetPeriodIds) : data
+  ), [data, targetPeriodIds])
+  const teamData = useMemo(() => dataForTeam(alignedData, teamId), [alignedData, teamId])
+  const selectedData = teamData ? { ...teamData, company_average: referenceData?.company_average ?? [] } : null
   const error = metric ? trendErrors[metric.id] : undefined
   const fallback = isGeneralIterationFallback(activity, filter)
   const selectedPeriodId = fallback ? latestPeriodId(data?.periods) : (filter.periodId ?? 'all')
   const detailId = `activity-detail-${activity.id}-${metric?.id ?? 'empty'}`
+  const iterationReferenceCatalog = useMemo(() => (
+    metric && activity.kind === 'key' ? [{ ...activity, metrics: [metric] }] : null
+  ), [activity, metric])
+  const iterationReferenceFilter = useMemo(() => ({ dimension: 'time', granularity: 'day', versionId: 'all', periodId: null }), [])
+  const iterationReferenceEnabled = showDetail && activity.kind === 'key' && metric?.type !== 'boolean' && filter.dimension !== 'iteration'
+  const iterationReference = useComputedMetrics(
+    iterationReferenceEnabled ? iterationReferenceCatalog : null,
+    iterationReferenceFilter,
+    onSessionExpired,
+  )
+  const selectedIterationPeriods = metric ? iterationData?.[metric.id]?.periods ?? [] : []
+  const iterationBenchmarkAverage = useMemo(() => (
+    filter.dimension === 'iteration'
+      ? referenceData?.company_average ?? []
+      : metric ? iterationReferenceAverage(iterationReference.data?.[metric.id], selectedIterationPeriods, metric) : []
+  ), [filter.dimension, iterationReference.data, metric, referenceData?.company_average, selectedIterationPeriods])
+  const iterationBenchmarkError = filter.dimension === 'iteration' ? benchmarkError : iterationReference.errors[metric?.id]
+  const iterationBenchmarkLoading = filter.dimension === 'iteration' ? trendLoading : iterationReference.loading
+  const iterationBenchmarkLabel = filter.versionId === 'all'
+    ? '有事实团队等权均值（同日期范围）'
+    : '领域参照（同日期范围、不限版本）'
   const teamSeries = selectedData?.series?.[0]
   const booleanValue = teamSeries?.snapshot
   const option = useMemo(() => (
     selectedData && metric.type !== 'boolean'
-      ? buildTeamTrendOption({ data: selectedData, metric, teamId, selectedPeriodId, accent })
+      ? buildTeamTrendOption({ data: selectedData, metric, teamId, selectedPeriodId, accent, averageLabel: benchmarkLabel })
       : null
-  ), [accent, metric, selectedData, selectedPeriodId, teamId])
+  ), [accent, benchmarkLabel, metric, selectedData, selectedPeriodId, teamId])
   const outlierAxisLabel = hasEfficiencyOutlier(selectedData, metric) ? efficiencyOutlierAxisLabel(selectedData, metric) : null
-  const currentValue = data && selectedPeriodId !== 'all' ? valueForSelection(data, metric, teamId, selectedPeriodId) : null
-  const currentPeriod = data?.periods?.find((period) => String(period.id) === String(selectedPeriodId))
+  const trendNote = !metric ? '' : benchmarkError
+    ? '领域参照加载失败，当前团队值仍显示。'
+    : outlierAxisLabel ? `图轴 ${outlierAxisLabel}；越界值贴边，悬浮可看原值。`
+      : fallback ? '通用研发能力没有迭代维度，按月显示。' : ''
 
   if (!metric) {
     return <article className="drilldown-activity-card">
@@ -344,7 +390,7 @@ function ActivityTrendCard({
     <article className="drilldown-activity-card">
       <header className="drilldown-activity-header">
         <div className="drilldown-activity-title">
-          <h3>{activity.name}</h3>
+          <h3>{activity.name} · {slotLabel ?? metric.name}<small>来源：{metric.name}</small></h3>
           <span>{activity.kind === 'key' ? '关键' : '通用'}</span>
         </div>
         <div className="drilldown-card-actions">
@@ -362,36 +408,28 @@ function ActivityTrendCard({
         </div>
       </header>
 
-      <p className="drilldown-metric-name">{slotLabel ?? metric.name}{slotLabel && <small>来源：{metric.name}</small>}</p>
-      {trendLoading && <div className="drilldown-empty">正在更新指标数据…</div>}
-      {!trendLoading && error && <ErrorMessage error={error} />}
-      {!trendLoading && !error && metric.type === 'boolean' && (
-        <div className={`drilldown-boolean-status ${booleanValue === false ? 'is-negative' : ''}`}>
-          {booleanValue === true
-            ? `✓ 已具备${metric.name}`
-            : booleanValue === false ? `✗ 不具备${metric.name}` : `${metric.name}状态未知`}
-        </div>
-      )}
-      {!trendLoading && !error && metric.type !== 'boolean' && !hasNumericValues(data) && (
-        <div className="drilldown-empty">当前筛选切片暂无数据。</div>
-      )}
-      {!trendLoading && !error && metric.type !== 'boolean' && hasNumericValues(data) && (
-        <>
+      <div className="drilldown-activity-plot" aria-busy={trendLoading || undefined}>
+        {trendLoading && <div className="drilldown-empty" role="status">正在更新指标数据…</div>}
+        {!trendLoading && error && <ErrorMessage message={benchmarkError || filter.versionId === 'all' ? '本团队与领域参照数据暂时无法加载，请重试。' : '本团队数据暂时无法加载，请重试。'} />}
+        {!trendLoading && !error && metric.type === 'boolean' && (
+          <div className={`drilldown-boolean-status ${booleanValue === false ? 'is-negative' : ''}`}>
+            {booleanValue === true
+              ? `✓ 已具备${metric.name}`
+              : booleanValue === false ? `✗ 不具备${metric.name}` : `${metric.name}状态未知`}
+          </div>
+        )}
+        {!trendLoading && !error && metric.type !== 'boolean' && !hasNumericValues(selectedData) && (
+          <div className="drilldown-empty" role="status">当前筛选切片暂无数据。</div>
+        )}
+        {!trendLoading && !error && metric.type !== 'boolean' && hasNumericValues(selectedData) && (
           <EChart
             option={option}
-            height={220}
-            ariaLabel={`${activity.name} ${metric.name} 团队趋势图`}
+            height={120}
+            ariaLabel={`${activity.name} ${metric.name} 与 ${benchmarkLabel} 趋势图`}
           />
-          <p className="drilldown-fact-note">
-            {selectedPeriodId === 'all' ? '全部周期趋势；选择单一周期查看当前值' : `周期 ${currentPeriod?.label ?? selectedPeriodId}：${formatMetricValue(metric, currentValue)}`}
-            {filter.dimension === 'iteration' && activity.kind === 'key'
-              ? ' · 按迭代标签聚合'
-              : ' · 按时间字段聚合'}
-            {fallback && ' · 通用研发能力无迭代维度，固定按月'}
-            {outlierAxisLabel && ` · 图轴 ${outlierAxisLabel}，越界点贴边并保留悬浮原值`}
-          </p>
-        </>
-      )}
+        )}
+      </div>
+      <p className="drilldown-fact-note" title={trendNote}>{trendLoading || error ? ' ' : trendNote || ' '}</p>
 
       {showDetail && metric.type !== 'boolean' && (
         <div id={detailId} className="drilldown-details">
@@ -401,8 +439,11 @@ function ActivityTrendCard({
               metric={metric}
               teamId={teamId}
               accent={accent}
-              loading={iterationLoading}
+              loading={iterationLoading || (filter.dimension === 'iteration' ? trendLoading : iterationReferenceEnabled && iterationBenchmarkLoading)}
               error={iterationErrors[metric.id]}
+              benchmarkAverage={iterationBenchmarkAverage}
+              benchmarkError={iterationBenchmarkError}
+              benchmarkLabel={iterationBenchmarkLabel}
             />
           )}
           <FactTable
@@ -436,6 +477,16 @@ function teamAccent(teamId, teamIds = [teamId]) {
   } catch {
     return TEAM_ACCENT_FALLBACK
   }
+}
+
+function validTimePeriodId(periodId, granularity) {
+  if (granularity === 'month') return isValidMonth(periodId)
+  if (granularity === 'week') return /^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/.test(String(periodId))
+  if (granularity === 'day') {
+    const timestamp = Date.parse(`${periodId}T00:00:00Z`)
+    return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === String(periodId)
+  }
+  return false
 }
 
 function dataForTeam(data, teamId) {
@@ -475,30 +526,70 @@ function TeamDrilldownContent({
   const periodMonths = useMemo(() => analysisWindowMonths(maturityMonth, cycle), [maturityMonth, cycle])
   const irSourceMonths = useMemo(() => monthWindow(maturityMonth, 12), [maturityMonth])
   const irOverview = useIROverviewMetrics(irSourceMonths[0] ?? maturityMonth, maturityMonth, filter.versionId ?? 'all', onSessionExpired)
+  const irOverviewErrorMessage = irOverview.error
+    ? irOverview.benchmarkError
+      ? '本团队与领域参照数据暂时无法加载，请重试。'
+      : '本团队数据暂时无法加载，请重试。'
+    : undefined
   const irDataByMetric = useMemo(() => irOverview.data ? buildIROverviewMetricData(irOverview.data) : {}, [irOverview.data])
+  const irBenchmarkDataByMetric = useMemo(() => irOverview.benchmarkData ? buildIROverviewMetricData(irOverview.benchmarkData) : {}, [irOverview.benchmarkData])
   const computed = useComputedMetrics(catalog, filter, onSessionExpired)
   const iterationFilter = useMemo(() => ({ ...filter, dimension: 'iteration', granularity: 'month' }), [filter.versionId])
   const iterationComputed = useComputedMetrics(keyActivities, iterationFilter, onSessionExpired)
+  const needsFactBenchmark = filter.versionId !== 'all' || filter.dimension === 'iteration'
+  const factBenchmarkFilter = useMemo(() => ({
+    ...filter,
+    dimension: 'time',
+    granularity: filter.dimension === 'iteration' ? 'day' : filter.granularity,
+    versionId: 'all',
+    periodId: null,
+  }), [filter.dimension, filter.granularity])
+  const benchmarkComputed = useComputedMetrics(needsFactBenchmark ? keyActivities : null, factBenchmarkFilter, onSessionExpired)
+  const factBenchmarkData = useMemo(() => {
+    if (!needsFactBenchmark) return computed.data
+    if (filter.dimension === 'time') return benchmarkComputed.data
+    return Object.fromEntries(keyActivities.flatMap((activity) => activity.metrics.map((metric) => {
+      const versionData = computed.data[metric.id]
+      const periods = versionData?.periods ?? []
+      return [metric.id, {
+        periods,
+        company_average: iterationReferenceAverage(benchmarkComputed.data[metric.id], periods, metric),
+      }]
+    })))
+  }, [benchmarkComputed.data, computed.data, filter.dimension, keyActivities, needsFactBenchmark])
   const factsState = useTeamFacts(team.id, onSessionExpired)
   const teamIdsKey = teams.map((item) => item.id).join(',')
   const accent = useMemo(
     () => teamAccent(team.id, teams.map((item) => item.id)),
     [team.id, teamIdsKey],
   )
+  const hasVersionScope = filter.versionId !== 'all'
+  const selectedVersionName = versions.find((version) => String(version.id) === String(filter.versionId))?.name ?? String(filter.versionId)
+  const irBenchmarkLabel = hasVersionScope ? '领域参照 · 不限版本' : '有数据团队等权均值'
+  const irScopeDescription = hasVersionScope
+    ? `${team.name}当前值按版本「${selectedVersionName}」过滤；领域参照取相同时间范围、相同指标、所有团队且不限版本的有值团队等权均值。`
+    : `${team.name}当前值包含全部版本；领域参照取相同时间范围、相同指标下有值团队等权均值。`
+  const factBenchmarkLabel = hasVersionScope || filter.dimension === 'iteration'
+    ? '领域参照（所有团队，不限版本）'
+    : '有事实团队等权均值'
+  const factScopeDescription = hasVersionScope || filter.dimension === 'iteration'
+    ? `${team.name}当前事实按所选版本/迭代范围读取；领域参照取相同日期范围、相同指标、所有团队且不限版本的等权均值。`
+    : `${team.name}对照相同时间范围、相同指标的有事实团队等权均值。`
   const teamKpiSummaries = useMemo(() => IR_OVERVIEW_KPIS.map((metric) => {
     const data = irDataByMetric[metric.code]
-    const summary = irOverviewMetricSummary({ data, metric, month: maturityMonth, monthTrendIds: monthlyTrendMonths, periodIds: periodMonths })
+    const benchmarkData = filter.versionId === 'all' ? data : irBenchmarkDataByMetric[metric.code] ?? null
+    const summary = irOverviewMetricSummary({ data, benchmarkData, metric, month: maturityMonth, monthTrendIds: monthlyTrendMonths, periodIds: periodMonths })
     return {
       metric,
       summary,
       monthTeam: summary?.monthTeams.find((item) => String(item.teamId) === String(team.id)),
       periodTeam: summary?.periodTeams.find((item) => String(item.teamId) === String(team.id)),
     }
-  }), [irDataByMetric, maturityMonth, monthlyTrendMonths, periodMonths, team.id])
+  }), [filter.versionId, irBenchmarkDataByMetric, irDataByMetric, maturityMonth, monthlyTrendMonths, periodMonths, team.id])
   const singleTeamBenchmarkNotes = useMemo(() => {
     const notes = new Map()
     for (const { metric, summary } of teamKpiSummaries) {
-      for (const [period, rows] of [['月度', summary?.monthTeams], ['周期', summary?.periodTeams]]) {
+      for (const [period, rows] of [['月度', summary?.benchmarkMonthTeams], ['周期', summary?.benchmarkPeriodTeams]]) {
         const validTeams = rows?.filter((row) => Number.isFinite(row.value)) ?? []
         if (validTeams.length !== 1) continue
         const onlyTeam = validTeams[0]
@@ -522,10 +613,13 @@ function TeamDrilldownContent({
   const overallTrendEntries = useMemo(() => IR_OVERVIEW_KPIS.slice(0, 2).map((metric) => {
     const fullData = irDataByMetric[metric.code]
     const windowed = fullData ? metricDataForPeriods(fullData, periodMonths) : null
-    const data = dataForTeam(windowed, team.id)
+    const reference = irBenchmarkDataByMetric[metric.code]
+    const benchmarkWindow = reference ? metricDataForPeriods(reference, periodMonths) : null
+    const selectedTeam = dataForTeam(windowed, team.id)
+    const data = selectedTeam ? { ...selectedTeam, company_average: benchmarkWindow?.company_average ?? [] } : null
     const outlierAxisLabel = hasEfficiencyOutlier(data, metric) ? efficiencyOutlierAxisLabel(data, metric) : null
     const option = data && hasNumericValues(data)
-      ? buildTrendOption({ data, metric, teamColors: { [String(team.id)]: accent }, selectedPeriodId: 'all', averageLabel: '有数据团队等权均值', compact: true, showPointMarkers: true })
+      ? buildTrendOption({ data, metric, teamColors: { [String(team.id)]: accent }, selectedPeriodId: 'all', averageLabel: irBenchmarkLabel, compact: true, showPointMarkers: true })
       : null
     const readableOption = option && {
       ...option,
@@ -540,17 +634,26 @@ function TeamDrilldownContent({
       outlierAxisLabel,
       option: readableOption,
     }
-  }), [accent, irDataByMetric, periodMonths, team.id])
+  }), [accent, filter.versionId, irBenchmarkDataByMetric, irBenchmarkLabel, irDataByMetric, periodMonths, team.id])
 
   const timePeriods = useMemo(() => {
-    for (const activity of catalog) {
+    const source = hasVersionScope ? benchmarkComputed.data : computed.data
+    let periods = []
+    for (const activity of keyActivities) {
       for (const metric of activity.metrics) {
-        const periods = computed.data[metric.id]?.periods
-        if (periods?.length) return periods
+        const metricPeriods = source[metric.id]?.periods
+        if (metricPeriods?.length) {
+          periods = metricPeriods
+          break
+        }
       }
+      if (periods.length) break
     }
-    return []
-  }, [catalog, computed.data])
+    if (filter.dimension !== 'time' || filter.periodId === null || filter.periodId === 'all'
+      || periods.some((period) => String(period.id) === String(filter.periodId))
+      || !validTimePeriodId(filter.periodId, filter.granularity)) return periods
+    return mergePeriods([{ periods }, { periods: [{ id: String(filter.periodId), label: String(filter.periodId) }] }])
+  }, [benchmarkComputed.data, computed.data, filter.dimension, filter.granularity, filter.periodId, hasVersionScope, keyActivities])
   const iterationPeriodOptions = useMemo(
     () => iterationPeriods(versions, filter.versionId),
     [versions, filter.versionId],
@@ -566,7 +669,8 @@ function TeamDrilldownContent({
     if (!periods.length) return
     const ids = new Set(periods.map((period) => String(period.id)))
     setFilter((current) => {
-      if (current.periodId === null || (current.periodId !== 'all' && !ids.has(String(current.periodId)))) {
+      if (current.periodId === null || (current.periodId !== 'all' && !ids.has(String(current.periodId))
+        && !(current.dimension === 'time' && validTimePeriodId(current.periodId, current.granularity)))) {
         return { ...current, periodId: latestPeriodId(periods) }
       }
       return current
@@ -616,12 +720,11 @@ function TeamDrilldownContent({
         ].map(([id, label]) => <a key={id} href={`#${id}`} aria-current={activeSectionId === id ? 'location' : undefined}>{label}</a>)}
       </nav>
 
-      <AnalyticsPanel id="team-overall" className="drilldown-story-section drilldown-overall-section" title="整体表现" description={<>{`${team.name} 的四项 KPI 与核心趋势采用临时 IR 口径；原始目录事实见研发关键环节和明细。`}{singleTeamBenchmarkNotes.length > 0 && <span className="drilldown-team-note" role="status"> {singleTeamBenchmarkNotes.join('；')}</span>}</>}>
+      <AnalyticsPanel id="team-overall" className="drilldown-story-section drilldown-overall-section" title="整体表现" description={<>{`${team.name} 的四项 KPI 与核心趋势采用临时 IR 口径；${irScopeDescription} 原始目录事实见研发关键环节和明细。`}{singleTeamBenchmarkNotes.length > 0 && <span className="drilldown-team-note" role="status"> {singleTeamBenchmarkNotes.join('；')}</span>}{irOverview.error && <span className="drilldown-team-note" role="status"> 当前团队值{irOverview.benchmarkError ? '与领域参照均' : ''}暂不可用。</span>}{!irOverview.error && irOverview.benchmarkError && <span className="drilldown-team-note" role="status"> 领域参照暂不可用，当前团队值仍保留。</span>}</>}>
         <div className="drilldown-kpi-sections">
           <section className="drilldown-kpi-section">
-            <header><h3>月度核心成效 · {maturityMonth}</h3><p>当前团队贡献与有数据团队等权均值对照。</p></header>
+            <header><h3>月度核心成效 · {maturityMonth}</h3></header>
             <div className="drilldown-kpi-row">{teamKpiSummaries.map(({ metric, summary, monthTeam }) => {
-              const teamCount = summary?.monthTeams.filter((item) => Number.isFinite(item.value)).length ?? 0
               return <MetricKpiCard
                 key={`month-${metric.code}`}
                 icon={IR_KPI_ICONS[metric.code]}
@@ -630,20 +733,19 @@ function TeamDrilldownContent({
                 unit={metric.unit}
                 delta={metricDeltaLabel(metric, monthTeam?.delta, '环比')}
                 deltaTone={changeTone(monthTeam?.delta)}
-                comparison={`有数据团队等权均值 ${formatMetricValue(metric, summary?.monthCompanyAverage)}`}
-                detail={Number.isFinite(monthTeam?.value) ? undefined : `本月暂无当前团队值 · 有数据团队 ${teamCount}/${teams.length}`}
+                comparison={irOverview.error ? undefined : `${irOverview.benchmarkError ? `${irBenchmarkLabel}暂不可用` : `${irBenchmarkLabel} ${formatMetricValue(metric, summary?.monthCompanyAverage)}`}`}
+            detail={irOverview.loading || irOverview.error || Number.isFinite(monthTeam?.value) ? undefined : '本月暂无当前团队值'}
                 trendValues={Number.isFinite(monthTeam?.value) ? monthTeam.trend ?? [] : []}
                 trendLabel={`${team.name} ${metric.name}月度趋势`}
                 accent={metric.accent}
                 loading={irOverview.loading}
-                error={irOverview.error ? `IR 指标加载失败：${irOverview.error.message}` : undefined}
+                error={irOverviewErrorMessage}
               />
             })}</div>
           </section>
           <section className="drilldown-kpi-section">
-            <header><h3>周期整体成效 · {analysisWindowLabel(maturityMonth, cycle)}（截至 {maturityMonth}）</h3><p>比例/提效显示周期变化；覆盖数/工作量显示本月贡献。</p></header>
+            <header><h3>周期整体成效 · {analysisWindowLabel(maturityMonth, cycle)}（截至 {maturityMonth}）</h3><p>比例与提效显示周期变化；覆盖数与工作量显示本月贡献。</p></header>
             <div className="drilldown-kpi-row">{teamKpiSummaries.map(({ metric, summary, periodTeam }) => {
-              const teamCount = summary?.periodTeams.filter((item) => Number.isFinite(item.value)).length ?? 0
               return <MetricKpiCard
                 key={`cycle-${metric.code}`}
                 icon={IR_KPI_ICONS[metric.code]}
@@ -652,35 +754,36 @@ function TeamDrilldownContent({
                 unit={metric.unit}
                 delta={metricDeltaLabel(metric, periodTeam?.delta, metric.periodDeltaLabel ?? '周期变化')}
                 deltaTone={changeTone(periodTeam?.delta)}
-                comparison={`有数据团队等权均值 ${formatMetricValue(metric, summary?.periodCompanyAverage)}`}
-                detail={Number.isFinite(periodTeam?.value) ? undefined : `所选周期暂无当前团队值 · 有数据团队 ${teamCount}/${teams.length}`}
+                comparison={irOverview.error ? undefined : `${irOverview.benchmarkError ? `${irBenchmarkLabel}暂不可用` : `${irBenchmarkLabel} ${formatMetricValue(metric, summary?.periodCompanyAverage)}`}`}
+            detail={irOverview.loading || irOverview.error || Number.isFinite(periodTeam?.value) ? undefined : '所选周期暂无当前团队值'}
                 trendValues={Number.isFinite(periodTeam?.value) ? periodTeam.trend ?? [] : []}
                 trendLabel={`${team.name} ${metric.name}${analysisWindowLabel(maturityMonth, cycle)}累计趋势`}
                 accent={metric.accent}
                 loading={irOverview.loading}
-                error={irOverview.error ? `IR 指标加载失败：${irOverview.error.message}` : undefined}
+                error={irOverviewErrorMessage}
               />
             })}</div>
           </section>
         </div>
         <section className="drilldown-core-trend">
-          <header><h3>核心趋势</h3><p>{team.name} 对照有数据团队等权均值；显示 {analysisWindowLabel(maturityMonth, cycle)} 内 IR 月度事实。</p></header>
+          <header><h3>核心趋势</h3><p>显示 {analysisWindowLabel(maturityMonth, cycle)} 内 IR 月度事实。{irOverview.benchmarkError ? '领域参照请求失败。' : ''}</p></header>
           <div className="drilldown-overall-trends">{overallTrendEntries.map(({ metric, outlierAxisLabel, option }) => <ChartCard
             key={metric.code}
             title={`${team.name} · ${metric.name}`}
             description={outlierAxisLabel ? `图轴 ${outlierAxisLabel}，越界点贴边并保留悬浮原值` : undefined}
             option={option}
-            height={140}
-            ariaLabel={`${team.name} ${metric.name}与有数据团队等权均值趋势`}
+            height={133}
+            ariaLabel={`${team.name} ${metric.name}与${irBenchmarkLabel}趋势`}
             loading={irOverview.loading}
-            error={irOverview.error ? `IR 指标加载失败：${irOverview.error.message}` : undefined}
+            error={irOverviewErrorMessage}
             empty={`当前${analysisWindowLabel(maturityMonth, cycle)}暂无${metric.name} IR事实。`}
+            reservePlotSpace
           />)}</div>
         </section>
       </AnalyticsPanel>
 
-      <AnalyticsPanel id="team-lifecycle" className="drilldown-story-section drilldown-lifecycle-section" title="研发关键环节" description={`${team.name} 与有事实团队等权均值在各关键活动的 AI需求渗透率、AI研发提效对照；缺失类型不以其他指标替代。`} action={<FilterBar filter={filter} onChange={setFilter} versions={versions} periods={timePeriods} loading={computed.loading || irOverview.loading} showPrimaryControls={false} />}>
-        {detailPeriodId === 'all' && <div className="analytics-empty">选择单一周期查看关键环节当前值；全部周期仍可查看下方趋势。</div>}
+      <AnalyticsPanel id="team-lifecycle" className="drilldown-story-section drilldown-lifecycle-section" title="研发关键环节" description={`${factScopeDescription} 缺失类型不以其他指标替代。`} action={<FilterBar filter={filter} onChange={setFilter} versions={versions} periods={timePeriods} loading={computed.loading || irOverview.loading || (needsFactBenchmark && benchmarkComputed.loading)} showPrimaryControls={false} />}>
+        {filter.periodId === 'all' && <div className="analytics-empty">选择单一周期查看关键环节当前值；全部周期仍可查看下方趋势。</div>}
         <div className="drilldown-lifecycle-cards" role="group" aria-label="选择研发关键活动">
           {keyActivities.map((activity) => <button key={activity.id} type="button" className="drilldown-lifecycle-card" aria-pressed={String(activity.id) === String(selectedLifecycleActivity?.id)} onClick={() => setSelectedLifecycleActivityId(activity.id)}>
             <strong><span className="drilldown-lifecycle-card__icon" aria-hidden="true">{LIFECYCLE_ICONS[activity.code] ?? <CodeOutlined />}</span>{activity.name}</strong>
@@ -688,13 +791,14 @@ function TeamDrilldownContent({
               const metric = slot.metric
               const data = metric ? computed.data[metric.id] : undefined
               const teamValue = metric && detailPeriodId !== 'all' ? valueForSelection(data, metric, team.id, detailPeriodId) : null
-              const benchmark = metric && detailPeriodId !== 'all' ? data?.company_average?.find((point) => String(point.period_id) === String(detailPeriodId))?.value : null
-              return <span className={`drilldown-lifecycle-metric${metric ? '' : ' is-missing'}`} key={slot.id}><small>{slot.id === 'penetration' ? '渗透率' : '提效'}</small><b>{metric ? formatMetricValue(metric, teamValue) : '—'}</b><em title={metric ? `${metric.name} · 均值 ${formatMetricValue(metric, benchmark)}` : undefined}>{metric ? `均值 ${formatMetricValue(metric, benchmark)}` : '目录未配置该类型指标'}</em></span>
+              const benchmark = metric && detailPeriodId !== 'all' ? factBenchmarkData[metric.id]?.company_average?.find((point) => String(point.period_id) === String(detailPeriodId))?.value : null
+              const benchmarkError = metric && needsFactBenchmark ? benchmarkComputed.errors[metric.id] : null
+              const displayedBenchmark = benchmarkError ? '领域参照暂不可用' : `${hasVersionScope || filter.dimension === 'iteration' ? '领域参照' : '均值'} ${formatMetricValue(metric, benchmark)}`
+              return <span className={`drilldown-lifecycle-metric${metric ? '' : ' is-missing'}`} key={slot.id}><small>{slot.id === 'penetration' ? '渗透率' : '提效'}</small><b>{metric ? formatMetricValue(metric, teamValue) : '—'}</b><em title={metric ? `${metric.name} · ${factBenchmarkLabel} ${formatMetricValue(metric, benchmark)}` : undefined}>{metric ? displayedBenchmark : '目录未配置该类型指标'}</em></span>
             })}
           </button>)}
         </div>
-        {selectedLifecycleActivity && <section className="drilldown-lifecycle-detail">
-          <header><h3>{selectedLifecycleActivity.name} · 双指标趋势</h3><p>{team.name} 对照同指标有数据团队等权均值；按指标类型固定顺序呈现。</p></header>
+        {selectedLifecycleActivity && <section className="drilldown-lifecycle-detail" aria-label={`${selectedLifecycleActivity.name}双指标趋势`}>
           <div className="drilldown-lifecycle-trends">{selectedLifecycleSlots.map((slot) => <ActivityTrendCard
             key={slot.id}
             activity={selectedLifecycleActivity}
@@ -704,11 +808,15 @@ function TeamDrilldownContent({
             teamId={team.id}
             accent={accent}
             trendData={computed.data}
+            benchmarkData={factBenchmarkData}
+            benchmarkError={needsFactBenchmark ? benchmarkComputed.errors[slot.metric?.id] : undefined}
+            benchmarkLabel={factBenchmarkLabel}
             trendErrors={computed.errors}
-            trendLoading={computed.loading}
+            trendLoading={computed.loading || (needsFactBenchmark && benchmarkComputed.loading)}
             iterationData={iterationComputed.data}
             iterationErrors={iterationComputed.errors}
             iterationLoading={iterationComputed.loading}
+            onSessionExpired={onSessionExpired}
             facts={factsState.facts}
             factsLoading={factsState.loading}
             factsError={factsState.error}

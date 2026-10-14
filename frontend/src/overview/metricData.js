@@ -29,18 +29,29 @@ export function normalizeFactPresence(data) {
   }
 }
 
-export function useComputedMetrics(catalog, filter, onSessionExpired) {
-  const [state, setState] = useState({ loading: true, data: {}, errors: {} })
+export function useComputedMetrics(catalog, filter, onSessionExpired, { retainPreviousData = false } = {}) {
+  const requests = metricRequests(catalog ?? [], filter)
+  const requestKey = JSON.stringify([
+    requests.map(({ activity, metric, url, fallback }) => [activity.id, metric.id, url, fallback]),
+    filter.analysisMonth,
+    filter.windowLimit,
+  ])
+  const [state, setState] = useState({ loading: true, data: {}, errors: {}, requestKey: null })
   const sessionExpiredRef = useRef(onSessionExpired)
   sessionExpiredRef.current = onSessionExpired
+  const requestKeyMismatch = state.requestKey !== requestKey
 
   useEffect(() => {
     if (!catalog) return undefined
 
     const controller = new AbortController()
     let active = true
-    const requests = metricRequests(catalog, filter)
-    setState({ loading: true, data: {}, errors: {} })
+    setState((current) => ({
+      loading: true,
+      data: retainPreviousData ? current.data : {},
+      errors: {},
+      requestKey,
+    }))
 
     Promise.allSettled(
       requests.map(async (request) => {
@@ -70,16 +81,21 @@ export function useComputedMetrics(catalog, filter, onSessionExpired) {
           }
         }
       })
-      setState({ loading: false, data, errors })
+      setState({ loading: false, data, errors, requestKey })
     })
 
     return () => {
       active = false
       controller.abort()
     }
-  }, [catalog, filter.analysisMonth, filter.dimension, filter.granularity, filter.versionId, filter.windowLimit])
+  }, [catalog, filter.analysisMonth, filter.dimension, filter.granularity, filter.versionId, filter.windowLimit, requestKey])
 
-  return state
+  return {
+    ...state,
+    loading: requestKeyMismatch || state.loading,
+    data: requestKeyMismatch && !retainPreviousData ? {} : state.data,
+    errors: requestKeyMismatch ? {} : state.errors,
+  }
 }
 
 export function hasNumericValues(data) {

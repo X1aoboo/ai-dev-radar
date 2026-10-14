@@ -82,6 +82,7 @@ const routeComponents = {
     <>
       <StubPage page="overview">{`研发总览 ${filter.dimension}|${filter.granularity}|${filter.versionId}|${filter.periodId ?? 'latest'}`}</StubPage>
       <button type="button" data-filter-week onClick={() => onFilterChange({ ...filter, granularity: 'week' }, { history: 'push' })}>切换周</button>
+      <button type="button" data-filter-cycle onClick={() => onFilterChange({ ...filter, cycle: filter.cycle === 'half' ? '6m' : 'half' }, { history: 'push' })}>切换周期</button>
     </>
   ),
   ActivitiesPage: () => <StubPage page="activities">研发活动</StubPage>,
@@ -463,8 +464,8 @@ test('session expiry explains re-authentication and restores the interrupted rou
 
 test('hydrates the analysis slice from URL query parameters', async () => {
   const renderer = await renderAt('/?dimension=iteration&granularity=week&version=2&period=p2', 'admin')
-  expect(hasText(renderer, 'iteration|month|2|p2')).toBe(true)
-  expect(currentSearch(renderer)).toBe('?dimension=iteration&version=2&period=p2')
+  expect(hasText(renderer, 'time|month|all|latest')).toBe(true)
+  expect(currentSearch(renderer)).toBe('')
   renderer.unmount()
 })
 
@@ -522,14 +523,14 @@ test('assigns a named content mode without changing route ownership', async () =
 })
 
 test('pushes active filter changes and restores them with MemoryRouter history', async () => {
-  const renderer = await renderAt('/?period=p1', 'admin')
+  const renderer = await renderAt('/?cycle=half', 'admin')
   await act(async () => {
-    renderer.root.findByProps({ 'data-filter-week': true }).props.onClick()
+    renderer.root.findByProps({ 'data-filter-cycle': true }).props.onClick()
   })
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  expect(currentSearch(renderer)).toBe('?granularity=week&period=p1')
+  expect(currentSearch(renderer)).toBe('')
 
   await act(async () => {
     renderer.root.findByProps({ 'data-history-back': true }).props.onClick()
@@ -537,21 +538,21 @@ test('pushes active filter changes and restores them with MemoryRouter history',
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
   })
-  expect(currentSearch(renderer)).toBe('?period=p1')
+  expect(currentSearch(renderer)).toBe('?cycle=half')
   renderer.unmount()
 })
 
 test('normalizes iteration week query input to month with a replace', async () => {
   const renderer = await renderAt('/?dimension=iteration&granularity=week', 'admin')
-  expect(hasText(renderer, 'iteration|month|all|latest')).toBe(true)
-  expect(currentSearch(renderer)).toBe('?dimension=iteration')
+  expect(hasText(renderer, 'time|month|all|latest')).toBe(true)
+  expect(currentSearch(renderer)).toBe('')
   renderer.unmount()
 })
 
-test('preserves the analysis query through team compatibility redirects', async () => {
+test('preserves supported iteration state but drops a team version outside its product scope', async () => {
   const renderer = await renderAt('/team/42?dimension=iteration&version=2&period=p2', 'admin')
   expect(currentPath(renderer)).toBe('/analytics/teams/42')
-  expect(currentSearch(renderer)).toBe('?dimension=iteration&version=2&period=p2')
+  expect(currentSearch(renderer)).toBe('?dimension=iteration&period=p2')
   renderer.unmount()
 })
 

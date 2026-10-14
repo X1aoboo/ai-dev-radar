@@ -12,6 +12,7 @@
     "seed": "node scripts/run-python.mjs --env APP_ENV=development --env PYTHONPATH=backend -m app.seed",
     "test": "node scripts/run-python.mjs --cwd backend -m pytest tests -q",
     "test:e2e:gateway": "node scripts/run-gateway-e2e.mjs",
+    "test:e2e:overview": "node scripts/run-gateway-e2e.mjs --suite=overview-visual",
     "gate": "node scripts/run-quality-gate.mjs",
     "check:docs": "node scripts/check-design-docs.mjs",
     "test:docs": "node --test scripts/check-design-docs.test.mjs"

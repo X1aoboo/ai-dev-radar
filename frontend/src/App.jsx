@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Tooltip } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { BellOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, QuestionCircleOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons'
@@ -29,7 +29,6 @@ import {
   filterFromSearchParams,
   filterToSearchParams,
   FILTER_QUERY_KEYS,
-  filtersEqual,
   MATURITY_QUERY_KEYS,
   maturityStateFromSearchParams,
   maturityStateToSearchParams,
@@ -37,6 +36,7 @@ import {
   normalizeFilter,
   normalizeMaturityState,
   isValidMonth,
+  teamProductVersions,
 } from './overview/overviewLogic'
 import { ADMIN_ROLES, DATA_READ_ROLES, SETTINGS_READ_ROLES, canAccess, isPendingDomain } from './routing/routeLogic'
 import { getRouteMeta, LEGACY_REDIRECT_TARGETS, ROUTE_PATHS, SIDEBAR_GROUPS } from './routing/routeMetadata'
@@ -126,23 +126,38 @@ function useSearchPreservingNavigate() {
   return useCallback((pathname, options) => navigate(appendSearch(pathname, search), options), [navigate, search])
 }
 
-function useUrlFilter(versions) {
+function useUrlFilter(versions, versionsReady) {
   const [searchParams, setSearchParams] = useSearchParams()
+  const { pathname } = useLocation()
   const searchString = searchParams.toString()
-  const [filter, setFilterState] = useState(() => filterFromSearchParams(searchParams))
-  const lastSearchString = useRef(searchString)
+  const overview = pathname === '/'
+  const activity = pathname === '/analytics/activities'
+  const capability = pathname === '/analytics/capabilities'
+  const teamMatch = pathname.match(/^\/analytics\/teams\/([^/]+)\/?$/)
+  const teamId = teamMatch ? decodeURIComponent(teamMatch[1]) : null
+  const scopedVersions = useMemo(
+    () => teamId === null ? versions : teamProductVersions(versions, teamId),
+    [teamId, versions],
+  )
+  const locationKey = `${pathname}?${searchString}`
+  const [filter, setFilterState] = useState(() => filterFromSearchParams(searchParams, { overview, activity, capability }))
+  const lastLocationKey = useRef(locationKey)
   const readingUrl = useRef(false)
   const pendingHistoryMode = useRef(null)
 
   useEffect(() => {
-    if (searchString === lastSearchString.current) return
+    if (locationKey === lastLocationKey.current) return
     readingUrl.current = true
-    lastSearchString.current = searchString
-    const fromUrl = filterFromSearchParams(searchParams, { versions })
-    setFilterState((current) => filtersEqual(current, fromUrl) ? current : fromUrl)
-  }, [searchParams, searchString, versions])
+    lastLocationKey.current = locationKey
+    const fromUrl = filterFromSearchParams(searchParams, { versions: scopedVersions, overview, activity, capability, teamId, versionsReady })
+    setFilterState(fromUrl)
+  }, [locationKey, searchParams, scopedVersions, overview, activity, capability, teamId, versionsReady])
 
-  const normalizedFilter = normalizeFilter(filter, { versions })
+  const filterOptions = useMemo(
+    () => ({ versions: scopedVersions, overview, activity, capability, teamId, versionsReady }),
+    [scopedVersions, overview, activity, capability, teamId, versionsReady],
+  )
+  const normalizedFilter = normalizeFilter(filter, filterOptions)
   const normalizedSearchParams = new URLSearchParams(searchString)
   Object.values(FILTER_QUERY_KEYS).forEach((key) => normalizedSearchParams.delete(key))
   filterToSearchParams(normalizedFilter).forEach((value, key) => normalizedSearchParams.set(key, value))
@@ -154,19 +169,18 @@ function useUrlFilter(versions) {
       return
     }
     if (normalizedSearchString === searchString) {
-      lastSearchString.current = searchString
+      lastLocationKey.current = locationKey
       return
     }
-    lastSearchString.current = normalizedSearchString
     const historyMode = pendingHistoryMode.current ?? 'replace'
     pendingHistoryMode.current = null
     setSearchParams(new URLSearchParams(normalizedSearchString), { replace: historyMode === 'replace' })
-  }, [normalizedSearchString, searchString, setSearchParams])
+  }, [locationKey, normalizedSearchString, searchString, setSearchParams])
 
   const setFilter = useCallback((nextFilter, options = {}) => {
     pendingHistoryMode.current = options.history ?? 'replace'
-    setFilterState((current) => normalizeFilter(typeof nextFilter === 'function' ? nextFilter(current) : nextFilter, { versions }))
-  }, [versions])
+    setFilterState((current) => normalizeFilter(typeof nextFilter === 'function' ? nextFilter(current) : nextFilter, filterOptions))
+  }, [activity, capability, filterOptions, overview])
 
   return [normalizedFilter, setFilter]
 }
@@ -359,7 +373,7 @@ function AppShell({ user, onLogout }) {
 function AnalyticsDataLayout({ onSessionExpired }) {
   const [state, setState] = useState({ catalog: null, teams: null, versions: null, error: null })
   const [loadAttempt, setLoadAttempt] = useState(0)
-  const [filter, setFilter] = useUrlFilter(state.versions ?? [])
+  const [filter, setFilter] = useUrlFilter(state.versions ?? [], state.versions !== null)
   const [maturity, setMaturity] = useUrlMaturity(state.teams ?? [])
   const sessionExpiredRef = useRef(onSessionExpired)
   sessionExpiredRef.current = onSessionExpired
@@ -399,7 +413,8 @@ function TeamAnalyticsRoute({ Page, onSessionExpired }) {
   const analytics = useOutletContext()
   const navigate = useSearchPreservingNavigate()
   const team = analytics.teams.find((item) => String(item.id) === decodeURIComponent(teamId))
-  return <Page {...analytics} team={team} maturityState={analytics.maturity} onMaturityChange={analytics.onMaturityChange} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
+  const versions = teamProductVersions(analytics.versions, team?.id)
+  return <Page {...analytics} versions={versions} team={team} maturityState={analytics.maturity} onMaturityChange={analytics.onMaturityChange} onFilterChange={analytics.onFilterChange} onNavigate={navigate} onSessionExpired={onSessionExpired} />
 }
 
 function MetricAnalyticsRoute({ Page, onSessionExpired }) {

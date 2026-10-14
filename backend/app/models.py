@@ -8,7 +8,7 @@
 from datetime import date, datetime, timezone
 from enum import Enum
 
-from sqlalchemy import Boolean, CheckConstraint, JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, Index, JSON, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .db import Base
@@ -266,6 +266,33 @@ class IRRequirement(Base):
     product: Mapped[Product] = relationship()
     version: Mapped[ProductVersion] = relationship()
     iteration: Mapped[Iteration] = relationship()
+
+
+class AIReviewOpinion(Base):
+    """一条 AI 生成的 MR 检视意见；不保存意见正文。"""
+
+    __tablename__ = "ai_review_opinions"
+    __table_args__ = (
+        UniqueConstraint("source_id", name="uq_ai_review_opinion_source_id"),
+        Index("ix_ai_review_opinion_team_date", "team_id", "opinion_date"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_id: Mapped[str] = mapped_column(String(120))
+    team_id: Mapped[int] = mapped_column(ForeignKey("teams.id"))
+    opinion_date: Mapped[date] = mapped_column(Date)
+    ai_effective: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    updated_by: Mapped[str] = mapped_column(String(100))
+
+    team: Mapped[Team] = relationship()
 
 
 class ImportBatch(Base):

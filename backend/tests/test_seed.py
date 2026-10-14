@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal
-from app.models import Activity, FactRecord, IRRequirement, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
+from app.models import AIReviewOpinion, Activity, FactRecord, IRRequirement, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
 from app.seed import CATALOG, month_start, run_seed
 
 
@@ -37,6 +37,7 @@ def test_demo_dimensions():
         assert db.scalar(select(func.count()).select_from(User)) == 6  # admin + 4 maintainer + viewer
         assert db.scalar(select(func.count()).select_from(MaturityRecord)) == 4 * 15 * 6
         assert db.scalar(select(func.count()).select_from(IRRequirement)) == 12
+        assert db.scalar(select(func.count()).select_from(AIReviewOpinion)) == 4 * 6 * 8
 
 
 def test_fact_scope_dimensions():
@@ -45,6 +46,9 @@ def test_fact_scope_dimensions():
         key_metric_ids = {
             m.id for m in db.scalars(select(Metric).join(Activity)
                                      .where(Activity.kind == "key"))
+        }
+        effective_opinion_metric_ids = {
+            m.id for m in db.scalars(select(Metric).where(Metric.code.in_({"mrr-effective-count", "mrr-effective-rate"})))
         }
         facts = db.scalars(select(FactRecord)).all()
         for f in facts:
@@ -55,6 +59,7 @@ def test_fact_scope_dimensions():
             assert f.start_date is not None and f.end_date is not None
         # 第一版仅补录：全部 manual
         assert all(f.source == "manual" for f in facts)
+        assert all(f.metric_id not in effective_opinion_metric_ids for f in facts)
 
 
 def test_efficiency_boundary_samples():
@@ -78,6 +83,7 @@ def test_seed_idempotent():
             "sum_num": db.scalar(select(func.sum(FactRecord.numerator))) or 0,
             "maturity": db.scalar(select(func.count()).select_from(MaturityRecord)),
             "ir": db.scalar(select(func.count()).select_from(IRRequirement)),
+            "ai_review_opinions": db.scalar(select(func.count()).select_from(AIReviewOpinion)),
         }
 
     with SessionLocal() as db:

@@ -25,13 +25,14 @@ function yAxis(metric, bounds = {}) {
   }
 }
 
-export function buildTeamTrendOption({ data, metric, teamId, selectedPeriodId, accent }) {
+export function buildTeamTrendOption({ data, metric, teamId, selectedPeriodId, accent, averageLabel = '有事实团队等权均值' }) {
   const teamSeries = (data?.series ?? []).find((series) => String(series.team_id) === String(teamId))
   const selectedData = { ...data, series: teamSeries ? [teamSeries] : [] }
-  return buildTrendOption({ data: selectedData, metric, teamColors: { [String(teamId)]: accent }, selectedPeriodId, averageLabel: '有事实团队等权均值', showPointMarkers: true })
+  const option = buildTrendOption({ data: selectedData, metric, teamColors: { [String(teamId)]: accent }, selectedPeriodId, averageLabel, compact: true, showPointMarkers: true })
+  return { ...option, grid: { ...option.grid, top: 22, bottom: 4 } }
 }
 
-export function buildIterationCompareOption({ data, metric, teamId, accent }) {
+export function buildIterationCompareOption({ data, metric, teamId, accent, averageLabel = '有事实团队等权均值' }) {
   const teamSeries = (data?.series ?? []).find((series) => String(series.team_id) === String(teamId))
   const teamPoints = teamSeries?.values ?? []
   const companyPoints = data?.company_average ?? []
@@ -96,7 +97,7 @@ export function buildIterationCompareOption({ data, metric, teamId, accent }) {
         itemStyle: { color: accent, borderRadius: [4, 4, 0, 0] },
       },
       {
-        name: '有事实团队等权均值',
+        name: averageLabel,
         type: 'bar',
         data: companyPoints.map(pointValue),
         barWidth: 18,

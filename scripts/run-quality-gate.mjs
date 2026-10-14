@@ -5,6 +5,7 @@ const steps = [
   ['Frontend unit and rendering tests', ['--prefix', 'frontend', 'run', 'test:unit']],
   ['Frontend production build', ['--prefix', 'frontend', 'run', 'build']],
   ['Gateway Project E2E', ['run', 'test:e2e:gateway']],
+  ['Overview visual browser evidence', ['run', 'test:e2e:overview']],
   ['Design documentation check', ['run', 'check:docs']],
   ['Design documentation tests', ['run', 'test:docs']],
 ]

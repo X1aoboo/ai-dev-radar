@@ -15,6 +15,7 @@ from sqlalchemy import create_engine, delete
 from sqlalchemy.orm import Session, sessionmaker
 
 from .auth import hash_password
+from .code_review_metrics import EFFECTIVE_REVIEW_METRIC_CODES, EFFECTIVE_REVIEW_METRIC_DEFINITIONS
 from .config import SEED_PASSWORD
 from .migrations import (
     ensure_auth_schema,
@@ -23,6 +24,7 @@ from .migrations import (
     ensure_maturity_schema,
 )
 from .models import (
+    AIReviewOpinion,
     Activity,
     AuditLog,
     DataMetricDefinition,
@@ -81,6 +83,7 @@ CATALOG = [
     ("mrr", "MR代码检视", "general", [
         ("mrr-count", "AI检视意见数", "count", "AI检视意见数", None),
         ("mrr-rate", "AI检视率", "ratio", "AI检视MR数", "MR总数"),
+        *EFFECTIVE_REVIEW_METRIC_DEFINITIONS,
     ]),
     ("e2e", "MR-E2E能力", "general", [
         ("e2e-count", "AI-MR数量", "count", "AI-MR数量", None),
@@ -289,6 +292,8 @@ def seed_demo(db: Session, today: date) -> None:
                 m = meta["m"]
                 rate = clamp(m * factor + (index / max(1, len(time_dates) - 1)) * 0.12 + rr(-0.09, 0.09), 0.01, 0.98)
                 for metric in act.metrics:
+                    if metric.code in EFFECTIVE_REVIEW_METRIC_CODES:
+                        continue
                     if metric.type == "boolean":
                         continue
                     if metric.type == "ratio":
@@ -297,6 +302,23 @@ def seed_demo(db: Session, today: date) -> None:
                     else:  # count
                         fact(team.id, metric, round(rr(4, 30) * meta["size"] * (0.3 + rate)),
                              None, point_date, point_date)
+
+    # Synthetic local opinion records exercise these metrics without claiming
+    # that a real code-review provider has been connected.
+    for team_index, team in enumerate(teams):
+        for month_index, month in enumerate(months):
+            total_opinions = 8
+            effective_opinions = 2 + ((team_index + month_index * 2) % 6)
+            for opinion_index in range(total_opinions):
+                db.add(AIReviewOpinion(
+                    source_id=f"demo-mrr-opinion-{team.id}-{month:%Y%m}-{opinion_index + 1:02d}",
+                    team_id=team.id,
+                    opinion_date=month + timedelta(days=10 + opinion_index),
+                    ai_effective=opinion_index < effective_opinions,
+                    created_at=entered_at,
+                    updated_at=entered_at,
+                    updated_by="演示种子",
+                ))
 
     # 布尔型：每月状态，团队D 不具备；显式选择当前月也能读取状态。
     ad_bool = metric_by_code["ad-bool"]
@@ -413,6 +435,7 @@ def clear(db: Session) -> None:
     db.execute(delete(AuditLog))
     db.execute(delete(ImportRow))
     db.execute(delete(ImportBatch))
+    db.execute(delete(AIReviewOpinion))
     db.execute(delete(IRRequirement))
     db.execute(delete(DataMetricDefinition))
     db.execute(delete(MaturityRecord))

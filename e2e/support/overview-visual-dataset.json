@@ -1,0 +1,41 @@
+{
+  "id": "overview-golden-2026-09-v1",
+  "purpose": "Repeatable layout evidence only; it does not define business calculations.",
+  "seedDate": "2026-09-29",
+  "states": {
+    "full": { "month": "2026-09", "cycle": "half", "expectedTeams": 4 },
+    "partial": { "month": "2026-08", "cycle": "half", "expectedTeams": 4, "missingTeam": "团队D" },
+    "empty": { "month": "2025-01", "cycle": "half", "expectedTeams": 4 },
+    "capabilityRadarSingleMissingAxis": {
+      "month": "2026-09",
+      "kind": "general",
+      "missingActivity": "CodeCheck问题修复",
+      "assessedAxes": 6,
+      "note": "E2E-only response override: one maturity axis is unassessed while the other six remain assessed; this state validates rendering and does not define a score."
+    }
+  },
+  "yearOverYear": {
+    "months": ["2025-04", "2025-05", "2025-06", "2025-07", "2025-08", "2025-09"],
+    "zeroWorkloadMonth": "2025-07",
+    "missingMonth": "2025-09",
+    "note": "Synthetic prior-year IR workload facts exist only to exercise positive, zero-prior and missing YoY comparison points; they do not define business values."
+  },
+  "productlessVersion": {
+    "name": "Golden Legacy no product 2024",
+    "iterationName": "Golden Legacy 2024-02",
+    "team": "团队A",
+    "metricCode": "sa-ir-pen",
+    "startDate": "2024-02-01",
+    "endDate": "2024-02-29",
+    "numerator": 3,
+    "denominator": 10
+  },
+  "shapeRules": [
+    "2026-09 has IR facts for all four teams and six months of FactRecord trends.",
+    "2026-08 omits 团队D IR facts and leaves one 团队C AI attribute unknown.",
+    "2025-01 has no facts or maturity assessments.",
+    "Capability single-axis-gap browser evidence overrides only the 2026-09 general maturity response: CodeCheck问题修复 is unassessed while the other six domain-average axes retain their Golden values.",
+    "A product-less legacy version adds one 2024-02 FactRecord outside the visual windows; named team candidates exclude it and All versions retains it.",
+    "Fixture values exist only to stabilize screenshots and never define business formulas."
+  ]
+}

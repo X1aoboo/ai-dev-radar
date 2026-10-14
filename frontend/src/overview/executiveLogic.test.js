@@ -47,6 +47,21 @@ test('selected FactRecord windows keep sparse team points aligned with the perio
   assert.deepEqual(windowed.company_average.map((point) => point.value), [0, null, 0.4])
 })
 
+test('selected FactRecord windows retain requested periods missing from the source series', () => {
+  const windowed = metricDataForPeriods({
+    periods: [{ id: '2026-04', label: '2026-04' }, { id: '2026-05', label: '2026-05' }],
+    series: [{ team_id: 1, values: [{ period_id: '2026-04', value: 0.4, fact_count: 1 }] }],
+    company_average: [{ period_id: '2026-04', value: 0.4 }],
+  }, ['2026-08', '2026-09'])
+
+  assert.deepEqual(windowed.periods, [
+    { id: '2026-08', label: '2026-08' },
+    { id: '2026-09', label: '2026-09' },
+  ])
+  assert.deepEqual(windowed.series[0].values.map((point) => point.value), [null, null])
+  assert.deepEqual(windowed.company_average.map((point) => point.value), [null, null])
+})
+
 test('executive KPI selection points to four exact catalog metrics', () => {
   const rows = ['cd-ar-pen', 'cd-eff', 'tce-count', 'tcg-rate', 'ad-bool'].map((code) => ({ metric: { code, type: code === 'ad-bool' ? 'boolean' : 'count' } }))
   assert.deepEqual(executiveKpiRows(rows).map((row) => row.metric.code), ['cd-ar-pen', 'cd-eff', 'tce-count', 'tcg-rate'])

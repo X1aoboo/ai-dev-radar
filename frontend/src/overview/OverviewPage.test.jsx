@@ -13,7 +13,7 @@ vi.mock('../components/EChart', () => ({
 vi.mock('antd', () => ({
   Button: ({ children, onClick, ...props }) => <button type="button" onClick={onClick} {...props}>{children}</button>,
   Drawer: ({ open, children, onClose }) => open ? <aside data-drawer><button type="button" data-close onClick={onClose}>关闭</button>{children}</aside> : null,
-  Select: ({ value, onChange, options = [] }) => <select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
+  Select: ({ ref, value, onChange, options = [], open: _open, onOpenChange: _onOpenChange, suffixIcon: _suffixIcon, ...props }) => <select {...props} ref={ref} value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>,
 }))
 
 const teams = [{ id: 1, name: '团队A' }, { id: 2, name: '团队B' }]
@@ -209,6 +209,11 @@ test('root is an evidence-bounded management summary with no maturity maintenanc
   expect(text).not.toContain('团队单指标排名')
   expect(text).toContain('关键研发活动')
   expect(text).toContain('核心指标趋势')
+  expect(renderer.root.findAllByProps({ className: 'metric-card__accessory-bars' })).toHaveLength(8)
+  expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '版本')).toHaveLength(0)
+  expect(renderer.root.findByProps({ 'aria-label': '月份' }).type).toBe('button')
+  expect(renderer.root.findByProps({ 'aria-label': '月份' }).props['aria-expanded']).toBe(false)
+  expect(renderer.root.findAll((node) => node.type === 'select' && node.props['aria-label'] === '统计周期')).toHaveLength(1)
   expect(text).not.toContain('Target')
   expect(text).not.toContain('维护成熟度')
   expect(text.indexOf('核心指标趋势')).toBeLessThan(text.indexOf('关键研发活动'))
@@ -216,11 +221,11 @@ test('root is an evidence-bounded management summary with no maturity maintenanc
   expect(text.indexOf('关键研发活动成熟度矩阵')).toBeLessThan(text.indexOf('团队表现'))
   const lifecycleItems = renderer.root.findAllByProps({ className: 'executive-lifecycle__item' })
   expect(lifecycleItems.map((item) => item.props['aria-label'])).toEqual([
-    '选择关键环节：需求，来源 SA设计',
+    '选择关键环节：SA设计',
     '选择关键环节：SE设计',
     '选择关键环节：开发设计',
     '选择关键环节：编码开发',
-    '选择关键环节：测试，来源 测试用例生成',
+    '选择关键环节：测试用例生成',
     '选择关键环节：测试用例执行',
   ])
   expect(lifecycleItems.every((item) => item.findAllByProps({ className: 'executive-lifecycle__icon' }).length === 1)).toBe(true)
@@ -266,7 +271,7 @@ test('activity and capability pages use distinct directories and metric semantic
   expect(text).toContain('成熟度画像')
   const granularity = renderer.root.findByProps({ 'aria-label': '时间粒度' })
   expect(granularity.props.value).toBe('month')
-  await act(async () => granularity.props.onChange({ target: { value: 'day' } }))
+  await act(async () => granularity.props.onChange('day'))
   expect(renderer.root.findByProps({ 'aria-label': '时间粒度' }).props.value).toBe('day')
   renderer.unmount()
 })
@@ -312,7 +317,7 @@ test('activity metrics show a compact no-history state instead of an empty chart
   renderer.unmount()
 })
 
-test('activity workspace keeps URL-backed metric, dimension, and period filters', async () => {
+test('activity workspace keeps time-based URL filters and hides version/iteration controls', async () => {
   const onFilterChange = vi.fn()
   const props = {
     ...analyticsProps,
@@ -329,13 +334,15 @@ test('activity workspace keeps URL-backed metric, dimension, and period filters'
 
   onFilterChange.mockClear()
   const halfYear = renderer.root.findByProps({ 'aria-label': '统计周期' })
-  await act(async () => halfYear.props.onChange({ target: { value: 'half' } }))
+  await act(async () => halfYear.props.onChange('half'))
   expect(onFilterChange).toHaveBeenLastCalledWith(expect.objectContaining({ cycle: 'half' }), { history: 'push' })
 
   onFilterChange.mockClear()
-  const iterationButton = renderer.root.findAllByType('button').find((button) => renderText(button.props.children) === '按版本/迭代')
-  await act(async () => iterationButton.props.onClick())
-  expect(onFilterChange).toHaveBeenLastCalledWith(expect.objectContaining({ dimension: 'iteration', granularity: 'month' }), { history: 'push' })
+  expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '版本')).toHaveLength(0)
+  expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '统计维度')).toHaveLength(0)
+  const weekButton = renderer.root.findAllByType('button').find((button) => renderText(button.props.children) === '周')
+  await act(async () => weekButton.props.onClick())
+  expect(onFilterChange).toHaveBeenLastCalledWith(expect.objectContaining({ dimension: 'time', granularity: 'week', versionId: 'all', periodId: null }), { history: 'push' })
 
   await act(async () => renderer.update(<ActivitiesPage {...props} filter={{ ...props.filter, metricId: '11' }} />))
   const metricHeadings = renderer.root.findAllByType('h3').map((node) => renderText(node.props.children))
@@ -345,7 +352,13 @@ test('activity workspace keeps URL-backed metric, dimension, and period filters'
 
   await act(async () => renderer.update(<ActivitiesPage {...props} filter={{ ...props.filter, metricId: '11', periodId: 'all' }} />))
   const allPeriodsText = renderText(renderer.toJSON())
-  expect(allPeriodsText).toContain('选择单一周期查看团队比较与合并原始量；全部周期只显示趋势。')
+  expect(allPeriodsText).toContain('页面整体 IR 指标，有数据团队等权比较；不随活动选择变化。')
+  expect(allPeriodsText).toContain('AI覆盖IR需求数')
+  expect(allPeriodsText).toContain('AI覆盖AR需求数')
+  expect(allPeriodsText).toContain('SE设计文档生成数')
+  expect(allPeriodsText).toContain('开发详细设计生成数')
+  expect(allPeriodsText).toContain('测试用例生成数')
+  expect(allPeriodsText).toContain('测试用例执行数')
   expect(allPeriodsText).not.toContain('最佳团队A · 40%')
   const reset = renderer.root.findByProps({ className: 'analytics-filter-reset' })
   await act(async () => reset.props.onClick())
@@ -388,7 +401,9 @@ test('analytics detail keeps metric and maturity failures in their owning sectio
   metricLoadError.current = new Error('原始指标接口暂不可用')
   let renderer
   await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} />) })
-  expect(renderText(renderer.toJSON())).toContain('指标加载失败：原始指标接口暂不可用')
+  const activityText = renderText(renderer.toJSON())
+  expect(activityText).toContain('指标暂不可用，请稍后重试。')
+  expect(activityText).not.toContain('原始指标接口暂不可用')
   renderer.unmount()
 
   metricLoadError.current = null

@@ -192,7 +192,7 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     await page.goto(`${RADAR_URL}/analytics/capabilities?month=2026-09&cycle=half`)
     await waitForStablePage(page)
     await expect(page.getByLabel('时间粒度')).toHaveValue('month')
-    await expect(page.locator('.capability-version-card')).toContainText('不适用')
+    await expect(page.locator('.capability-page-actions [aria-label="版本"]')).toHaveCount(0)
     await expect(page.locator('.analytics-page-head .page-header__description')).toContainText('成熟度按自然月')
     await expect(page.locator('.capability-kpi-grid .metric-card')).toHaveCount(4)
     await expect(page.locator('.analytics-maturity-summary__matrix .maturity-matrix__table tbody tr')).toHaveCount(5)

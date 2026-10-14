@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { activityCoverageBreakdown, buildActivityKpiModel } from './activityKpiLogic.js'
+import { activityCoverageBreakdown, buildActivityKpiModel, yearOverYearGrowth } from './activityKpiLogic.js'
 
 const definitions = [
   { code: 'ai-demand-penetration', name: 'AI需求渗透率', type: 'penetration' },
@@ -39,6 +39,13 @@ const activity = {
     { id: 2, name: '开发设计效率', type: 'efficiency' },
   ],
 }
+
+test('year-over-year workload growth preserves missing and nonpositive prior values', () => {
+  assert.equal(yearOverYearGrowth(12, 10), 0.2)
+  assert.equal(yearOverYearGrowth(0, 10), -1)
+  assert.equal(yearOverYearGrowth(10, 0), null)
+  assert.equal(yearOverYearGrowth(10, null), null)
+})
 
 test('activity coverage split uses only valid matching raw penetration totals', () => {
   assert.deepEqual(activityCoverageBreakdown(dataByMetric[1], periods), {

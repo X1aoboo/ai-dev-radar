@@ -54,7 +54,7 @@ export function pointForSelection(data, teamId, periodId) {
     .find((point) => String(point.period_id) === String(periodId))
 }
 
-function valueFromSums(metric, points) {
+export function valueFromSums(metric, points) {
   const type = metric?.type
   if (!points.length) return null
 
@@ -81,6 +81,26 @@ function valueFromSums(metric, points) {
   }
 
   return null
+}
+
+export function iterationReferenceAverage(dailyData, iterationPeriods = [], metric) {
+  if (!dailyData || !metric || metric.type === 'boolean') return []
+  const periodsById = new Map((dailyData.periods ?? []).map((period) => [String(period.id), period]))
+  return iterationPeriods.map((iteration) => {
+    if (!iteration.start_date || !iteration.end_date) return { period_id: iteration.id, value: null }
+    const values = (dailyData.series ?? []).map((team) => {
+      const points = (team.values ?? []).filter((point) => {
+        if (point.fact_count === 0) return false
+        const period = periodsById.get(String(point.period_id))
+        return period?.start_date >= iteration.start_date && period?.end_date <= iteration.end_date
+      })
+      return valueFromSums(metric, points)
+    }).filter(numeric)
+    return {
+      period_id: iteration.id,
+      value: values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null,
+    }
+  })
 }
 
 export function valueForSelection(data, metric, teamId, periodId) {

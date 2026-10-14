@@ -10,6 +10,7 @@ import {
   buildMetricTrendRows,
   currentSnapshot,
   currentMetricValues,
+  currentMonthId,
   buildAttentionItems,
   buildMetricRows,
   factCompleteness,
@@ -30,6 +31,7 @@ import {
   queryForActivity,
   trimToAnalysisWindow,
   trimToRecentPeriods,
+  teamProductVersions,
   valueForPeriod,
 } from './overviewLogic.js'
 
@@ -182,6 +184,52 @@ test('normalizes filter query values and serializes only supported state', () =>
     { dimension: 'time', granularity: 'day', versionId: 'all', periodId: null, metricId: 'all', cycle: '6m' },
   )
   assert.equal(filtersEqual(parsed, { ...parsed }), true)
+})
+
+test('activity URL normalization drops legacy version and iteration scope', () => {
+  const legacyIteration = filterFromSearchParams(
+    new URLSearchParams('cycle=half&dimension=iteration&version=3&period=iteration-9'),
+    { activity: true },
+  )
+  assert.deepEqual(legacyIteration, {
+    dimension: 'time',
+    granularity: 'month',
+    versionId: 'all',
+    periodId: null,
+    metricId: 'all',
+    cycle: 'half',
+  })
+  assert.equal(filterToSearchParams(legacyIteration).toString(), 'cycle=half')
+
+  const legacyVersion = filterFromSearchParams(
+    new URLSearchParams('version=3&period=2026-08&granularity=week'),
+    { activity: true, periods: [{ id: '2026-08' }] },
+  )
+  assert.deepEqual(legacyVersion, {
+    dimension: 'time',
+    granularity: 'week',
+    versionId: 'all',
+    periodId: '2026-08',
+    metricId: 'all',
+    cycle: '6m',
+  })
+  assert.equal(filterToSearchParams(legacyVersion).toString(), 'granularity=week&period=2026-08')
+})
+
+test('capability URL normalization drops legacy version, iteration, period, and metric scope', () => {
+  const legacyCapabilityFilter = filterFromSearchParams(
+    new URLSearchParams('dimension=iteration&granularity=week&version=3&period=iteration-9&metric=901&cycle=year'),
+    { capability: true, versions: [{ id: 3 }], periods: [{ id: 'iteration-9' }] },
+  )
+  assert.deepEqual(legacyCapabilityFilter, {
+    dimension: 'time',
+    granularity: 'week',
+    versionId: 'all',
+    periodId: null,
+    metricId: 'all',
+    cycle: 'year',
+  })
+  assert.equal(filterToSearchParams(legacyCapabilityFilter).toString(), 'granularity=week&cycle=year')
 })
 
 test('forces month granularity whenever the dimension is iteration', () => {
@@ -342,6 +390,38 @@ test('builds a six-month window ending at the selected month without filling gap
   assert.equal(rows[0].delta, 0.4)
 })
 
+test('Team Detail filters named versions to the current team product and clears invalid loaded URL scopes', () => {
+  const versions = [
+    { id: 1, product_id: 10, team_id: 1 },
+    { id: 2, product_id: 20, team_id: 2 },
+    { id: 3, product_id: null, team_id: null },
+  ]
+  assert.deepEqual(teamProductVersions(versions, 1), [versions[0]])
+  assert.deepEqual(normalizeFilter({ versionId: '1' }, { versions, teamId: 1, versionsReady: true }).versionId, '1')
+  assert.deepEqual(normalizeFilter({ versionId: '2' }, { versions, teamId: 1, versionsReady: true }).versionId, 'all')
+  assert.deepEqual(normalizeFilter({ versionId: '3' }, { versions, teamId: 1, versionsReady: true }).versionId, 'all')
+  assert.deepEqual(normalizeFilter({ versionId: '2' }, { versions: [], teamId: 1, versionsReady: false }).versionId, '2')
+  assert.deepEqual(normalizeFilter({ versionId: '2' }, { versions, teamId: 3, versionsReady: true }).versionId, 'all')
+})
+
+test('Overview scope keeps only the selected statistical cycle', () => {
+  assert.deepEqual(normalizeFilter({
+    dimension: 'iteration',
+    granularity: 'day',
+    versionId: '2',
+    periodId: 'p2',
+    metricId: '901',
+    cycle: 'half',
+  }, { overview: true }), {
+    dimension: 'time',
+    granularity: 'month',
+    versionId: 'all',
+    periodId: null,
+    metricId: 'all',
+    cycle: 'half',
+  })
+})
+
 test('analysis cycle windows end at the selected month and do not invent a full future period', () => {
   assert.deepEqual(analysisWindowMonths('2026-09', '6m'), ['2026-04', '2026-05', '2026-06', '2026-07', '2026-08', '2026-09'])
   assert.deepEqual(analysisWindowMonths('2026-09', 'half'), ['2026-07', '2026-08', '2026-09'])
@@ -368,5 +448,5 @@ test('keeps maturity zero, missing history, and best/weak values distinct', () =
 })
 
 function expectCurrentMonth() {
-  return new Date().toISOString().slice(0, 7)
+  return currentMonthId()
 }

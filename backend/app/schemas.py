@@ -300,6 +300,34 @@ class IRRequirementOut(BaseModel):
     valid: bool
 
 
+class AIReviewOpinionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    team_id: int = Field(ge=1)
+    opinion_date: date
+    ai_effective: bool
+
+
+class AIReviewOpinionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    source_id: str
+    team_id: int
+    opinion_date: date
+    ai_effective: bool
+    created_at: datetime
+    updated_at: datetime
+    updated_by: str
+
+
+class AIReviewOpinionListOut(BaseModel):
+    items: list[AIReviewOpinionOut]
+    total: int
+    page: int
+    page_size: int
+
+
 class IRListOut(BaseModel):
     items: list[IRRequirementOut]
     total: int

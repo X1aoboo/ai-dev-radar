@@ -19,6 +19,27 @@ function mean(values) {
   return valid.length ? valid.reduce((sum, value) => sum + value, 0) / valid.length : null
 }
 
+export function irCoverageBreakdown(metricData, periodIds = []) {
+  const selected = new Set(periodIds.map(String))
+  const points = (metricData?.domain_summary ?? []).filter((point) => (
+    selected.has(String(point.period_id))
+    && Number.isFinite(point.ir_fact_count ?? point.fact_count)
+    && (point.ir_fact_count ?? point.fact_count) > 0
+  ))
+  if (!points.length) return { status: 'missing' }
+
+  const total = points.reduce((sum, point) => sum + (point.ir_fact_count ?? point.fact_count), 0)
+  const known = points.reduce((sum, point) => sum + (point.known_ai_count ?? 0), 0)
+  if (known < 0 || known > total) return { status: 'invalid' }
+  const unknown = total - known
+  if (known === 0) return { status: 'unknown-only', total, known, unknown, covered: null, uncovered: null }
+  if (points.some((point) => point.known_ai_count > 0 && !numeric(point.ai_assisted_count))) return { status: 'invalid' }
+
+  const covered = points.reduce((sum, point) => sum + (point.known_ai_count > 0 ? point.ai_assisted_count : 0), 0)
+  if (covered < 0 || covered > known) return { status: 'invalid' }
+  return { status: 'ready', total, known, unknown, covered, uncovered: known - covered }
+}
+
 function metricPoint(point, metric) {
   if (!point) return null
   const knownAiCount = point.known_ai_count ?? 0
@@ -119,8 +140,9 @@ export function buildIROverviewMetricData(payload) {
   }))
 }
 
-export function irOverviewMetricSummary({ data, metric, month, monthTrendIds = [], periodIds = [] } = {}) {
+export function irOverviewMetricSummary({ data, benchmarkData, metric, month, monthTrendIds = [], periodIds = [] } = {}) {
   if (!data || !metric) return null
+  const referenceData = benchmarkData === undefined ? data : benchmarkData
   const domainByMonth = new Map((data.domain_summary ?? []).map((point) => [String(point.period_id), point]))
   const monthValue = domainByMonth.get(String(month))?.value ?? null
   const previousMonth = previousMonthId(month)
@@ -163,15 +185,43 @@ export function irOverviewMetricSummary({ data, metric, month, monthTrendIds = [
       trend: periodIds.map((_, index) => teamPeriodValue(team, periodIds.slice(0, index + 1))),
     }
   })
-  const monthCompanyAverage = data.company_average.find((point) => String(point.period_id) === String(month))?.value ?? null
+  const benchmarkMonthTeams = (referenceData?.series ?? []).map((team) => {
+    const value = team.values.find((point) => String(point.period_id) === String(month))?.value ?? null
+    const previousValue = previousMonth ? team.values.find((point) => String(point.period_id) === String(previousMonth))?.value : null
+    return {
+      teamId: team.team_id,
+      teamName: team.team_name,
+      value,
+      delta: numeric(value) && numeric(previousValue) ? value - previousValue : null,
+    }
+  })
+  const benchmarkPeriodTeams = (referenceData?.series ?? []).map((team) => {
+    const value = teamPeriodValue(team, periodIds)
+    const previousValue = teamPeriodValue(team, periodIds.slice(0, -1))
+    const monthValue = team.values.find((point) => String(point.period_id) === String(month))?.value ?? null
+    return {
+      teamId: team.team_id,
+      teamName: team.team_name,
+      value,
+      delta: metric.deltaMode === 'month-addition'
+        ? monthValue
+        : numeric(value) && numeric(previousValue) ? value - previousValue : null,
+    }
+  })
+  const referenceCompanyAverage = referenceData?.company_average ?? []
+  const monthCompanyAverage = referenceCompanyAverage.find((point) => String(point.period_id) === String(month))?.value ?? null
   const previousMonthCompanyAverage = previousMonth
-    ? data.company_average.find((point) => String(point.period_id) === String(previousMonth))?.value ?? null
+    ? referenceCompanyAverage.find((point) => String(point.period_id) === String(previousMonth))?.value ?? null
     : null
-  const previousPeriodTeams = (data.series ?? []).map((team) => teamPeriodValue(team, periodIds.slice(0, -1)))
+  const referenceSeriesByTeam = new Map((referenceData?.series ?? []).map((series) => [String(series.team_id), series]))
+  const previousPeriodTeams = benchmarkPeriodTeams.map((team) => {
+    const series = referenceSeriesByTeam.get(String(team.teamId))
+    return series ? teamPeriodValue(series, periodIds.slice(0, -1)) : null
+  })
   const previousPeriodCompanyAverage = mean(previousPeriodTeams)
-  const periodCompanyAverage = mean(periodTeams.map((team) => team.value))
+  const periodCompanyAverage = mean(benchmarkPeriodTeams.map((team) => team.value))
   const periodCompanyAverageDelta = metric.deltaMode === 'month-addition'
-    ? mean(monthTeams.map((team) => team.value))
+    ? mean(benchmarkMonthTeams.map((team) => team.value))
     : numeric(periodCompanyAverage) && numeric(previousPeriodCompanyAverage) ? periodCompanyAverage - previousPeriodCompanyAverage : null
   return {
     monthValue,
@@ -183,9 +233,11 @@ export function irOverviewMetricSummary({ data, metric, month, monthTrendIds = [
     previousPeriodValue,
     periodTrend: periodIds.map((_, index) => aggregate(periodIds.slice(0, index + 1))),
     monthTeams,
+    benchmarkMonthTeams,
     monthCompanyAverage,
     monthCompanyAverageDelta: numeric(monthCompanyAverage) && numeric(previousMonthCompanyAverage) ? monthCompanyAverage - previousMonthCompanyAverage : null,
     periodTeams,
+    benchmarkPeriodTeams,
     periodCompanyAverage,
     periodCompanyAverageDelta,
     monthCoverage: {
@@ -204,22 +256,36 @@ export function irOverviewMetricSummary({ data, metric, month, monthTrendIds = [
 }
 
 export function useIROverviewMetrics(fromMonth, toMonth, versionId, onSessionExpired) {
-  const [state, setState] = useState({ loading: true, error: null, data: null })
+  const [state, setState] = useState({ loading: true, error: null, data: null, benchmarkError: null, benchmarkData: null })
   const sessionExpiredRef = useRef(onSessionExpired)
   sessionExpiredRef.current = onSessionExpired
 
   useEffect(() => {
     const controller = new AbortController()
     let active = true
-    const params = new URLSearchParams({ from_month: fromMonth, to_month: toMonth, version_id: String(versionId ?? 'all') })
-    setState({ loading: true, error: null, data: null })
-    fetchJson(`/api/data-metrics/overview?${params.toString()}`, { signal: controller.signal })
-      .then((data) => { if (active) setState({ loading: false, error: null, data }) })
-      .catch((error) => {
-        if (!active || error.name === 'AbortError') return
-        setState({ loading: false, error, data: null })
-        if (error.status === 401) sessionExpiredRef.current?.()
+    const currentVersionId = String(versionId ?? 'all')
+    const request = (scopeVersionId) => {
+      const params = new URLSearchParams({ from_month: fromMonth, to_month: toMonth, version_id: scopeVersionId })
+      return fetchJson(`/api/data-metrics/overview?${params.toString()}`, { signal: controller.signal })
+    }
+    const currentRequest = request(currentVersionId)
+    const benchmarkRequest = currentVersionId === 'all' ? currentRequest : request('all')
+    setState({ loading: true, error: null, data: null, benchmarkError: null, benchmarkData: null })
+    Promise.allSettled([currentRequest, benchmarkRequest]).then(([current, benchmark]) => {
+      if (!active) return
+      if (current.status === 'rejected' && current.reason?.name === 'AbortError') return
+      if ((current.status === 'rejected' && current.reason?.status === 401)
+        || (benchmark.status === 'rejected' && benchmark.reason?.status === 401)) {
+        sessionExpiredRef.current?.()
+      }
+      setState({
+        loading: false,
+        error: current.status === 'rejected' ? current.reason : null,
+        data: current.status === 'fulfilled' ? current.value : null,
+        benchmarkError: benchmark.status === 'rejected' ? benchmark.reason : null,
+        benchmarkData: benchmark.status === 'fulfilled' ? benchmark.value : null,
       })
+    })
     return () => { active = false; controller.abort() }
   }, [fromMonth, toMonth, versionId])
 

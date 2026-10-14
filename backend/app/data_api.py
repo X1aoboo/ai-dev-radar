@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Literal
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
 from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -40,6 +40,7 @@ from .ir_imports import (
 )
 from .models import (
     AuditLog,
+    AIReviewOpinion,
     DataMetricDefinition,
     IRRequirement,
     ImportBatch,
@@ -53,6 +54,9 @@ from .models import (
     UserRole,
 )
 from .schemas import (
+    AIReviewOpinionIn,
+    AIReviewOpinionListOut,
+    AIReviewOpinionOut,
     DataMetricComputeOut,
     DataMetricDefinitionIn,
     DataMetricDefinitionOut,
@@ -515,6 +519,86 @@ def _manual_ai_metadata(existing: dict[str, Any], actor: str) -> dict[str, Any]:
         "updated_at": _now().isoformat(),
     }
     return metadata
+
+
+@router.get("/data/code-review/opinions", response_model=AIReviewOpinionListOut)
+def list_ai_review_opinions(
+    team_id: int | None = Query(default=None, ge=1),
+    from_date: date | None = None,
+    to_date: date | None = None,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List opinion source records without exposing MR-review text."""
+    if from_date is not None and to_date is not None and from_date > to_date:
+        raise HTTPException(status_code=422, detail="from_date must not be after to_date")
+    if team_id is not None and current_user.role == UserRole.MAINTAINER.value:
+        _team_access(current_user, team_id)
+
+    stmt = select(AIReviewOpinion).order_by(
+        AIReviewOpinion.opinion_date.desc(), AIReviewOpinion.source_id
+    )
+    if current_user.role == UserRole.MAINTAINER.value:
+        stmt = stmt.where(AIReviewOpinion.team_id == current_user.maintainer_team_id)
+    if team_id is not None:
+        stmt = stmt.where(AIReviewOpinion.team_id == team_id)
+    if from_date is not None:
+        stmt = stmt.where(AIReviewOpinion.opinion_date >= from_date)
+    if to_date is not None:
+        stmt = stmt.where(AIReviewOpinion.opinion_date <= to_date)
+
+    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    records = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).all()
+    return AIReviewOpinionListOut(
+        items=[AIReviewOpinionOut.model_validate(record) for record in records],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+@router.put(
+    "/data/code-review/opinions/{source_id}",
+    response_model=AIReviewOpinionOut,
+)
+def upsert_ai_review_opinion(
+    source_id: str = Path(min_length=1, max_length=120),
+    payload: AIReviewOpinionIn = ...,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    """Idempotently create or update one AI-generated MR review opinion."""
+    team = db.get(Team, payload.team_id)
+    if team is None:
+        raise HTTPException(status_code=404, detail="team not found")
+    _team_access(current_user, team.id, write=True)
+
+    record = db.scalar(
+        select(AIReviewOpinion).where(AIReviewOpinion.source_id == source_id)
+    )
+    if record is None:
+        record = AIReviewOpinion(
+            source_id=source_id,
+            team_id=team.id,
+            opinion_date=payload.opinion_date,
+            ai_effective=payload.ai_effective,
+            created_at=_now(),
+            updated_at=_now(),
+            updated_by=current_user.username,
+        )
+        db.add(record)
+    else:
+        # A maintainer may not claim a source ID owned by another team's record.
+        _team_access(current_user, record.team_id, write=True)
+        record.team_id = team.id
+        record.opinion_date = payload.opinion_date
+        record.ai_effective = payload.ai_effective
+        record.updated_at = _now()
+        record.updated_by = current_user.username
+    db.flush()
+    return _commit(db, record)
 
 
 @router.get("/data/ir", response_model=IRListOut)

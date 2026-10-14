@@ -135,13 +135,15 @@ async function findPython() {
 }
 
 async function main() {
+  const suite = process.argv.find((arg) => arg.startsWith('--suite='))?.split('=')[1] ?? 'gateway'
+  if (!['gateway', 'overview-visual'].includes(suite)) throw new Error(`Unsupported E2E suite: ${suite}`)
   if (process.env.E2E_FRONTEND_BUILT !== '1') {
     await npmInvocation(['--prefix', 'frontend', 'run', 'build'])
   }
 
   const python = await findPython()
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), 'ai-dev-radar-gateway-e2e-'))
-  const runName = `gateway-${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), `ai-dev-radar-${suite}-e2e-`))
+  const runName = `${suite}-${new Date().toISOString().replace(/[:.]/g, '-')}-${process.pid}`
   const evidenceDir = path.join(ROOT, 'e2e-results', runName)
   await mkdir(evidenceDir, { recursive: true })
 
@@ -162,20 +164,23 @@ async function main() {
   let failure
   let cleanupError
   try {
-    await run(python, [path.join(ROOT, 'e2e', 'support', 'prepare_e2e_data.py')], { env })
+    const fixture = suite === 'overview-visual' ? 'prepare_overview_visual_data.py' : 'prepare_e2e_data.py'
+    await run(python, [path.join(ROOT, 'e2e', 'support', fixture)], { env })
 
-    const mockPort = await reservePort()
     const radarPort = await reservePort()
-    const gatewayUrl = `http://${HOST}:${mockPort}`
     const radarUrl = `http://${HOST}:${radarPort}`
-
-    mock = startServer(python, [
-      '-m', 'uvicorn', 'e2e.mock_gateway.app:app',
-      '--host', HOST, '--port', String(mockPort), '--no-access-log',
-    ], env)
-    await waitForHttp(`${gatewayUrl}/health/live`, mock, 'Mock Gateway')
-    const reset = await fetch(`${gatewayUrl}/_mock/reset`, { method: 'POST' })
-    if (!reset.ok) throw new Error(`Mock Gateway reset failed with ${reset.status}.`)
+    let gatewayUrl
+    if (suite === 'gateway') {
+      const mockPort = await reservePort()
+      gatewayUrl = `http://${HOST}:${mockPort}`
+      mock = startServer(python, [
+        '-m', 'uvicorn', 'e2e.mock_gateway.app:app',
+        '--host', HOST, '--port', String(mockPort), '--no-access-log',
+      ], env)
+      await waitForHttp(`${gatewayUrl}/health/live`, mock, 'Mock Gateway')
+      const reset = await fetch(`${gatewayUrl}/_mock/reset`, { method: 'POST' })
+      if (!reset.ok) throw new Error(`Mock Gateway reset failed with ${reset.status}.`)
+    }
 
     radar = startServer(python, [
       '-m', 'uvicorn', 'app.main:app', '--app-dir', path.join(ROOT, 'backend'),
@@ -184,11 +189,13 @@ async function main() {
     await waitForHttp(`${radarUrl}/openapi.json`, radar, 'Radar')
 
     const playwrightCli = path.join(ROOT, 'node_modules', '@playwright', 'test', 'cli.js')
-    await run(process.execPath, [playwrightCli, 'test', '--config=playwright.config.mjs', 'e2e/specs/gateway.e2e.spec.js'], {
+    const spec = suite === 'overview-visual' ? 'e2e/specs/overview-visual.e2e.spec.js' : 'e2e/specs/gateway.e2e.spec.js'
+    const grep = process.env.E2E_GREP ? ['--grep', process.env.E2E_GREP] : []
+    await run(process.execPath, [playwrightCli, 'test', '--config=playwright.config.mjs', spec, ...grep], {
       env: {
         ...env,
         E2E_RADAR_URL: radarUrl,
-        E2E_GATEWAY_URL: gatewayUrl,
+        ...(gatewayUrl ? { E2E_GATEWAY_URL: gatewayUrl } : {}),
         E2E_RESULTS_DIR: evidenceDir,
       },
     })

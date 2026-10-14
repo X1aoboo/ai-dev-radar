@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import {
   deltaForSelection,
+  iterationReferenceAverage,
   mergePeriods,
   maturityProfileSeries,
   sourceForPeriod,
@@ -45,6 +46,29 @@ test('recomputes efficiency from summed estimated and actual effort', () => {
 
   assert.equal(valueForSelection(data, { type: 'efficiency' }, 7, 'p1'), 1)
   assert.ok(Math.abs(valueForSelection(data, { type: 'efficiency' }, 7, 'all') + (1 / 14)) < 1e-9)
+})
+
+test('iteration benchmark aggregates raw daily sums within inclusive dates before equal-weighting teams', () => {
+  const values = iterationReferenceAverage({
+    periods: [
+      { id: '2026-05-31', start_date: '2026-05-31', end_date: '2026-05-31' },
+      { id: '2026-06-01', start_date: '2026-06-01', end_date: '2026-06-01' },
+      { id: '2026-06-02', start_date: '2026-06-02', end_date: '2026-06-02' },
+      { id: '2026-06-03', start_date: '2026-06-03', end_date: '2026-06-03' },
+    ],
+    series: [
+      { team_id: 1, values: [
+        { period_id: '2026-05-31', fact_count: 1, numerator: 100, denominator: 100 },
+        { period_id: '2026-06-01', fact_count: 1, numerator: 1, denominator: 2 },
+        { period_id: '2026-06-02', fact_count: 1, numerator: 1, denominator: 2 },
+        { period_id: '2026-06-03', fact_count: 1, numerator: 100, denominator: 100 },
+      ] },
+      { team_id: 2, values: [{ period_id: '2026-06-01', fact_count: 1, numerator: 1, denominator: 10 }] },
+      { team_id: 3, values: [{ period_id: '2026-06-02', fact_count: 0, numerator: 0, denominator: 0 }] },
+    ],
+  }, [{ id: 12, start_date: '2026-06-01', end_date: '2026-06-02' }], { type: 'ratio' })
+
+  assert.deepEqual(values, [{ period_id: 12, value: 0.3 }])
 })
 
 test('computes period delta from the preceding period in the same series', () => {

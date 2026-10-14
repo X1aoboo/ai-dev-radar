@@ -2,7 +2,7 @@ import { useId } from 'react'
 
 import { sparklineSegments } from './AnalyticsComponents'
 
-export function MetricKpiCard({ label, value, unit, detail, comparison, context, delta, deltaTone = 'neutral', trend, trendValues, trendLabel, icon, accent = 'var(--color-brand-primary)', loading = false, error, className = '' }) {
+export function MetricKpiCard({ label, value, unit, detail, comparison, context, delta, deltaTone = 'neutral', trend, trendValues, trendLabel, icon, accessory, accent = 'var(--color-brand-primary)', loading = false, error, className = '' }) {
   const id = useId().replaceAll(':', '')
   const segments = sparklineSegments(trendValues)
   const showEmptyTrend = !loading && !error && !trend && segments.length === 0 && (value === null || value === undefined || value === '—')
@@ -11,6 +11,7 @@ export function MetricKpiCard({ label, value, unit, detail, comparison, context,
       <div className="metric-card__heading">
         {icon && <span className="metric-card__icon" aria-hidden="true">{icon}</span>}
         <div className="metric-card__label">{label}</div>
+        {accessory && <span className="metric-card__accessory" aria-hidden="true">{accessory}</span>}
       </div>
       <div className="metric-card__value-row">
         <div className="metric-card__value">{loading ? '…' : value ?? '—'}{unit && <span className="metric-card__unit">{unit}</span>}</div>
