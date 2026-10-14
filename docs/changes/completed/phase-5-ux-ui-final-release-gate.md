@@ -97,7 +97,7 @@ No backend/API/data/permission/metric/target/score/IA changes. No Dark Mode, new
 - `npm test`: 139 passed; only existing Python dependency deprecation warnings remain.
 - `npm --prefix frontend run test:unit`: 46 Node tests and 89 Vitest tests passed.
 - `npm --prefix frontend run build`: passed; existing >500 kB Ant Design/ECharts warnings remain non-blocking.
-- `npm run test:e2e:gateway`: 9/9 passed, including Gateway workflows, route/redirect/responsive/global-state/focus smoke, URL state, and destructive-confirmation cancel behavior. Final retained artifacts: `e2e-results/gateway-2026-09-24T02-36-00-967Z-93443`.
+- `npm run test:e2e:gateway`: 9/9 passed, including Gateway workflows, route/redirect/responsive/global-state/focus smoke, URL state, and destructive-confirmation cancel behavior. Final retained artifacts: `本机运行产物（临时）`.
 - `npm run check:docs`, `npm run test:docs`, and `git diff --check`: passed.
 - Final QA screenshots cover 1440 and 1920 core pages, 1024 representative pages, and 390 login/analytics/operational fallback. They are retained only in ignored E2E artifacts; no pixel baseline was introduced.
 

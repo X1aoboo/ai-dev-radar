@@ -28,6 +28,6 @@ Project E2E 是 L3：Chromium 浏览器操作 Radar 前端，经 Radar 后端和
 
 `npm run test:e2e:gateway` 只运行 `e2e/specs/gateway.e2e.spec.js`，使用 Gateway 专用的临时数据库和 fixture。`phase5-smoke.e2e.spec.js` 是使用完整种子目录的 UI 回归套件，应通过独立 demo 数据库与 `E2E_RADAR_URL` 单独运行；不要让 Gateway 测试创建的临时活动影响 UI 目录断言。
 
-Playwright 默认使用 Headless Chromium。失败时保留 trace、截图、浏览器 console、Radar 日志和 Mock Gateway 日志到被 Git 忽略的 `e2e-results/`。运行器和门禁使用 Node 子进程编排，不能依赖 Bash、`jq`、`pkill` 或 `killall`。
+Playwright 默认使用 Headless Chromium。失败时保留 trace、截图、浏览器 console、Radar 日志和 Mock Gateway 日志到被 Git 忽略的 `e2e-results/`。该目录是可随时清理的运行产物；正式文档和测试输入不得引用其中的文件。需供测试读取的固定 fixture 应保存在版本管理的稳定目录中，例如当前视觉测试的 `docs/ux/reference-crops/`。运行器和门禁使用 Node 子进程编排，不能依赖 Bash、`jq`、`pkill` 或 `killall`。
 
 L3 通过只证明 Radar 与 Mock Gateway 的项目级 HTTP 链路。L4 的 Radar + 真实 Gateway，以及 Gateway + GDEMate/CodeHub/DTS 内部平台仍需在真实部署环境分别验收；没有内网环境时明确报告 `NOT VERIFIED`。

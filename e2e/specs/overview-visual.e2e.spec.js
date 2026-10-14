@@ -1227,7 +1227,7 @@ test('captures October Month and Statistical Period spacing and pointer/keyboard
 
     viewportEvidence.push({ viewport: viewportName, geometry, screenshots: { headerPath, filterCropPath, monthPointerOpen, monthKeyboardOpen, cyclePointerOpen, cycleKeyboardOpen, monthEscapeClosedPath }, monthPointer, monthKeyboard, monthEscape, cyclePointer, cycleKeyboard })
   }
-  await writeFile(path.join(filterEvidenceDir, 'filter-evidence.json'), JSON.stringify({ userCrop: 'e2e-results/overview-user-revision-2026-10-02-r11/user-filter-overlap.png', interactions: viewportEvidence, requests }, null, 2), 'utf8')
+  await writeFile(path.join(filterEvidenceDir, 'filter-evidence.json'), JSON.stringify({ interactions: viewportEvidence, requests }, null, 2), 'utf8')
 })
 
 test('captures Activity, Capability, and Team Detail candidates and checks Activity filter scope', async ({ page }) => {
@@ -1905,8 +1905,6 @@ test('captures Activity, Capability, and Team Detail candidates and checks Activ
         activityR5FilterChevronEvidence = {
           issueId: 'UI-ACT-18-ACTIVITY-FILTER-CHEVRON-NATIVE-OPEN',
           reference: 'docs/ux/reference-crops/activity-header-filters.png',
-          userCrop: 'e2e-results/overview-user-revision-2026-10-07/activity-followup-2026-10-07/ui-act-18-filter-chevron-no-open.png',
-          userCropRasterPx: [447, 80],
           viewport: viewportName,
           geometry: activityR5ChevronGeometry,
           pointerClicks: activityR5ArrowClickResults,
@@ -3879,7 +3877,7 @@ test('UI-ACT-18 opens Activity Month and Statistical Period pickers visibly by p
     })
   }
 
-  await writeFile(path.join(issueDir, 'interaction-evidence.json'), JSON.stringify({ issueId: 'UI-ACT-18-ACTIVITY-FILTER-CHEVRON-NATIVE-OPEN', reference: 'docs/ux/reference-crops/activity-header-filters.png', userCrop: 'e2e-results/overview-user-revision-2026-10-07/activity-followup-2026-10-07/ui-act-18-filter-chevron-no-open.png', viewportEvidence }, null, 2), 'utf8')
+  await writeFile(path.join(issueDir, 'interaction-evidence.json'), JSON.stringify({ issueId: 'UI-ACT-18-ACTIVITY-FILTER-CHEVRON-NATIVE-OPEN', reference: 'docs/ux/reference-crops/activity-header-filters.png', viewportEvidence }, null, 2), 'utf8')
 })
 
 test('UI-ACT-19 opens Statistical Period from its visible arrow without moving the filter card', async ({ page }) => {
