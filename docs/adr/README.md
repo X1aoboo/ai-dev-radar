@@ -7,7 +7,7 @@
 | [0001](0001-store-raw-counts-compute-rates-in-dashboard.md) | 原始数与率计算 | 未显式记录 |
 | [0002](0002-collector-interface-reserved-manual-only-mode.md) | 预留采集及补录 | Superseded by 0003 |
 | [0003](0003-source-data-first-metrics.md) | 源数据优先 | 未显式记录 |
-| [0004](0004-staged-import-and-field-merge.md) | 临时态与字段合并 | 未显式记录 |
+| [0004](0004-staged-import-and-field-merge.md) | 临时态与字段合并 | 部分被 0012 取代（文件导入覆盖模式） |
 | [0005](0005-team-owned-product-hierarchy.md) | 团队产品层级 | 未显式记录 |
 | [0006](0006-monthly-maturity-assessment.md) | 月度成熟度 | Accepted，原文记录 2026-09-15 |
 | [0007](0007-business-source-navigation.md) | 数据管理按业务数据源分类 | Accepted |
@@ -15,7 +15,10 @@
 | [0009](0009-versioned-ai-engineering-data-gateway-protocol.md) | AI 研发数据网关采用实现中立的版本化能力协议 | Accepted |
 | [0010](0010-database-managed-gateway-runtime.md) | 数据库托管 Gateway 运行配置、健康检查与项目 E2E 门禁 | Accepted |
 | [0011](0011-ai-review-opinion-source-and-effectiveness-metrics.md) | AI 检视意见本地源记录与有效性指标 | Accepted |
-| [0011](0011-ai-review-opinion-source-and-effectiveness-metrics.md) | AI 检视意见本地源记录与有效性指标 | Accepted |
+| [0012](0012-ir-excel-import-upsert-and-field-registry.md) | IR Excel 导入采用显式更新模式与字段注册表 | Accepted，2026-10-20 |
+| [0013](0013-readonly-metric-dictionary.md) | 指标字典只读，指标口径由代码与种子定义 | Accepted，2026-10-20 |
+| [0014](0014-team-personnel-and-source-mapping-boundary.md) | 团队人员聚合与产品版本、数据源映射解耦 | Accepted，2026-10-20 |
+| [0015](0015-collection-scope-and-admin-context-boundaries.md) | 采集范围从产品/PI 派生，管理页按上下文投影解耦 | Accepted，2026-10-20 |
 
 历史简版正文保留，0006 的中文标题视为模板等价章节。缺失状态和历史原因保持未知，不补造接受记录。校验器只为既有简版文件保留兼容，新文件使用以下格式。
 

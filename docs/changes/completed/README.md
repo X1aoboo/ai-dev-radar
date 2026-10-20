@@ -1,5 +1,11 @@
 # Completed Changes
 
+- [管理页 UI 与上下文边界重构](admin-management-pages.md)：重构数据网关、数据采集、用户与权限三页，新增 Gateway status/Team options 投影，采集范围改为产品/PI 派生；Gateway E2E 通过，全量 gate 的既有 Overview 视觉边界另行记录。
+- [产品、PI 与迭代层级重构](product-pi-hierarchy.md)：产品版本页改为全宽团队 → 产品 → PI → 迭代层级工作台，PI 对应 IR PI 列，迭代可选；前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。
+- [团队人员 Excel 导入导出](team-personnel-excel-io.md)：团队人员页增加模板下载、带预览确认的批量导入和按可见范围导出；后端/前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。
+- [团队人员页面重构](team-personnel-refactor.md)：团队页改为全宽人员目录，角色统一为 SA/SE/MDE/开发/测试，支持行内编辑与紧凑弹窗；移除产品版本/代码仓/映射字段，`source_mapping` 保留为后台集成细节；后端/前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。
+- [指标字典只读重构](metric-dictionary-readonly.md)：把 `/settings/metrics` 从指标配置页改为全宽只读指标字典，删除活动/指标写接口与源数据规则引擎；后端/前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。
+- [IR 数据工作台与 Excel 导入重构](ir-data-workbench-refactor.md)：按用户 21 列模板重构 IR 字段、字段注册表、upsert/fill_empty 导入、全宽工作台、内联编辑与批量保存；IR 范围内自动化/构建/浏览器/文档检查通过，全量 gate 的 Overview 视觉边界另行记录。
 - [UX/UI 视觉收敛与验收基线](ux-visual-convergence.md)：四页整页视觉结果均由用户确认，关键 Issue 两档独立复验关闭，完整 `npm run gate` 通过。用户将真实业务数据验证明确延期；该项记录为未验证，不作为本次视觉验收的 PASS。
 - [Visual Convergence Round 2 — Geometry & Fidelity Lock](visual-convergence-round-2.md)：完成总览、活动、能力与团队下钻的几何/视觉收敛，通过逐页 Macro/Visual Gate、Global Consistency、浏览器与项目质量 Gate。
 - [Visual + UX Convergence](visual-ux-convergence.md)：完成四页逐页视觉收敛、独立评审与全局一致性验收，校准临时 IR KPI 及其文档，并保留一项可接受的基准标签差异。

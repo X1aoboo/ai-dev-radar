@@ -57,7 +57,7 @@ Team Drill-down 未选版本时，IR KPI 与趋势基准使用相同的有值团
 
 ## 数据与实现映射
 
-目录 Activity/Metric、FactRecord、Team、ProductVersion/Iteration 支持事实查询；MaturityRecord 独立支持评估。
+目录 Activity/Metric、FactRecord、Team、ProductVersion/Iteration 支持事实查询；目录由代码/种子维护，指标字典只读展示，不从 UI 配置；MaturityRecord 独立支持评估。
 
 本地演示种子按执行时的 Asia/Shanghai 当前月生成近六个月事实与独立的成熟度模拟评估，覆盖四个团队及目录中全部活动和指标；当前月的事实落在执行当天。演示评估只用于界面预览，不由事实指标推导，也不改变正式评估的人工维护规则。跨入新月份后须重跑种子才覆盖新的默认月份；该命令会重建业务数据。
 
@@ -65,6 +65,7 @@ Team Drill-down 未选版本时，IR KPI 与趋势基准使用相同的有值团
 |---|---|---|
 | 研发总览临时 IR KPI | `backend/app/data_api.py` `/api/data-metrics/overview`、`data_management.py`，`frontend/src/overview/irKpiData.js` | `test_data_management.py`、`irKpiData.test.js`、Overview 浏览器证据 |
 | 事实计算 | `backend/app/compute.py`、`api.py` `/api/compute` | `test_compute.py`、`test_compute_api.py` |
+| 指标字典 | `backend/app/seed.py` `/api/catalog`、`frontend/src/dataManagement/metrics/` | `dataManagementRendering.test.jsx` |
 | 成熟度 | `backend/app/maturity.py`、`api.py` `/api/maturity/*` | `test_maturity.py` |
 | 页面 | `frontend/src/analytics/`、`overview/`、`drilldown/`、`metricDetail/`、`dataManagement/` | 对应逻辑及渲染测试 |
 

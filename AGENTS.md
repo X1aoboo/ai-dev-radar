@@ -4,6 +4,10 @@
 
 设计或实现前必须读取 `docs/index.md`，再加载相关业务、架构、规范和 ADR，核对关键代码。`docs/` 保存设计意图与结构，代码保存实现事实；冲突应依据需求与证据解决。AGENTS 只保存规则和导航，详细流程见 `docs/agents/design-maintenance.md`。
 
+### Collaboration
+
+所有功能开发、页面重构、交互改版或其他行为/设计变动，先提出方案/原型，与用户对齐并得到确认后再改代码；不要先实现再解释。
+
 ### Documentation Impact
 
 每次代码改动实施前及结束前都评估 Business、Architecture、Standards、ADR、Change Design 的影响。每次 Plan 必须给出各项操作、路径和原因；无设计事实变化时允许不改文档，最终明确 `Documentation Impact: None` 与理由。

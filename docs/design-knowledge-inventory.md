@@ -20,8 +20,8 @@
 | 边界 | 实现入口 | 责任 |
 |---|---|---|
 | 页面与导航 | `frontend/src/App.jsx`、`routing/` | 登录、角色导航、总览、下钻、工作台、系统管理 |
-| 事实 API | `backend/app/api.py` | 认证、目录、事实、成熟度及旧看板计算 |
-| 源数据 API | `backend/app/data_api.py` | 组织层级、IR、导入批次、源数据指标 |
+| 事实 API | `backend/app/api.py` | 认证、只读指标目录、事实、成熟度及旧看板计算 |
+| 源数据 API | `backend/app/data_api.py` | 组织层级、IR、导入批次、总览 IR 聚合 |
 | 计算 | `compute.py`、`maturity.py`、`data_management.py` | 事实聚合、Decimal 评估、源数据校验与合并 |
 | 存储与启动 | `models.py`、`db.py`、`migrations.py`、`main.py` | ORM、session、增量 schema、空目录播种、调度及 SPA 托管 |
 | 采集 | `collectors.py`、`scheduler.py` | 预留两类接口；定时任务仍走事实采集注册表 |
@@ -32,7 +32,7 @@
 
 ## Data Stores
 
-SQLite 为默认数据库；容器通过 `/data` 卷持久化。主要实体包括团队、人员、产品、版本、迭代、活动、指标、事实记录、用户、IR、导入批次与行、源数据指标定义、审计日志和成熟度记录。成熟度独立存储；看板事实和 IR 指标尚未统一数据链路。
+SQLite 为默认数据库；容器通过 `/data` 卷持久化。主要实体包括团队、人员、产品、版本、迭代、活动、指标、事实记录、用户、IR、导入批次与行、审计日志和成熟度记录。源数据指标规则表已从模型移除。成熟度独立存储；看板事实和 IR 指标尚未统一数据链路。
 
 ## Engineering Rules
 

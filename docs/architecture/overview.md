@@ -39,7 +39,7 @@ flowchart LR
 | `auth.py` | session、密码及角色/团队权限 | 后端授权，每次加载用户 |
 | `api.py` | 认证、目录、事实、成熟度 | 调用纯计算和 ORM |
 | `schemas.py` | HTTP 请求/响应 Pydantic DTO | `ComputePointOut.fact_count` 标出各团队周期事实数，响应用它区分缺失与记录值 0 |
-| `data_api.py` | 组织、IR、批次、源数据指标、本地 AI MR 检视意见 | 复用 data_management 规则；意见 API 执行团队权限 |
+| `data_api.py` | 组织、IR、批次、本地 AI MR 检视意见 | 复用 data_management 规则；意见 API 执行团队权限 |
 | `gateway_api.py` / `gateway_config.py` | 管理 Active/Draft、实时激活、配置审计和 CollectionRun runtime snapshot | admin-only；Token 不进入读取响应、审计、run 或日志 |
 | `gateway_health.py` | readiness 状态转换、最新状态持久化、stale 判定及立即/周期检查 | 复用 APScheduler；每 30 秒检查 Active；不保留时序 |
 | `source_collection.py` / `collector_gateway.py` | IR 周期窗口、按团队运行、显式 runtime snapshot 的 Gateway HTTPS 调用及暂存 | 同一 CollectionRun 所有团队共用一份快照；不自动重试 |
@@ -87,7 +87,7 @@ Overview 的月度/周期 KPI 卡使用 `MetricKpiCard`；核心趋势、研发�
 
 ## 数据流和模型
 
-事实链路：FactRecord → 当前有效事实选择 → 日/周/月或迭代切片 → 团队序列、`company_average` 和领域合并值。日周期按 `Asia/Shanghai` 自然日生成，中间无事实日期保留为空周期。IR 链路：页面/文件或 Gateway → 共享行校验 → 带团队的临时批次 → 人工确认事务与审计 → 正式 IR → `/api/data-metrics/compute` 或独立的只读 `/api/data-metrics/overview` 聚合。后者只供总览临时 KPI 使用，不改变旧 `/api/compute` 的 FactRecord 合同，也不向事实页面填补数据。AI MR 检视意见链路：本地 `AIReviewOpinion` source_id/team/date/Boolean 记录 → 按团队和日期聚为临时日事实 → `/api/compute` 复用既有团队均值、合并结果和空值语义；源 API 与指标计算不依赖 Gateway，Gateway 代码检视采集仍为 planned。成熟度链路：团队月度维护 → MaturityRecord → Decimal 领域聚合；成熟度不从 IR、FactRecord 或意见源推导。
+事实链路：FactRecord → 当前有效事实选择 → 日/周/月或迭代切片 → 团队序列、`company_average` 和领域合并值。日周期按 `Asia/Shanghai` 自然日生成，中间无事实日期保留为空周期。IR 链路：页面/文件或 Gateway → 共享行校验 → 带团队的临时批次 → 人工确认事务与审计 → 正式 IR → 只读的 `/api/data-metrics/overview` 聚合。后者只供总览临时 KPI 使用，不改变旧 `/api/compute` 的 FactRecord 合同，也不向事实页面填补数据。看板指标目录：`seed.py` CATALOG → 只读 `/api/catalog` → 指标字典展示；指标计算仍由 `/api/compute` 基于 FactRecord 分子/分母完成。源数据指标规则与结果查询原型不再提供。IR Gateway 采集范围由团队下的 Product/ProductVersion（PI）派生，不再读取 `Team.source_mapping.product_versions`；数据采集页只读取 `/api/gateway/status` 就绪投影，不复制 Gateway 配置。AI MR 检视意见链路：本地 `AIReviewOpinion` source_id/team/date/Boolean 记录 → 按团队和日期聚为临时日事实 → `/api/compute` 复用既有团队均值、合并结果和空值语义；源 API 与指标计算不依赖 Gateway，Gateway 代码检视采集仍为 planned。成熟度链路：团队月度维护 → MaturityRecord → Decimal 领域聚合；成熟度不从 IR、FactRecord 或意见源推导。
 
 `seed.py` 在空库初始化或显式重建时以 Asia/Shanghai 的执行日期为锚，写入近六个月的演示版本/迭代、全部目录事实、每月独立模拟成熟度评估及正式 IR 示例。关键活动每个团队/指标/迭代只写一条事实；通用能力覆盖六个月的周采样及近三十天的日采样；布尔状态按月写入。`npm run seed` 与 `npm run dev` 均从项目根目录解析默认 SQLite 路径，并遵循显式 `DATABASE_URL`。生成过程使用固定随机种子，同一日期重跑结果稳定；业务数据清空重建仍是破坏性操作，测试使用隔离数据库。
 
