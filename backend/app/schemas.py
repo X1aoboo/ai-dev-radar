@@ -37,6 +37,7 @@ class TeamOut(BaseModel):
 
 
 class SourceMappingIn(BaseModel):
+    """团队数据源映射的结构化持久化输入；团队人员页面不编辑该字段。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -46,44 +47,19 @@ class SourceMappingIn(BaseModel):
 
 class TeamIn(BaseModel):
     name: str = Field(min_length=1, max_length=100)
-    source_mapping: SourceMappingIn
+    source_mapping: SourceMappingIn = Field(default_factory=SourceMappingIn)
+
+
+class TeamOptionOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
 
 
 class TeamUpdateIn(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=100)
     source_mapping: SourceMappingIn | None = None
-
-
-class ActivityIn(BaseModel):
-    code: str = Field(min_length=1, max_length=20, pattern=r"^[a-z0-9-]+$")
-    name: str = Field(min_length=1, max_length=100)
-    kind: ActivityKind
-
-
-class ActivityUpdateIn(BaseModel):
-    code: str | None = Field(default=None, min_length=1, max_length=20, pattern=r"^[a-z0-9-]+$")
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    kind: ActivityKind | None = None
-
-
-class MetricIn(BaseModel):
-    activity_id: int = Field(ge=1)
-    code: str = Field(min_length=1, max_length=40, pattern=r"^[a-z0-9-]+$")
-    name: str = Field(min_length=1, max_length=100)
-    type: MetricType
-    numerator_semantic: str = Field(min_length=1, max_length=100)
-    denominator_semantic: str | None = Field(default=None, max_length=100)
-    collect_method: Literal[CollectMethod.MANUAL_ONLY] = CollectMethod.MANUAL_ONLY
-
-
-class MetricUpdateIn(BaseModel):
-    activity_id: int | None = Field(default=None, ge=1)
-    code: str | None = Field(default=None, min_length=1, max_length=40, pattern=r"^[a-z0-9-]+$")
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    type: MetricType | None = None
-    numerator_semantic: str | None = Field(default=None, min_length=1, max_length=100)
-    denominator_semantic: str | None = Field(default=None, max_length=100)
-    collect_method: Literal[CollectMethod.MANUAL_ONLY] | None = None
 
 
 class UserIn(BaseModel):
@@ -697,62 +673,6 @@ class GatewayConfigAuditOut(BaseModel):
     changes: dict[str, Any]
     result_status: str | None
     created_at: datetime
-
-
-class DataMetricDefinitionIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    domain: str = Field(min_length=1, max_length=20)
-    code: str = Field(min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
-    name: str = Field(min_length=1, max_length=100)
-    metric_type: Literal["penetration", "efficiency", "count", "ratio"]
-    activity_code: str | None = Field(default=None, max_length=30)
-    numerator_field: str = Field(min_length=1, max_length=80)
-    denominator_field: str | None = Field(default=None, max_length=80)
-    filter_definition: dict[str, Any] = Field(default_factory=dict)
-    active: bool = True
-
-
-class DataMetricDefinitionUpdateIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    domain: str | None = Field(default=None, min_length=1, max_length=20)
-    code: str | None = Field(default=None, min_length=1, max_length=80, pattern=r"^[a-z0-9-]+$")
-    name: str | None = Field(default=None, min_length=1, max_length=100)
-    metric_type: Literal["penetration", "efficiency", "count", "ratio"] | None = None
-    activity_code: str | None = Field(default=None, max_length=30)
-    numerator_field: str | None = Field(default=None, min_length=1, max_length=80)
-    denominator_field: str | None = Field(default=None, max_length=80)
-    filter_definition: dict[str, Any] | None = None
-    active: bool | None = None
-
-
-class DataMetricDefinitionOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: int
-    domain: str
-    code: str
-    name: str
-    metric_type: str
-    activity_code: str | None
-    numerator_field: str
-    denominator_field: str | None
-    filter_definition: dict[str, Any]
-    active: bool
-    created_at: datetime
-    updated_at: datetime
-
-
-class DataMetricComputeOut(BaseModel):
-    metric_code: str
-    metric_name: str
-    domain: str
-    numerator: float
-    denominator: float
-    value: float | None
-    record_count: int
-    filters: dict[str, Any]
 
 
 class IROverviewMetricPointOut(BaseModel):

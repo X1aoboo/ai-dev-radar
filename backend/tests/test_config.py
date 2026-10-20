@@ -36,41 +36,6 @@ def test_admin_can_create_a_team_with_structured_source_mapping(client):
     assert client.delete(f"/api/teams/{response.json()['id']}").status_code == 204
 
 
-def test_custom_catalog_entries_are_available_to_compute_without_code_changes(client):
-    login(client, "admin")
-
-    activity = client.post(
-        "/api/activities",
-        json={"code": "custom-review", "name": "自定义检视", "kind": "general"},
-    )
-    assert activity.status_code == 201
-
-    metric = client.post(
-        "/api/metrics",
-        json={
-            "activity_id": activity.json()["id"],
-            "code": "custom-review-rate",
-            "name": "自定义检视率",
-            "type": "ratio",
-            "numerator_semantic": "已完成数",
-            "denominator_semantic": "总数",
-            "collect_method": "manual_only",
-        },
-    )
-    assert metric.status_code == 201
-
-    catalog = client.get("/api/catalog")
-    assert catalog.status_code == 200
-    configured_activity = next(item for item in catalog.json() if item["code"] == "custom-review")
-    assert [item["code"] for item in configured_activity["metrics"]] == ["custom-review-rate"]
-
-    compute = client.get(f"/api/compute?metric_id={metric.json()['id']}")
-    assert compute.status_code == 200
-    assert compute.json()["activity_id"] == activity.json()["id"]
-    assert client.delete(f"/api/metrics/{metric.json()['id']}").status_code == 204
-    assert client.delete(f"/api/activities/{activity.json()['id']}").status_code == 204
-
-
 @pytest.mark.parametrize("username", ["viewer", "maintainer.团队A"])
 @pytest.mark.parametrize(
     ("method", "path", "json"),
@@ -78,22 +43,6 @@ def test_custom_catalog_entries_are_available_to_compute_without_code_changes(cl
         ("post", "/api/teams", {"name": "禁止", "source_mapping": {}}),
         ("patch", "/api/teams/1", {"name": "禁止"}),
         ("delete", "/api/teams/1", None),
-        ("post", "/api/activities", {"code": "forbidden", "name": "禁止", "kind": "general"}),
-        ("patch", "/api/activities/1", {"name": "禁止"}),
-        ("delete", "/api/activities/1", None),
-        (
-            "post",
-            "/api/metrics",
-            {
-                "activity_id": 1,
-                "code": "forbidden-rate",
-                "name": "禁止",
-                "type": "ratio",
-                "numerator_semantic": "分子",
-            },
-        ),
-        ("patch", "/api/metrics/1", {"name": "禁止"}),
-        ("delete", "/api/metrics/1", None),
         ("post", "/api/users", {"username": "forbidden", "password": "password-1", "role": "viewer"}),
         ("patch", "/api/users/1", {"role": "viewer"}),
         ("delete", "/api/users/1", None),
@@ -123,26 +72,6 @@ def test_admin_can_edit_and_delete_unreferenced_configuration(client):
     }
     assert client.delete(f"/api/teams/{team.json()['id']}").status_code == 204
 
-    activity = client.post(
-        "/api/activities",
-        json={"code": "temporary", "name": "临时活动", "kind": "general"},
-    )
-    assert activity.status_code == 201
-    metric = client.post(
-        "/api/metrics",
-        json={
-            "activity_id": activity.json()["id"],
-            "code": "temporary-count",
-            "name": "临时数量",
-            "type": "count",
-            "numerator_semantic": "数量",
-        },
-    )
-    assert metric.status_code == 201
-    assert client.patch(f"/api/metrics/{metric.json()['id']}", json={"name": "已编辑数量"}).status_code == 200
-    assert client.delete(f"/api/metrics/{metric.json()['id']}").status_code == 204
-    assert client.delete(f"/api/activities/{activity.json()['id']}").status_code == 204
-
     team_id = client.get("/api/teams").json()[0]["id"]
     created_user = client.post(
         "/api/users",
@@ -169,20 +98,6 @@ def test_referenced_data_and_last_admin_are_not_deletable_or_demotable(client):
 
     teams = client.get("/api/teams").json()
     assert client.delete(f"/api/teams/{teams[0]['id']}").status_code == 409
-    catalog = client.get("/api/catalog").json()
-    assert client.delete(f"/api/metrics/{catalog[0]['metrics'][0]['id']}").status_code == 409
-
-    assert client.patch(f"/api/activities/{catalog[0]['id']}", json={"kind": "general"}).status_code == 409
-    destination = client.post(
-        "/api/activities",
-        json={"code": "temp-destination", "name": "临时目标", "kind": "general"},
-    )
-    assert destination.status_code == 201
-    assert client.patch(
-        f"/api/metrics/{catalog[0]['metrics'][0]['id']}",
-        json={"activity_id": destination.json()["id"]},
-    ).status_code == 409
-    assert client.delete(f"/api/activities/{destination.json()['id']}").status_code == 204
 
     admin = next(user for user in client.get("/api/auth/users").json() if user["username"] == "admin")
     assert client.delete(f"/api/users/{admin['id']}").status_code == 409
@@ -206,20 +121,50 @@ def test_maintainer_requires_a_bound_existing_team(client):
     assert unknown_team.status_code == 404
 
 
-def test_catalog_configuration_cannot_enable_auto_collection_in_first_version(client):
+
+
+def test_metric_catalog_is_read_only(client):
     login(client, "admin")
 
-    activity = client.get("/api/catalog").json()[0]
-    response = client.post(
+    catalog = client.get("/api/catalog")
+    assert catalog.status_code == 200
+    assert catalog.json()
+
+    assert client.post(
+        "/api/activities",
+        json={"code": "removed", "name": "已移除", "kind": "general"},
+    ).status_code in {404, 405}
+    assert client.post(
         "/api/metrics",
         json={
-            "activity_id": activity["id"],
-            "code": "unsupported-auto",
-            "name": "不支持自动采集",
+            "activity_id": 1,
+            "code": "removed",
+            "name": "已移除",
             "type": "count",
             "numerator_semantic": "数量",
-            "collect_method": "auto",
         },
-    )
+    ).status_code in {404, 405}
+    assert client.get("/api/data-metrics").status_code == 404
+    assert client.post("/api/data-metrics", json={}).status_code in {404, 405}
+    assert client.get("/api/data-metrics/compute", params={"metric_code": "ir-ai-penetration"}).status_code == 404
 
-    assert response.status_code == 422
+
+def test_team_can_be_created_with_name_only(client):
+    login(client, "admin")
+
+    response = client.post("/api/teams", json={"name": "仅名称团队"})
+    assert response.status_code == 201, response.text
+    assert response.json()["name"] == "仅名称团队"
+    assert response.json()["source_mapping"] == {"product_versions": [], "repos": []}
+    assert client.delete(f"/api/teams/{response.json()['id']}").status_code == 204
+
+
+def test_team_options_is_lightweight_and_does_not_expose_source_mapping(client):
+    login(client, "admin")
+
+    response = client.get("/api/teams/options")
+    assert response.status_code == 200
+    options = response.json()
+    assert options
+    assert all(set(item) == {"id", "name"} for item in options)
+    assert "source_mapping" not in response.text

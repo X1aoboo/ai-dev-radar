@@ -470,31 +470,6 @@ class GatewayConfigAudit(Base):
     )
 
 
-class DataMetricDefinition(Base):
-    """源数据指标规则；复杂规则仍可由计算实现扩展。"""
-
-    __tablename__ = "data_metric_definitions"
-
-    id: Mapped[int] = mapped_column(primary_key=True)
-    domain: Mapped[str] = mapped_column(String(20))
-    code: Mapped[str] = mapped_column(String(80), unique=True)
-    name: Mapped[str] = mapped_column(String(100))
-    metric_type: Mapped[str] = mapped_column(String(20))
-    activity_code: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    numerator_field: Mapped[str] = mapped_column(String(80))
-    denominator_field: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    filter_definition: Mapped[dict] = mapped_column(JSON, default=dict)
-    active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime,
-        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
-    )
-
-
 class AuditLog(Base):
     """正式源数据的字段变更记录。"""
 

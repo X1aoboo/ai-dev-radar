@@ -143,12 +143,6 @@ def test_seed_populates_all_defined_metric_views(authenticated_client):
             assert overview.status_code == 200
             assert overview.json()["assessed_cell_count"] == 4 * count
 
-    for metric in authenticated_client.get("/api/data-metrics?domain=ir").json():
-        computed = authenticated_client.get("/api/data-metrics/compute", params={"metric_code": metric["code"]})
-        assert computed.status_code == 200
-        assert computed.json()["record_count"] == 12
-        assert computed.json()["value"] is not None
-
 
 def test_seed_populates_current_day_week_and_iteration_views(authenticated_client):
     today = datetime.now(ZoneInfo("Asia/Shanghai")).date()

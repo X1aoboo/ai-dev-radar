@@ -10,8 +10,6 @@ import pytest
 from sqlalchemy import delete
 
 from app.db import SessionLocal
-from app.data_management import build_ir_overview_series
-from app.models import AuditLog, DataMetricDefinition, IRRequirement, ImportBatch, ImportRow, Iteration, Product, ProductVersion, TeamMember
 from app.data_management import _xlsx_rows, build_ir_overview_series, normalize_ir_row
 from app.ir_fields import IR_TEMPLATE_HEADERS
 from app.models import AuditLog, IRRequirement, ImportBatch, ImportRow, Iteration, Product, ProductVersion, TeamMember
@@ -21,7 +19,6 @@ TEST_PRODUCT_IDS = set()
 TEST_VERSION_IDS = set()
 TEST_ITERATION_IDS = set()
 TEST_MEMBER_IDS = set()
-TEST_METRIC_IDS = set()
 
 
 @pytest.fixture(autouse=True)
@@ -45,14 +42,11 @@ def clean_data_management_test_rows():
             db.execute(delete(Product).where(Product.id.in_(product_ids)))
         if TEST_MEMBER_IDS:
             db.execute(delete(TeamMember).where(TeamMember.id.in_(TEST_MEMBER_IDS)))
-        if TEST_METRIC_IDS:
-            db.execute(delete(DataMetricDefinition).where(DataMetricDefinition.id.in_(TEST_METRIC_IDS)))
         db.commit()
         TEST_PRODUCT_IDS.clear()
         TEST_VERSION_IDS.clear()
         TEST_ITERATION_IDS.clear()
         TEST_MEMBER_IDS.clear()
-        TEST_METRIC_IDS.clear()
 
 
 def login(client, username="admin"):
@@ -144,7 +138,6 @@ def create_ir_context(client, team_id=1):
             "team_id": team_id,
             "employee_id": f"E{team_id:03d}-{suffix}",
             "name": f"成员{team_id}",
-            "role": "研发工程师",
             "role": "开发",
         },
     )
@@ -351,28 +344,6 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
     assert filtered.status_code == 200
     assert filtered.json()["total"] == 1
 
-    metrics = client.get("/api/data-metrics")
-    assert metrics.status_code == 200
-    assert {item["code"] for item in metrics.json()} >= {
-        "ir-ai-penetration", "ir-sa-efficiency", "ir-se-efficiency",
-    }
-
-    penetration = client.get(
-        "/api/data-metrics/compute",
-        params={"metric_code": "ir-ai-penetration", "team_id": 1, "business_module": "CNAE-TEST", "completed_from": "2026-08-01", "completed_to": "2026-08-31"},
-    )
-    assert penetration.status_code == 200
-    assert penetration.json()["numerator"] == 1
-    assert penetration.json()["denominator"] == 1
-    assert penetration.json()["value"] == 1
-
-    efficiency = client.get(
-        "/api/data-metrics/compute",
-        params={"metric_code": "ir-sa-efficiency", "team_id": 1, "business_module": "CNAE-TEST", "completed_from": "2026-08-01", "completed_to": "2026-08-31"},
-    )
-    assert efficiency.status_code == 200
-    assert efficiency.json()["value"] == 1
-
     overview = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-09"})
     assert overview.status_code == 200, overview.text
     assert overview.json()["period_ids"] == ["2026-08", "2026-09"]
@@ -472,25 +443,6 @@ def test_admin_can_edit_managed_hierarchy_and_metric_rules(client):
     assert edited_iteration.status_code == 200
     assert edited_iteration.json()["end_date"] == "2026-09-01"
 
-    metric = client.post(
-        "/api/data-metrics",
-        json={
-            "domain": "ir",
-            "code": "ir-module-count",
-            "name": "IR模块数量",
-            "metric_type": "count",
-            "numerator_field": "actual_workload",
-        },
-    )
-    assert metric.status_code == 201, metric.text
-    TEST_METRIC_IDS.add(metric.json()["id"])
-    edited_metric = client.patch(
-        f"/api/data-metrics/{metric.json()['id']}",
-        json={"name": "IR实际工作量"},
-    )
-    assert edited_metric.status_code == 200
-    assert edited_metric.json()["name"] == "IR实际工作量"
-
 
 def test_non_admin_cannot_change_hierarchy_or_metric_rules(client):
     login(client)
@@ -501,10 +453,6 @@ def test_non_admin_cannot_change_hierarchy_or_metric_rules(client):
     assert client.patch(f"/api/products/{product['id']}", json={"name": "不应修改"}).status_code == 403
     assert client.patch(f"/api/versions/{version['id']}", json={"name": "不应修改"}).status_code == 403
     assert client.patch(f"/api/iterations/{iteration['id']}", json={"name": "不应修改"}).status_code == 403
-    assert client.post(
-        "/api/data-metrics",
-        json={"domain": "ir", "code": "not-allowed", "name": "禁止", "metric_type": "count", "numerator_field": "actual_workload"},
-    ).status_code == 403
 
 
 def test_legacy_product_versions_schema_gets_a_nullable_product_link():

@@ -33,9 +33,7 @@ from .models import (
     UserRole,
 )
 from .schemas import (
-    ActivityIn,
     ActivityOut,
-    ActivityUpdateIn,
     AuthUserOut,
     ComputeOut,
     FactRecordOut,
@@ -48,10 +46,9 @@ from .schemas import (
     MaturityOverviewOut,
     MaturityRecordOut,
     MaturitySaveOut,
-    MetricIn,
     MetricOut,
-    MetricUpdateIn,
     TeamIn,
+    TeamOptionOut,
     TeamOut,
     TeamUpdateIn,
     UserIn,
@@ -194,111 +191,6 @@ def delete_team(
     if has_facts or has_maintainers:
         raise HTTPException(status_code=409, detail="team is referenced by facts or maintainers")
     db.delete(team)
-    db.commit()
-
-
-@router.post("/activities", response_model=ActivityOut, status_code=201)
-def create_activity(
-    payload: ActivityIn,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    sort_order = int(db.scalar(select(func.max(Activity.sort_order))) or -1) + 1
-    activity = Activity(**payload.model_dump(), sort_order=sort_order)
-    db.add(activity)
-    return _commit(db, activity)
-
-
-@router.patch("/activities/{activity_id}", response_model=ActivityOut)
-def update_activity(
-    activity_id: int,
-    payload: ActivityUpdateIn,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    activity = _get_or_404(db, Activity, activity_id, "activity not found")
-    changes = payload.model_dump(exclude_unset=True)
-    if "kind" in changes and changes["kind"] != activity.kind:
-        fact_count = db.scalar(
-            select(func.count())
-            .select_from(FactRecord)
-            .join(Metric)
-            .where(Metric.activity_id == activity.id)
-        )
-        if fact_count:
-            raise HTTPException(status_code=409, detail="cannot change an activity kind with facts")
-    for field, value in changes.items():
-        setattr(activity, field, value)
-    return _commit(db, activity)
-
-
-@router.delete("/activities/{activity_id}", status_code=204)
-def delete_activity(
-    activity_id: int,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    activity = _get_or_404(db, Activity, activity_id, "activity not found")
-    metric_count = db.scalar(
-        select(func.count()).select_from(Metric).where(Metric.activity_id == activity.id)
-    )
-    if metric_count:
-        raise HTTPException(status_code=409, detail="activity still has metrics")
-    db.delete(activity)
-    db.commit()
-
-
-@router.post("/metrics", response_model=MetricOut, status_code=201)
-def create_metric(
-    payload: MetricIn,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    _get_or_404(db, Activity, payload.activity_id, "activity not found")
-    sort_order = int(
-        db.scalar(select(func.max(Metric.sort_order)).where(Metric.activity_id == payload.activity_id))
-        or -1
-    ) + 1
-    metric = Metric(**payload.model_dump(), sort_order=sort_order)
-    db.add(metric)
-    return _commit(db, metric)
-
-
-@router.patch("/metrics/{metric_id}", response_model=MetricOut)
-def update_metric(
-    metric_id: int,
-    payload: MetricUpdateIn,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    metric = _get_or_404(db, Metric, metric_id, "metric not found")
-    changes = payload.model_dump(exclude_unset=True)
-    if "activity_id" in changes:
-        _get_or_404(db, Activity, changes["activity_id"], "activity not found")
-        if changes["activity_id"] != metric.activity_id:
-            fact_count = db.scalar(
-                select(func.count()).select_from(FactRecord).where(FactRecord.metric_id == metric.id)
-            )
-            if fact_count:
-                raise HTTPException(status_code=409, detail="cannot move a metric with facts")
-    for field, value in changes.items():
-        setattr(metric, field, value)
-    return _commit(db, metric)
-
-
-@router.delete("/metrics/{metric_id}", status_code=204)
-def delete_metric(
-    metric_id: int,
-    _current_user: User = Depends(require_roles(UserRole.ADMIN)),
-    db: Session = Depends(get_db),
-):
-    metric = _get_or_404(db, Metric, metric_id, "metric not found")
-    fact_count = db.scalar(
-        select(func.count()).select_from(FactRecord).where(FactRecord.metric_id == metric.id)
-    )
-    if fact_count:
-        raise HTTPException(status_code=409, detail="metric is referenced by facts")
-    db.delete(metric)
     db.commit()
 
 

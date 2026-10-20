@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 from .auth import get_current_user, require_roles
 from .data_management import (
     IR_FIELDS,
-    calculate_data_metric,
     build_ir_overview_series,
     derive_ai_assisted,
     effective_actual_workload,
@@ -49,7 +48,6 @@ from .ir_template import build_ir_import_template
 from .models import (
     AuditLog,
     AIReviewOpinion,
-    DataMetricDefinition,
     IRRequirement,
     ImportBatch,
     ImportRow,
@@ -67,10 +65,6 @@ from .schemas import (
     AIReviewOpinionIn,
     AIReviewOpinionListOut,
     AIReviewOpinionOut,
-    DataMetricComputeOut,
-    DataMetricDefinitionIn,
-    DataMetricDefinitionOut,
-    DataMetricDefinitionUpdateIn,
     IRBulkUpdateIn,
     IRListOut,
     IRRequirementIn,
@@ -1497,80 +1491,6 @@ def confirm_ir_import(
     )
 
 
-def _metric_payload(metric: DataMetricDefinition) -> DataMetricDefinitionOut:
-    return DataMetricDefinitionOut(
-        id=metric.id,
-        domain=metric.domain,
-        code=metric.code,
-        name=metric.name,
-        metric_type=metric.metric_type,
-        activity_code=metric.activity_code,
-        numerator_field=metric.numerator_field,
-        denominator_field=metric.denominator_field,
-        filter_definition=metric.filter_definition or {},
-        active=metric.active,
-        created_at=metric.created_at,
-        updated_at=metric.updated_at,
-    )
-
-
-@router.get("/data-metrics", response_model=list[DataMetricDefinitionOut])
-def list_data_metrics(
-    domain: str | None = None,
-    _current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    stmt = select(DataMetricDefinition).order_by(DataMetricDefinition.domain, DataMetricDefinition.id)
-    if domain is not None:
-        stmt = stmt.where(DataMetricDefinition.domain == domain)
-    return [_metric_payload(metric) for metric in db.scalars(stmt).all()]
-
-
-@router.post("/data-metrics", response_model=DataMetricDefinitionOut, status_code=201)
-def create_data_metric(
-    payload: DataMetricDefinitionIn,
-    _current_user: User = Depends(ADMIN),
-    db: Session = Depends(get_db),
-):
-    if payload.domain != "ir":
-        raise HTTPException(status_code=422, detail="only the IR data domain is available in this version")
-    metric = DataMetricDefinition(**payload.model_dump())
-    db.add(metric)
-    return _commit(db, metric)
-
-
-@router.patch("/data-metrics/{metric_id}", response_model=DataMetricDefinitionOut)
-def update_data_metric(
-    metric_id: int,
-    payload: DataMetricDefinitionUpdateIn,
-    _current_user: User = Depends(ADMIN),
-    db: Session = Depends(get_db),
-):
-    metric = db.get(DataMetricDefinition, metric_id)
-    if metric is None:
-        raise HTTPException(status_code=404, detail="data metric not found")
-    changes = payload.model_dump(exclude_unset=True)
-    if changes.get("domain") not in (None, "ir"):
-        raise HTTPException(status_code=422, detail="only the IR data domain is available in this version")
-    for field, value in changes.items():
-        setattr(metric, field, value)
-    metric.updated_at = _now()
-    return _commit(db, metric)
-
-
-@router.delete("/data-metrics/{metric_id}", status_code=204)
-def delete_data_metric(
-    metric_id: int,
-    _current_user: User = Depends(ADMIN),
-    db: Session = Depends(get_db),
-):
-    metric = db.get(DataMetricDefinition, metric_id)
-    if metric is None:
-        raise HTTPException(status_code=404, detail="data metric not found")
-    db.delete(metric)
-    db.commit()
-
-
 def _ir_metric_records(
     db: Session,
     current_user: User,
@@ -1659,66 +1579,3 @@ def ir_overview_metrics(
         team_query = team_query.where(Team.id == current_user.maintainer_team_id)
     teams = db.scalars(team_query).all()
     return build_ir_overview_series(records, teams, period_ids)
-
-
-@router.get("/data-metrics/compute", response_model=DataMetricComputeOut)
-def compute_data_metric(
-    metric_code: str,
-    team_id: int | None = None,
-    product_id: int | None = None,
-    version_id: int | None = None,
-    iteration_id: int | None = None,
-    responsible_employee_id: str | None = None,
-    business_module: str | None = None,
-    requirement_scenario: str | None = None,
-    completed_from: date | None = None,
-    completed_to: date | None = None,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
-    metric = db.scalar(
-        select(DataMetricDefinition).where(
-            DataMetricDefinition.code == metric_code,
-            DataMetricDefinition.active.is_(True),
-        )
-    )
-    if metric is None:
-        raise HTTPException(status_code=404, detail="active data metric not found")
-    if metric.domain != "ir":
-        raise HTTPException(status_code=422, detail="only the IR data domain is available in this version")
-    records = _ir_metric_records(
-        db,
-        current_user,
-        team_id=team_id,
-        product_id=product_id,
-        version_id=version_id,
-        iteration_id=iteration_id,
-        responsible_employee_id=responsible_employee_id,
-        business_module=business_module,
-        requirement_scenario=requirement_scenario,
-        completed_from=completed_from,
-        completed_to=completed_to,
-    )
-    filters = {
-        key: value
-        for key, value in {
-            "team_id": team_id,
-            "product_id": product_id,
-            "version_id": version_id,
-            "iteration_id": iteration_id,
-            "responsible_employee_id": responsible_employee_id,
-            "business_module": business_module,
-            "requirement_scenario": requirement_scenario,
-            "completed_from": completed_from.isoformat() if completed_from else None,
-            "completed_to": completed_to.isoformat() if completed_to else None,
-        }.items()
-        if value is not None
-    }
-    result = calculate_data_metric(records, metric)
-    return DataMetricComputeOut(
-        metric_code=metric.code,
-        metric_name=metric.name,
-        domain=metric.domain,
-        filters=filters,
-        **result,
-    )
