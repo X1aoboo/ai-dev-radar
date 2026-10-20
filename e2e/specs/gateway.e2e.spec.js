@@ -101,7 +101,7 @@ test('admin configures and activates Gateway, then stages IR through real HTTP',
     token: VALID_TOKEN,
     beforeSave: async () => {
       await assertNoHorizontalOverflow(page, 390)
-      const drawer = page.locator('.gateway-editor-drawer .ant-drawer-content-wrapper')
+      const drawer = page.locator('.gateway-config-modal')
       const viewportWidth = page.viewportSize()?.width ?? 390
       await expect.poll(async () => {
         const bounds = await drawer.boundingBox()
@@ -110,8 +110,8 @@ test('admin configures and activates Gateway, then stages IR through real HTTP',
         message: await page.evaluate(() => JSON.stringify({
           innerWidth: window.innerWidth,
           clientWidth: document.documentElement.clientWidth,
-          drawer: document.querySelector('.ant-drawer-content-wrapper')?.getAttribute('style'),
-          root: document.querySelector('.ant-drawer')?.getBoundingClientRect().toJSON(),
+          modal: document.querySelector('.ant-modal-content')?.getAttribute('style'),
+          root: document.querySelector('.gateway-config-modal')?.getBoundingClientRect().toJSON(),
         })),
       }).toBeLessThanOrEqual(viewportWidth)
       const drawerBounds = await drawer.boundingBox()
@@ -134,21 +134,21 @@ test('admin configures and activates Gateway, then stages IR through real HTTP',
   await assertNoHorizontalOverflow(page, 1440)
 
   await checkDraft(page, '已连接')
-  await expect(page.getByText('1.0.0')).toBeVisible()
+  await expect(page.getByText('1.0.0').first()).toBeVisible()
   await page.getByRole('button', { name: '启用配置' }).click()
   await expect(page.getByTestId('gateway-active-status')).toHaveText('已连接')
   await expect(page.getByText('待启用配置', { exact: true })).toHaveCount(0)
   await page.screenshot({ path: testInfo.outputPath('gateway-active-desktop.png'), fullPage: true })
 
   await page.getByRole('link', { name: '数据采集' }).click()
-  await expect(page.locator('.gateway-summary')).toContainText('已连接')
+  await expect(page.locator('.admin-readiness')).toContainText('已连接')
   await expect(page.getByRole('link', { name: '查看数据网关' })).toBeVisible()
   await expect(page.getByRole('button', { name: '编辑配置' })).toHaveCount(0)
   for (const width of [1440, 1024, 390]) {
     await assertNoHorizontalOverflow(page, width)
     if (width === 390) await page.screenshot({ path: testInfo.outputPath('collections-mobile.png'), fullPage: true })
   }
-  await page.getByRole('button', { name: '立即采集' }).click()
+  await page.getByRole('form', { name: '手动触发 IR 采集' }).getByRole('button', { name: '立即采集' }).click()
   await expect(page.getByText('手动采集完成：成功。')).toBeVisible()
 
   const mockState = await (await request.get(`${GATEWAY_URL}/_mock/state`)).json()
@@ -209,7 +209,7 @@ test('failed Draft diagnostics preserve Active collection', async ({ page, reque
 
   await expect(page.getByTestId('gateway-active-status')).toHaveText('已连接')
   await page.getByRole('link', { name: '数据采集' }).click()
-  await page.getByRole('button', { name: '立即采集' }).click()
+  await page.getByRole('form', { name: '手动触发 IR 采集' }).getByRole('button', { name: '立即采集' }).click()
   await expect(page.getByText('手动采集完成：成功。')).toBeVisible()
 
   const mockState = await (await request.get(`${GATEWAY_URL}/_mock/state`)).json()

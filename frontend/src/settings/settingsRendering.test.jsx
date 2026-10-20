@@ -11,8 +11,10 @@ function mockUseForm() { return [{ setFieldsValue: vi.fn(), submit: vi.fn() }] }
 function MockFormItem({ children, label }) { return typeof children === 'function' ? children({ getFieldValue: () => 'viewer' }) : <label>{label}{children}</label> }
 function MockInput(props) { return <input {...props} /> }
 function MockInputPassword(props) { return <input type="password" {...props} /> }
+function MockInputNumber(props) { return <input type="number" {...props} /> }
 function MockSelect({ options = [], value, onChange, ...props }) { return <select {...props} value={value ?? ''} onChange={(event) => onChange?.(event.target.value)}>{options.map((option) => <option key={String(option.value)} value={String(option.value)}>{option.label}</option>)}</select> }
 function MockDrawer({ open, title, children, footer }) { return open ? <div role="dialog" aria-label={title}><h2>{title}</h2>{children}{footer}</div> : null }
+function MockModal({ open, title, children, footer, onCancel, onOk, okText = '确定', cancelText = '取消' }) { return open ? <div role="dialog" aria-label={title}><h2>{title}</h2>{children}<footer>{footer ?? <><button type="button" onClick={onCancel}>{cancelText}</button><button type="button" onClick={onOk}>{okText}</button></>}</footer></div> : null }
 function MockButton({ children, onClick, htmlType, ...props }) { return <button type={htmlType ?? 'button'} onClick={onClick} {...props}>{children}</button> }
 function MockSwitch({ checked, onChange, ...props }) { return <button type="button" role="switch" aria-checked={checked} onClick={() => onChange?.(!checked)} {...props} /> }
 function MockCard({ title, extra, children }) { return <section><header>{title}{extra}</header>{children}</section> }
@@ -27,13 +29,14 @@ function MockTypography({ children }) { return <span>{children}</span> }
 function MockTypographyText({ children }) { return <span>{children}</span> }
 function MockTypographyTitle({ children, level = 2 }) { return React.createElement(`h${level}`, null, children) }
 
-vi.mock('antd', () => ({ Alert: MockAlert, Button: MockButton, Card: MockCard, Drawer: MockDrawer, Empty: Object.assign(MockEmpty, { PRESENTED_IMAGE_SIMPLE: 'simple' }), Form: Object.assign(MockForm, { useForm: mockUseForm, Item: MockFormItem }), Input: Object.assign(MockInput, { Password: MockInputPassword }), Popconfirm: MockPopconfirm, Select: MockSelect, Space: MockSpace, Spin: MockSpin, Switch: MockSwitch, Table: MockTable, Tag: MockTag, Typography: Object.assign(MockTypography, { Text: MockTypographyText, Title: MockTypographyTitle }) }))
+vi.mock('antd', () => ({ Alert: MockAlert, Button: MockButton, Card: MockCard, Drawer: MockDrawer, Empty: Object.assign(MockEmpty, { PRESENTED_IMAGE_SIMPLE: 'simple' }), Form: Object.assign(MockForm, { useForm: mockUseForm, Item: MockFormItem }), Input: Object.assign(MockInput, { Password: MockInputPassword }), InputNumber: MockInputNumber, Modal: MockModal, Popconfirm: MockPopconfirm, Select: MockSelect, Space: MockSpace, Spin: MockSpin, Switch: MockSwitch, Table: MockTable, Tag: MockTag, Typography: Object.assign(MockTypography, { Text: MockTypographyText, Title: MockTypographyTitle }) }))
 vi.mock('@ant-design/icons', () => {
   const Icon = () => null
-  return { DeleteOutlined: Icon, EditOutlined: Icon, PlusOutlined: Icon }
+  return { DeleteOutlined: Icon, EditOutlined: Icon, PlusOutlined: Icon, SearchOutlined: Icon }
 })
 
 import UsersSettingsPage from './UsersSettingsPage.jsx'
+import GatewaySettingsPage from './GatewaySettingsPage.jsx'
 import CollectionsSettingsPage from './CollectionsSettingsPage.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -47,7 +50,8 @@ function renderText(node) {
 
 beforeEach(() => {
   fetchJson.mockImplementation(async (url) => {
-    if (String(url).startsWith('/api/teams')) return [{ id: 1, name: '团队A' }]
+    if (url === '/api/gateway/status') return { configured: true, status: 'CONNECTED', stale: false, last_known_status: 'CONNECTED', checked_at: '2026-09-18T00:00:00', latency_ms: 20, contract_version: '1.0.0', error_code: null, error_message: null }
+    if (url === '/api/teams/options') return [{ id: 1, name: '团队A' }]
     if (String(url).startsWith('/api/auth/users')) return [{ id: 1, username: 'admin', role: 'admin', maintainer_team_id: null }, { id: 2, username: 'maintainer.团队A', role: 'maintainer', maintainer_team_id: 1 }, { id: 3, username: 'viewer', role: 'viewer', maintainer_team_id: null }]
     return {}
   })
@@ -55,7 +59,7 @@ beforeEach(() => {
 
 afterEach(() => { fetchJson.mockReset() })
 
-test('renders localized role labels in the user table and opens a Drawer for new users', async () => {
+test('renders localized role labels in the user table and opens a modal for new users', async () => {
   let renderer
   await act(async () => { renderer = create(<UsersSettingsPage user={{ id: 1, role: 'admin' }} onSessionExpired={() => undefined} />) })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
@@ -70,6 +74,8 @@ test('renders localized role labels in the user table and opens a Drawer for new
   expect(deleteConfirm.props.okText).toBe('删除')
   expect(deleteConfirm.props.cancelText).toBe('取消')
   expect(renderer.root.findAllByType(MockCard)).toHaveLength(0)
+  expect(fetchJson.mock.calls.some(([url]) => url === '/api/teams/options')).toBe(true)
+  expect(fetchJson.mock.calls.some(([url]) => url === '/api/teams')).toBe(false)
 
   const newUserButton = renderer.root.findAllByType('button').find((button) => button.children.includes('新增账号'))
   await act(async () => { newUserButton.props.onClick() })
@@ -78,13 +84,51 @@ test('renders localized role labels in the user table and opens a Drawer for new
   renderer.unmount()
 })
 
+test('gateway page shows readiness, draft actions and audit without collection data', async () => {
+  const active = { id: 12, slot: 'active', base_url: 'https://gateway.example.com', request_timeout_seconds: 30, token_configured: true, revision: 2, created_by: 'admin', updated_by: 'admin', created_at: '2026-10-20T18:40:00', updated_at: '2026-10-20T18:42:00', health: { status: 'CONNECTED', stale: false, last_known_status: 'CONNECTED', checked_at: '2026-10-20T23:18:00', last_success_at: '2026-10-20T23:18:00', latency_ms: 86, service_id: 'ai-dev-data-gateway', contract_version: '1.0.0', consecutive_network_failures: 0, error_code: null, error_message: null } }
+  const draft = { ...active, id: 13, slot: 'draft', base_url: 'https://gateway-v2.example.com', request_timeout_seconds: 45, revision: 3 }
+  fetchJson.mockImplementation(async (url) => {
+    if (url === '/api/gateway') return { active, draft }
+    if (url === '/api/gateway/audits?limit=50') return [{ id: 1, action: 'DRAFT_ACTIVATED', actor: 'admin', config_id: 13, scope: 'draft', changes: { activation_check: true, previous_active_config_id: 12 }, result_status: 'CONNECTED', created_at: '2026-10-20T18:42:00' }]
+    return {}
+  })
+  let renderer
+  await act(async () => { renderer = create(<GatewaySettingsPage onSessionExpired={() => undefined} />) })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('当前连接')
+  expect(text).toContain('待启用配置')
+  expect(text).toContain('启用检查清单')
+  expect(text).toContain('配置操作记录')
+  expect(text).toContain('https://gateway.example.com')
+  expect(text).toContain('启用配置')
+  expect(fetchJson.mock.calls.some(([url]) => String(url).includes('collection-schedules'))).toBe(false)
+  renderer.unmount()
+})
+
+test('collection page blocks actions when Gateway is not configured', async () => {
+  fetchJson.mockImplementation(async (url) => {
+    if (url === '/api/gateway/status') return { configured: false, status: 'UNCONFIGURED', stale: false, last_known_status: null, checked_at: null, latency_ms: null, contract_version: null, error_code: null, error_message: null }
+    return { schedules: [{ domain: 'ir', enabled: false, cadence: 'daily', minute: 0, hour: 2, day_of_week: null, day_of_month: null, timezone: 'Asia/Shanghai', updated_by: 'admin', updated_at: '2026-09-18T00:00:00' }], recent_runs: [], scope: { team_count: 4, pi_count: 2, derived_from: 'product_pi' } }
+  })
+  let renderer
+  await act(async () => { renderer = create(<MemoryRouter><CollectionsSettingsPage onSessionExpired={() => undefined} /></MemoryRouter>) })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('尚未配置 Gateway')
+  expect(text).toContain('4 团队 / 2 PI')
+  expect(fetchJson.mock.calls.some(([url]) => url === '/api/gateway')).toBe(false)
+  const runButton = renderer.root.findAllByType('button').find((button) => button.children.includes('立即采集'))
+  expect(runButton.props.disabled).toBe(true)
+  renderer.unmount()
+})
+
 test('admin can save a weekly IR schedule and manually trigger an explicit Shanghai window', async () => {
   let schedule = { domain: 'ir', enabled: false, cadence: 'daily', minute: 0, hour: 2, day_of_week: null, day_of_month: null, timezone: 'Asia/Shanghai', updated_by: 'admin', updated_at: '2026-09-18T00:00:00' }
   let runCompleted = false
   const runResult = { id: 9, domain: 'ir', trigger_type: 'manual', status: 'failed', started_by: 'admin', window_start_at: '2026-09-17T00:00:00+08:00', window_end_at: '2026-09-18T00:00:00+08:00', error_code: 'gateway_auth_failed', message: 'Gateway 认证失败，请检查当前配置。', retryable: false, team_results: [{ team_id: 1, team_name: '团队A', status: 'failed', code: 'gateway_not_configured', message: 'Collector Gateway is not configured.', retryable: false }], started_at: '2026-09-18T00:00:00', completed_at: '2026-09-18T00:00:01' }
   fetchJson.mockImplementation(async (url, options) => {
-    if (url === '/api/gateway') return { active: null, draft: null }
-    if (url === '/api/gateway/audits?limit=50') return []
+    if (url === '/api/gateway/status') return { configured: true, status: 'CONNECTED', stale: false, last_known_status: 'CONNECTED', checked_at: '2026-09-18T00:00:00', latency_ms: 20, contract_version: '1.0.0', error_code: null, error_message: null }
     if (url === '/api/collection-schedules/ir' && options?.method === 'PUT') {
       schedule = { ...schedule, ...JSON.parse(options.body), updated_by: 'admin' }
       return schedule
@@ -93,7 +137,7 @@ test('admin can save a weekly IR schedule and manually trigger an explicit Shang
       runCompleted = true
       return runResult
     }
-    return { schedules: [schedule], recent_runs: runCompleted ? [runResult] : [] }
+    return { schedules: [schedule], recent_runs: runCompleted ? [runResult] : [], scope: { team_count: 4, pi_count: 2, derived_from: 'product_pi' } }
   })
   let renderer
   await act(async () => { renderer = create(<MemoryRouter><CollectionsSettingsPage onSessionExpired={() => undefined} /></MemoryRouter>) })

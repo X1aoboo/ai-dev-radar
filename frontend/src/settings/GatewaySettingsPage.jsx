@@ -1,43 +1,41 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, ConfigProvider, Form, Input, InputNumber, Popconfirm, Space, Spin, Tag, Typography } from 'antd'
-import zhCN from 'antd/locale/zh_CN'
+import React, { useCallback, useEffect, useState } from 'react'
+import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, Spin, Tag, Typography } from 'antd'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
-import FocusRestoringDrawer from '../components/FocusRestoringDrawer'
-import '../dataManagement/dataManagement.css'
 import { formatGatewayDate, gatewayStatusInfo } from './gatewayStatus'
+import './admin-pages.css'
 
 const { Text } = Typography
-const FormItem = Form.Item
 
 function GatewayHealth({ health, testId }) {
   const info = gatewayStatusInfo(health?.status)
   const hasLastKnown = health?.status === 'UNKNOWN' && health?.last_known_status
   return (
-    <div className="gateway-health">
+    <div className="admin-health">
       <Tag data-testid={testId} color={info.color}>{health?.stale ? '状态已过期' : info.label}</Tag>
       {hasLastKnown && <Text type="secondary">上次状态：{gatewayStatusInfo(health.last_known_status).label}</Text>}
       {health?.error_message && <Text type="secondary">{health.error_message}</Text>}
-      <Text type="secondary">最近检测：{formatGatewayDate(health?.checked_at)}</Text>
-      {health?.latency_ms !== null && health?.latency_ms !== undefined && <Text type="secondary">响应 {health.latency_ms} ms</Text>}
+      <span className="admin-health__meta">最近检测：{formatGatewayDate(health?.checked_at)}</span>
+      {health?.latency_ms !== null && health?.latency_ms !== undefined && <span className="admin-health__meta">响应 {health.latency_ms} ms</span>}
     </div>
   )
 }
 
 function ConfigurationDetails({ configuration }) {
   return (
-    <dl className="gateway-details">
-      <div><dt>Gateway 地址</dt><dd>{configuration.base_url}</dd></div>
-      <div><dt>协议版本</dt><dd>{configuration.health?.contract_version ?? '尚未检测'}</dd></div>
-      <div><dt>请求超时</dt><dd>{configuration.request_timeout_seconds} 秒</dd></div>
-      <div><dt>Token</dt><dd>{configuration.token_configured ? '已配置' : '未配置'}</dd></div>
-      <div><dt>最近更新</dt><dd>{configuration.updated_by} · {formatGatewayDate(configuration.updated_at)}</dd></div>
-    </dl>
+    <div className="admin-detail-grid">
+      <div className="admin-detail"><div className="admin-detail__label">Gateway 地址</div><div className="admin-detail__value admin-detail__value--mono">{configuration.base_url}</div></div>
+      <div className="admin-detail"><div className="admin-detail__label">协议版本</div><div className="admin-detail__value">{configuration.health?.contract_version ?? '尚未检测'}</div></div>
+      <div className="admin-detail"><div className="admin-detail__label">请求超时</div><div className="admin-detail__value">{configuration.request_timeout_seconds} 秒</div></div>
+      <div className="admin-detail"><div className="admin-detail__label">Bearer Token</div><div className="admin-detail__value">{configuration.token_configured ? '已配置（不回填）' : '未配置'}</div></div>
+      <div className="admin-detail"><div className="admin-detail__label">最近更新</div><div className="admin-detail__value">{configuration.updated_by} · {formatGatewayDate(configuration.updated_at)}</div></div>
+      <div className="admin-detail"><div className="admin-detail__label">配置 ID</div><div className="admin-detail__value admin-detail__value--mono">#{configuration.id}</div></div>
+    </div>
   )
 }
 
-function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, onSubmit }) {
+function GatewayConfigModal({ open, seed, tokenRequired, submitting, onClose, onSubmit }) {
   const [form] = Form.useForm()
 
   useEffect(() => {
@@ -56,27 +54,28 @@ function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, o
   }
 
   return (
-    <ConfigProvider locale={zhCN}>
-      <FocusRestoringDrawer
-        rootClassName="gateway-editor-drawer"
-        title={seed?.draft ? '编辑待启用配置' : seed?.active ? '编辑 Gateway 配置' : '配置 Gateway'}
-        open={open}
-        size={440}
-        destroyOnClose
-        onClose={onClose}
-        styles={{ body: { padding: 24 } }}
-        footer={<Space><Button onClick={onClose}>取消</Button><Button type="primary" loading={submitting} onClick={() => form.submit()}>保存草稿</Button></Space>}
-      >
-        <Form noValidate form={form} layout="vertical" onFinish={submit}>
-        <FormItem
+    <Modal
+      className="admin-modal gateway-config-modal"
+      open={open}
+      title={seed?.draft ? '编辑待启用配置' : seed?.active ? '编辑 Gateway 配置' : '配置 Gateway'}
+      width={560}
+      okText="保存草稿"
+      cancelText="取消"
+      confirmLoading={submitting}
+      destroyOnClose
+      onCancel={onClose}
+      onOk={() => form.submit()}
+    >
+      <Form noValidate form={form} layout="vertical" onFinish={submit}>
+        <Form.Item
           name="base_url"
           label="Gateway 地址"
           rules={[{ required: true, message: '请输入 Gateway 根地址。' }]}
           extra="只填写根地址，例如 https://gateway.example；生产环境必须使用 HTTPS。"
         >
           <Input type="url" autoComplete="url" placeholder="https://gateway.example" />
-        </FormItem>
-        <FormItem
+        </Form.Item>
+        <Form.Item
           name="bearer_token"
           label="Bearer Token"
           rules={[
@@ -86,17 +85,16 @@ function GatewayConfigDrawer({ open, seed, tokenRequired, submitting, onClose, o
           extra={tokenRequired ? '首次配置需要输入 Token。保存后不会回填。' : '留空表示沿用当前 Active Token；保存后不会回填。'}
         >
           <Input.Password maxLength={4096} autoComplete="new-password" placeholder={tokenRequired ? '输入 Gateway Token' : '留空沿用 Active Token'} />
-        </FormItem>
-        <FormItem
+        </Form.Item>
+        <Form.Item
           name="request_timeout_seconds"
           label="请求超时（秒）"
           rules={[{ required: true, message: '请输入请求超时时间。' }, { type: 'number', min: 0.01, message: '请求超时必须大于 0。' }]}
         >
           <InputNumber min={0.01} step={1} precision={2} style={{ width: '100%' }} />
-        </FormItem>
-        </Form>
-      </FocusRestoringDrawer>
-    </ConfigProvider>
+        </Form.Item>
+      </Form>
+    </Modal>
   )
 }
 
@@ -241,66 +239,112 @@ export default function GatewaySettingsPage({ onSessionExpired }) {
     }
   }
 
-  const activeStatus = gateway.active?.health?.status
-  const draftStatus = gateway.draft?.health?.status
+  const active = gateway.active
+  const draft = gateway.draft
+  const activeStatus = active?.health?.status
+  const draftStatus = draft?.health?.status
+  const activeInfo = gatewayStatusInfo(activeStatus ?? 'UNCONFIGURED')
+
+  const checklist = draft ? [
+    { title: 'Readiness 可用', note: draftStatus === 'CONNECTED' ? '最近一次 readiness 返回 ready' : `当前状态：${gatewayStatusInfo(draftStatus).label}`, ok: draftStatus === 'CONNECTED' },
+    { title: '服务身份匹配', note: draft.health?.service_id ? `service = ${draft.health.service_id}` : '尚未检测到服务标识', ok: Boolean(draft.health?.service_id) },
+    { title: '协议主版本兼容', note: draft.health?.contract_version ? `contract ${draft.health.contract_version}` : '尚未检测到协议版本', ok: Boolean(draft.health?.contract_version) },
+  ] : []
 
   return (
-    <div className="settings-page gateway-settings-page">
+    <div className="admin-page">
       <PageHeader
         title="数据网关"
-        description="管理 Radar 调用的 AI 研发数据网关连接，并在启用前验证候选配置。"
-        actions={gatewayLoaded && !gateway.draft && <Button type="primary" onClick={openEditor}>{gateway.active ? '编辑配置' : '配置 Gateway'}</Button>}
+        description="管理 Radar 调用的 AI 研发数据网关连接，并在启用前验证候选配置。采集任务只读取这里的就绪状态，不复制连接配置。"
+        actions={gatewayLoaded && !draft ? <Button type="primary" onClick={openEditor}>{active ? '编辑配置' : '配置 Gateway'}</Button> : null}
       />
       {notice && <Alert className="settings-page__notice" type={notice.type} showIcon message={notice.text} />}
 
-      {!gatewayLoaded ? <div className="workbench-state">{loading ? <Spin size="small" /> : null}<Text type="secondary">{loading ? '读取 Gateway 配置…' : '无法读取 Gateway 配置。'}</Text></div> : <>
-        <Card title="当前连接" extra={<Tag color={gatewayStatusInfo(activeStatus ?? 'UNCONFIGURED').color}>{gatewayStatusInfo(activeStatus ?? 'UNCONFIGURED').label}</Tag>}>
-          {gateway.active ? <>
-            <GatewayHealth health={gateway.active.health} testId="gateway-active-status" />
-            <ConfigurationDetails configuration={gateway.active} />
-            <Space wrap>
-              <Button loading={testing === 'active'} disabled={Boolean(testing)} onClick={() => testConnection('active')}>立即检测</Button>
-            </Space>
-          </> : <div className="gateway-empty">
-            <Text>尚未配置 AI 研发数据网关。</Text>
-            <Text type="secondary">保存候选配置后，测试连接并启用才会影响 IR 采集。</Text>
-          </div>}
-        </Card>
+      {!gatewayLoaded ? (
+        <div className="admin-empty"><Spin size="small" /><Text type="secondary">{loading ? '读取 Gateway 配置…' : '无法读取 Gateway 配置。'}</Text></div>
+      ) : (
+        <>
+          <section className="admin-summary" aria-label="Gateway 概览">
+            <div className="admin-summary__cell"><div className="admin-summary__label">当前连接</div><div className="admin-summary__value"><Tag color={activeInfo.color}>{active ? activeInfo.label : '未配置'}</Tag></div><div className="admin-summary__note">{active ? 'AI 研发数据网关 · Active' : '尚未配置 Gateway'}</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">协议版本</div><div className="admin-summary__value"><span className="admin-summary__text">{active?.health?.contract_version ?? '—'}</span></div><div className="admin-summary__note">readiness contract</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">最近检测</div><div className="admin-summary__value"><span className="admin-summary__text">{active?.health?.checked_at ? formatGatewayDate(active.health.checked_at) : '尚未检测'}</span></div><div className="admin-summary__note">{active?.health?.latency_ms !== null && active?.health?.latency_ms !== undefined ? `响应 ${active.health.latency_ms} ms` : '—'}</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">配置更新时间</div><div className="admin-summary__value"><span className="admin-summary__text">{active ? formatGatewayDate(active.updated_at) : '—'}</span></div><div className="admin-summary__note">{active ? `${active.updated_by} · Active #${active.id}` : '—'}</div></div>
+          </section>
 
-        {gateway.draft && <Card className="workbench-section-gap" title="待启用配置" extra={<Tag color={gatewayStatusInfo(draftStatus).color}>{gatewayStatusInfo(draftStatus).label}</Tag>}>
-          <GatewayHealth health={gateway.draft.health} testId="gateway-draft-status" />
-          <ConfigurationDetails configuration={gateway.draft} />
-          <div className="gateway-actions">
-            <Space wrap>
-              <Button onClick={openEditor}>编辑草稿</Button>
-              <Button loading={testing === 'draft'} disabled={Boolean(testing) || activating} onClick={() => testConnection('draft')}>测试连接</Button>
-              <Button type="primary" loading={activating} disabled={draftStatus !== 'CONNECTED' || Boolean(testing)} onClick={activateDraft}>启用配置</Button>
-            </Space>
-            {draftStatus !== 'CONNECTED' && <Text type="secondary">只有最新检测结果为“已连接”时才能启用；启用时还会再次检测。</Text>}
-            <Popconfirm open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen} title="放弃待启用配置？" description="草稿和最近测试状态将被删除；当前 Active 配置不变。" okText="放弃草稿" cancelText="继续编辑" onConfirm={() => { setDiscardConfirmOpen(false); discardDraft() }}>
-              <Button danger type="link" loading={discarding} onClick={() => setDiscardConfirmOpen(true)}>放弃草稿</Button>
-            </Popconfirm>
+          <div className="admin-layout">
+            <div className="admin-stack">
+              <section className="admin-panel">
+                <div className="admin-panel__head"><div><h2 className="admin-panel__title">当前连接</h2><div className="admin-panel__sub">Active 配置 · 正在影响 IR 采集</div></div><Tag color={activeInfo.color}>{active ? activeInfo.label : '未配置'}</Tag></div>
+                <div className="admin-panel__body">
+                  {active ? (
+                    <>
+                      <GatewayHealth health={active.health} testId="gateway-active-status" />
+                      <ConfigurationDetails configuration={active} />
+                      <div className="admin-actions"><Button loading={testing === 'active'} disabled={Boolean(testing)} onClick={() => testConnection('active')}>立即检测</Button></div>
+                    </>
+                  ) : (
+                    <div className="admin-empty"><Text>尚未配置 AI 研发数据网关。</Text><Text type="secondary">保存候选配置后，测试连接并启用才会影响 IR 采集。</Text><Button type="primary" onClick={openEditor}>配置 Gateway</Button></div>
+                  )}
+                </div>
+              </section>
+
+              {draft && (
+                <section className="admin-panel">
+                  <div className="admin-panel__head"><div><h2 className="admin-panel__title">待启用配置</h2><div className="admin-panel__sub">Draft · 不影响 Active 配置</div></div><Tag color={gatewayStatusInfo(draftStatus).color}>{gatewayStatusInfo(draftStatus).label} · 待启用</Tag></div>
+                  <div className="admin-panel__body">
+                    <GatewayHealth health={draft.health} testId="gateway-draft-status" />
+                    <ConfigurationDetails configuration={draft} />
+                    <div className="admin-note">只有最新检测结果为“已连接”时才能启用；启用时会再次实时检测，成功后才替换 Active 配置。</div>
+                    <div className="admin-actions">
+                      <Button onClick={openEditor}>编辑草稿</Button>
+                      <Button loading={testing === 'draft'} disabled={Boolean(testing) || activating} onClick={() => testConnection('draft')}>测试连接</Button>
+                      <Button type="primary" loading={activating} disabled={draftStatus !== 'CONNECTED' || Boolean(testing)} onClick={activateDraft}>启用配置</Button>
+                      <Popconfirm open={discardConfirmOpen} onOpenChange={setDiscardConfirmOpen} title="放弃待启用配置？" description="草稿和最近测试状态将被删除；当前 Active 配置不变。" okText="放弃草稿" cancelText="继续编辑" onConfirm={() => { setDiscardConfirmOpen(false); discardDraft() }}>
+                        <Button danger type="link" loading={discarding} onClick={() => setDiscardConfirmOpen(true)}>放弃草稿</Button>
+                      </Popconfirm>
+                    </div>
+                    {draftStatus !== 'CONNECTED' && <div className="admin-note">只有最新检测结果为“已连接”时才能启用。</div>}
+                  </div>
+                </section>
+              )}
+            </div>
+
+            <aside className="admin-stack">
+              <section className="admin-panel">
+                <div className="admin-panel__head"><div><h2 className="admin-panel__title">启用检查清单</h2><div className="admin-panel__sub">候选配置通过后才可替换 Active</div></div></div>
+                <div className="admin-panel__body">
+                  {draft ? <div className="admin-checklist">{checklist.map((item) => <div className="admin-check" key={item.title}><span className="admin-check__icon">{item.ok ? '✓' : '·'}</span><div><div className="admin-check__title">{item.title}</div><div className="admin-check__note">{item.note}</div></div></div>)}</div> : <div className="admin-empty"><Text type="secondary">保存候选配置后显示检查项。</Text></div>}
+                </div>
+              </section>
+
+              <section className="admin-panel">
+                <div className="admin-panel__head"><div><h2 className="admin-panel__title">配置操作记录</h2><div className="admin-panel__sub">最近 50 条 · 北京时间</div></div></div>
+                <div className="admin-panel__body">
+                  {auditError ? <Alert type="error" showIcon message={auditError} /> : audits.length === 0 ? <Text type="secondary">暂无配置操作记录。</Text> : (
+                    <ul className="admin-audit-list">
+                      {audits.map((audit) => (
+                        <li className="admin-audit" key={audit.id}>
+                          <span className="admin-audit__dot" />
+                          <div>
+                            <div className="admin-audit__head"><span className="admin-audit__title">{actionLabel(audit.action)}</span>{audit.result_status && <Tag color={gatewayStatusInfo(audit.result_status).color}>{gatewayStatusInfo(audit.result_status).label}</Tag>}</div>
+                            <div className="admin-audit__meta">{audit.actor} · {formatGatewayDate(audit.created_at)}</div>
+                            <div className="admin-audit__summary">{auditSummary(audit.changes)}</div>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </section>
+            </aside>
           </div>
-        </Card>}
+        </>
+      )}
 
-        <Card className="workbench-section-gap" title="配置操作记录" extra={<Text type="secondary">最近 50 条 · 北京时间</Text>}>
-          {auditError ? <Alert type="error" showIcon message={auditError} /> : audits.length === 0 ? <Text type="secondary">暂无配置操作记录。</Text> : <ul className="gateway-audit-list">
-            {audits.map((audit) => <li key={audit.id}>
-              <div className="gateway-audit-item__heading">
-                <Text strong>{actionLabel(audit.action)}</Text>
-                {audit.result_status && <Tag color={gatewayStatusInfo(audit.result_status).color}>{gatewayStatusInfo(audit.result_status).label}</Tag>}
-                <Text type="secondary">{audit.actor} · {formatGatewayDate(audit.created_at)}</Text>
-              </div>
-              <Text type="secondary">{auditSummary(audit.changes)}</Text>
-            </li>)}
-          </ul>}
-        </Card>
-      </>}
-
-      <GatewayConfigDrawer
+      <GatewayConfigModal
         open={editorOpen}
         seed={editorSeed}
-        tokenRequired={!gateway.active?.token_configured}
+        tokenRequired={!active?.token_configured}
         submitting={saving}
         onClose={() => setEditorOpen(false)}
         onSubmit={saveDraft}

@@ -26,6 +26,7 @@ from .schemas import (
     GatewayDraftIn,
     GatewayHealthOut,
     GatewayStateOut,
+    GatewayStatusOut,
 )
 
 
@@ -140,6 +141,26 @@ def get_gateway(
     db: Session = Depends(get_db),
 ):
     return _state(db)
+
+
+@router.get("/status", response_model=GatewayStatusOut)
+def get_gateway_status(
+    _current_user=Depends(ADMIN),
+    db: Session = Depends(get_db),
+):
+    active = get_configuration(db, "active")
+    health = health_view(db, "active", active)
+    return GatewayStatusOut(
+        configured=active is not None,
+        status=health["status"],
+        stale=health.get("stale", False),
+        last_known_status=health.get("last_known_status"),
+        checked_at=health.get("checked_at"),
+        latency_ms=health.get("latency_ms"),
+        contract_version=health.get("contract_version"),
+        error_code=health.get("error_code"),
+        error_message=health.get("error_message"),
+    )
 
 
 @router.put("/draft", response_model=GatewayStateOut)

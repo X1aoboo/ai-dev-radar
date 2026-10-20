@@ -199,66 +199,23 @@ def _save_team_result(db: Session, run_id: int, result: dict) -> None:
     db.commit()
 
 
-def _resolve_product_versions(
-    db: Session,
-    team: Team,
-    configured_version_names: object,
-    *,
-    request_id: str,
-) -> list[ProductVersionRef]:
-    if not isinstance(configured_version_names, list) or any(
-        not isinstance(value, str) or not value.strip()
-        for value in configured_version_names
-    ):
-        raise GatewayFailure(
-            code="invalid_team_mapping",
-            message="团队产品版本映射无效。",
-            retryable=False,
-            request_id=request_id,
-        )
+def _team_product_versions(db: Session, team: Team) -> list[ProductVersionRef]:
+    """Return every product/PI owned by the team; Product/PI hierarchy is the scope source."""
 
     versions = db.scalars(
         select(ProductVersion)
         .options(joinedload(ProductVersion.product))
         .join(Product, ProductVersion.product_id == Product.id)
-        .where(
-            Product.team_id == team.id,
-            ProductVersion.name.in_(configured_version_names),
-        )
-        .order_by(ProductVersion.name, Product.name, ProductVersion.id)
+        .where(Product.team_id == team.id)
+        .order_by(Product.name, ProductVersion.name, ProductVersion.id)
     ).all()
-    versions_by_name: dict[str, list[ProductVersion]] = {}
-    for version in versions:
-        versions_by_name.setdefault(version.name, []).append(version)
-
-    resolved: list[ProductVersionRef] = []
-    seen: set[tuple[str, str]] = set()
-    for configured_name in configured_version_names:
-        matches = versions_by_name.get(configured_name, [])
-        if not matches:
-            raise GatewayFailure(
-                code="invalid_team_mapping",
-                message="团队产品版本映射无法匹配本地产品版本。",
-                retryable=False,
-                request_id=request_id,
-            )
-        for version in matches:
-            pair = (version.product.name, version.name)
-            if pair in seen:
-                raise GatewayFailure(
-                    code="invalid_team_mapping",
-                    message="团队产品版本映射包含重复项。",
-                    retryable=False,
-                    request_id=request_id,
-                )
-            seen.add(pair)
-            resolved.append(
-                ProductVersionRef(
-                    product_name=version.product.name,
-                    version_name=version.name,
-                )
-            )
-    return resolved
+    return [
+        ProductVersionRef(
+            product_name=version.product.name,
+            version_name=version.name,
+        )
+        for version in versions
+    ]
 
 
 def run_ir_collection(
@@ -324,14 +281,13 @@ def run_ir_collection(
 
     for team in teams:
         team_id, team_name = team.id, team.name
-        mapping = team.source_mapping or {}
-        product_versions = mapping.get("product_versions", []) if isinstance(mapping, dict) else None
-        if product_versions == []:
+        resolved_product_versions = _team_product_versions(db, team)
+        if not resolved_product_versions:
             result = {
                 "team_id": team_id,
                 "team_name": team_name,
                 "status": "skipped",
-                "message": "团队未配置产品版本，已跳过。",
+                "message": "团队未配置产品/PI，已跳过。",
                 "retryable": False,
             }
             team_results.append(result)
@@ -340,12 +296,6 @@ def run_ir_collection(
 
         request_id = str(uuid4())
         try:
-            resolved_product_versions = _resolve_product_versions(
-                db,
-                team,
-                product_versions,
-                request_id=request_id,
-            )
             request = CollectorIRRequest(
                 request_id=request_id,
                 product_versions=resolved_product_versions,

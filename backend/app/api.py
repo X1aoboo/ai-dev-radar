@@ -149,6 +149,14 @@ def list_teams(
     return db.scalars(select(Team).order_by(Team.id)).all()
 
 
+@router.get("/teams/options", response_model=list[TeamOptionOut])
+def list_team_options(
+    _current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return db.scalars(select(Team).order_by(Team.id)).all()
+
+
 @router.post("/teams", response_model=TeamOut, status_code=201)
 def create_team(
     payload: TeamIn,

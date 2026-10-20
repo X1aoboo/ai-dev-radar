@@ -1,12 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import { Alert, Button, Card, Switch, Table, Tag, Typography } from 'antd'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Alert, Button, Switch, Table, Tag, Typography } from 'antd'
 import { Link } from 'react-router'
 
 import { fetchJson } from '../api'
 import PageHeader from '../components/PageHeader'
 import StatusPage, { ContentLoadingState } from '../components/StatusPage'
-import '../dataManagement/dataManagement.css'
 import { formatGatewayDate, gatewayStatusInfo } from './gatewayStatus'
+import './admin-pages.css'
 
 const { Text } = Typography
 
@@ -28,6 +28,7 @@ const CADENCES = [
   ['monthly', '每月'],
 ]
 const WEEKDAYS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日']
+const HARD_BLOCK_STATUSES = new Set(['UNCONFIGURED', 'AUTH_FAILED', 'SERVICE_MISMATCH', 'PROTOCOL_INCOMPATIBLE'])
 
 function zonedIso(value) {
   return value ? `${value}:00+08:00` : null
@@ -108,41 +109,15 @@ function RunTeamDetails({ run }) {
   return <div className="settings-run-detail"><Table className="operational-table" aria-label={`运行 ${run.id} 的团队结果`} rowKey="team_id" size="small" columns={columns} dataSource={run.team_results ?? []} pagination={false} locale={{ emptyText: '暂无团队结果。' }} scroll={{ x: 680 }} /></div>
 }
 
-function GatewaySummary({ state, error }) {
-  if (error) return <Card title="AI 研发数据网关"><Alert type="error" showIcon message="无法读取 Gateway 状态" description="请稍后重试；如果问题持续，请查看网关配置。" /></Card>
-  const active = state?.active
-  const health = active?.health
-  const info = gatewayStatusInfo(health?.status ?? 'UNCONFIGURED')
-  const statusLabel = health?.stale ? '状态已过期' : info.label
-  const note = !active
-    ? '尚未配置，IR 采集无法运行。'
-    : health?.status === 'CONNECTED'
-      ? null
-      : ['AUTH_FAILED', 'SERVICE_MISMATCH', 'PROTOCOL_INCOMPATIBLE', 'UNREACHABLE', 'DEGRADED'].includes(health?.status)
-        ? '当前采集可能无法执行。'
-        : health?.stale
-          ? `上次状态：${gatewayStatusInfo(health.last_known_status).label}；采集仍会尝试连接。`
-          : '当前状态未知；采集仍会尝试连接。'
-
-  return (
-    <Card className="workbench-section-gap gateway-summary" title="AI 研发数据网关" extra={<Tag color={info.color}>{statusLabel}</Tag>}>
-      {active ? <div className="gateway-summary__details">
-        <Text>地址：{active.base_url}</Text>
-        <Text>Token：{active.token_configured ? '已配置' : '未配置'}</Text>
-        {health?.latency_ms !== null && health?.latency_ms !== undefined && <Text>响应：{health.latency_ms} ms</Text>}
-        <Text>最近检测：{formatGatewayDate(health?.checked_at)}</Text>
-      </div> : <Text type="secondary">尚未配置 AI 研发数据网关。</Text>}
-      {note && <Text type={active ? 'warning' : 'secondary'}>{note}</Text>}
-      {health?.error_message && <Text type="secondary">{health.error_message}</Text>}
-      <Link to="/settings/gateway">查看数据网关 →</Link>
-    </Card>
-  )
+function gatewayStateLabel(status) {
+  return gatewayStatusInfo(status?.status ?? 'UNCONFIGURED').label
 }
 
 export default function CollectionsSettingsPage({ onSessionExpired }) {
   const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE)
-  const [gatewayState, setGatewayState] = useState(null)
+  const [gatewayStatus, setGatewayStatus] = useState(null)
   const [gatewayError, setGatewayError] = useState(null)
+  const [scope, setScope] = useState(null)
   const [runs, setRuns] = useState([])
   const [window, setWindow] = useState({ start_at: '', end_at: '' })
   const [loading, setLoading] = useState(true)
@@ -157,14 +132,15 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
     try {
       const [scheduleResult, gatewayResult] = await Promise.allSettled([
         fetchJson('/api/collection-schedules'),
-        fetchJson('/api/gateway'),
+        fetchJson('/api/gateway/status'),
       ])
       if (scheduleResult.status === 'rejected') throw scheduleResult.reason
       const data = scheduleResult.value
       setSchedule(data.schedules.find((item) => item.domain === 'ir') ?? DEFAULT_SCHEDULE)
+      setScope(data.scope ?? null)
       setRuns(data.recent_runs ?? [])
       if (gatewayResult.status === 'fulfilled') {
-        setGatewayState(gatewayResult.value)
+        setGatewayStatus(gatewayResult.value)
         setGatewayError(null)
       } else {
         setGatewayError(gatewayResult.reason.message)
@@ -180,6 +156,15 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
   }, [onSessionExpired])
 
   useEffect(() => { load() }, [load])
+
+  const statusKey = gatewayStatus?.status ?? 'UNCONFIGURED'
+  const gatewayBlocked = gatewayError || !gatewayStatus?.configured || HARD_BLOCK_STATUSES.has(statusKey)
+  const gatewaySoftWarning = !gatewayBlocked && (gatewayStatus?.stale || ['DEGRADED', 'UNKNOWN', 'UNREACHABLE'].includes(statusKey))
+  const latestRun = runs[0]
+  const scopeText = scope ? `${scope.team_count} 团队 / ${scope.pi_count} PI` : '—'
+  const guardMessage = gatewayBlocked
+    ? gatewayError ? '无法读取 Gateway 就绪状态，采集暂不可用。' : statusKey === 'UNCONFIGURED' || !gatewayStatus?.configured ? '尚未配置 Gateway，先完成配置和启用后才能采集。' : 'Gateway 当前为硬错误状态，先处理连接配置后再采集。'
+    : gatewaySoftWarning ? 'Gateway 当前状态不是“已连接”，采集仍会尝试连接；运行可能失败。' : null
 
   function updateCadence(cadence) {
     setSchedule((current) => ({
@@ -197,7 +182,7 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
   }
 
   async function saveSchedule(event) {
-    event.preventDefault()
+    event?.preventDefault()
     setSaving(true)
     try {
       const payload = {
@@ -225,7 +210,11 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
   }
 
   async function runNow(event) {
-    event.preventDefault()
+    event?.preventDefault()
+    if (gatewayBlocked) {
+      setNotice({ type: 'error', text: guardMessage })
+      return
+    }
     if (Boolean(window.start_at) !== Boolean(window.end_at)) {
       setNotice({ type: 'error', text: '开始时间和结束时间需要同时填写。' })
       return
@@ -257,66 +246,86 @@ export default function CollectionsSettingsPage({ onSessionExpired }) {
   const scheduledTime = schedule.cadence === 'hourly'
     ? null
     : `${String(schedule.hour ?? 0).padStart(2, '0')}:${String(schedule.minute ?? 0).padStart(2, '0')}`
-  const latestRun = runs[0]
   const runColumns = [
-    { title: '开始时间', dataIndex: 'started_at', render: formatRunTime },
-    { title: '触发方式', dataIndex: 'trigger_type', render: (type) => type === 'manual' ? '手动' : '定时' },
-    { title: '采集窗口', key: 'window', render: (_, run) => <span className="collection-window">{run.window_start_at} → {run.window_end_at}</span> },
-    { title: '状态', dataIndex: 'status', render: (status) => statusLabel(status) },
-    { title: '运行说明', key: 'error', render: (_, run) => run.error_code ? <span>{RUN_MESSAGES[run.error_code] ?? run.message ?? '—'} <Text code>{run.error_code}</Text>{run.retryable && <> {statusLabel('retryable', '可重试')}</>}</span> : '—' },
+    { title: '开始时间', dataIndex: 'started_at', render: formatRunTime, width: 150 },
+    { title: '触发方式', dataIndex: 'trigger_type', width: 90, render: (type) => type === 'manual' ? '手动' : '定时' },
+    { title: '采集窗口', key: 'window', width: 280, render: (_, run) => <span className="admin-run-window">{run.window_start_at} → {run.window_end_at}</span> },
+    { title: '状态', dataIndex: 'status', width: 110, render: (status) => statusLabel(status) },
+    { title: '运行说明', key: 'error', width: 260, render: (_, run) => run.error_code ? <span className="admin-run-message">{RUN_MESSAGES[run.error_code] ?? run.message ?? '—'} <Text code>{run.error_code}</Text>{run.retryable && <> {statusLabel('retryable', '可重试')}</>}</span> : '—' },
     { title: '团队结果', key: 'teams', render: (_, run) => summarizeTeams(run) },
-    { title: '记录数', key: 'records', align: 'right', render: (_, run) => countRunRecords(run) },
+    { title: '记录数', key: 'records', align: 'right', width: 80, render: (_, run) => countRunRecords(run) },
   ]
 
   return (
-    <div className="workbench-page collection-settings-page">
-      <PageHeader className="workbench-page-intro" title="数据采集" description="IR 采集先进入团队独立的待确认批次；确认后才写入正式 IR。" />
-      {notice && <Alert className="workbench-notice" type={notice.type} showIcon message={notice.text} closable onClose={() => setNotice(null)} />}
-      {loading
-        ? <ContentLoadingState label="加载采集配置…" />
-        : loadError
-          ? <StatusPage status="error" layout="compact" title="采集配置暂时无法加载" description="请重试；如果问题持续，请稍后再试。" actions={<Button type="primary" onClick={() => load()}>重试</Button>} />
-          : <>
-            <div className="settings-summary" aria-label="IR 采集当前状态">
-              <div className="settings-summary__item"><span className="settings-summary__label">定时采集</span><span className="settings-summary__value">{statusLabel(schedule.enabled ? 'enabled' : 'disabled', schedule.enabled ? '已启用' : '已禁用')}</span></div>
-              <div className="settings-summary__item"><span className="settings-summary__label">执行周期</span><span className="settings-summary__value">{scheduleSummary(schedule)}</span></div>
-              <div className="settings-summary__item"><span className="settings-summary__label">时区</span><span className="settings-summary__value">Asia/Shanghai</span></div>
-              {latestRun && <div className="settings-summary__item"><span className="settings-summary__label">最近运行</span><span className="settings-summary__value">{statusLabel(latestRun.status)} {formatRunTime(latestRun.started_at)}</span></div>}
-            </div>
-            <GatewaySummary state={gatewayState} error={gatewayError} />
-            <section className="settings-section">
-              <div className="settings-section__header"><div><h2 className="settings-section__title">定时采集</h2><p className="settings-section__description">每次运行采集上一个完整周期。</p></div>{statusLabel(schedule.enabled ? 'enabled' : 'disabled', schedule.enabled ? '已启用' : '已禁用')}</div>
-              <form noValidate aria-label="IR 定时计划" className="collection-form collection-form--schedule" onSubmit={saveSchedule}>
-                <div className="collection-toggle"><Switch aria-label="启用 IR 定时采集" checked={schedule.enabled} disabled={saving} onChange={(enabled) => setSchedule((current) => ({ ...current, enabled }))} /><span>启用 IR 定时采集</span></div>
-                <label>采集周期<select aria-label="采集周期" disabled={saving} value={schedule.cadence} onChange={(event) => updateCadence(event.target.value)}>{CADENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-                {schedule.cadence === 'hourly' ? <label>每小时第几分钟<input aria-label="每小时第几分钟" disabled={saving} type="number" min="0" max="59" value={schedule.minute} onChange={(event) => setSchedule((current) => ({ ...current, minute: event.target.value === '' ? '' : Number(event.target.value) }))} /></label> : <label>执行时间<input aria-label="执行时间" disabled={saving} type="time" value={scheduledTime} onChange={(event) => updateTime(event.target.value)} /></label>}
-                {schedule.cadence === 'weekly' && <label>星期<select aria-label="星期" disabled={saving} value={schedule.day_of_week ?? 0} onChange={(event) => setSchedule((current) => ({ ...current, day_of_week: Number(event.target.value) }))}>{WEEKDAYS.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></label>}
-                {schedule.cadence === 'monthly' && <label>每月日期（1–28）<input aria-label="每月日期" disabled={saving} type="number" min="1" max="28" value={schedule.day_of_month ?? 1} onChange={(event) => setSchedule((current) => ({ ...current, day_of_month: event.target.value === '' ? '' : Number(event.target.value) }))} /></label>}
-                <Text type="secondary">时区固定为 Asia/Shanghai。</Text>
-                <Button type="primary" htmlType="submit" loading={saving}>保存计划</Button>
-              </form>
-            </section>
+    <div className="admin-page">
+      <PageHeader
+        title="数据采集"
+        description="按团队执行 IR 采集，先进入独立的待确认批次；确认后才写入正式 IR。采集范围由产品/PI 层级决定，本页只读取 Gateway 就绪状态。"
+        actions={<Button type="primary" loading={running} disabled={gatewayBlocked} onClick={() => runNow()}>立即采集</Button>}
+      />
 
-            <section className="settings-section">
-              <div className="settings-section__header"><div><h2 className="settings-section__title">手动采集</h2><p className="settings-section__description">默认使用上一个完整周期；需要时可指定半开区间。</p></div></div>
-              <form noValidate aria-label="手动触发 IR 采集" className="collection-form collection-form--manual" onSubmit={runNow}>
-                <details className="settings-disclosure">
-                  <summary>自定义时间范围</summary>
-                  <div className="collection-window-fields">
-                    <label>开始时间（Asia/Shanghai）<input aria-label="开始时间" type="datetime-local" value={window.start_at} onChange={(event) => setWindow((current) => ({ ...current, start_at: event.target.value }))} /></label>
-                    <label>结束时间（Asia/Shanghai）<input aria-label="结束时间" type="datetime-local" value={window.end_at} onChange={(event) => setWindow((current) => ({ ...current, end_at: event.target.value }))} /></label>
+      {notice && <Alert className="settings-page__notice" type={notice.type} showIcon message={notice.text} closable onClose={() => setNotice(null)} />}
+
+      {loading ? (
+        <ContentLoadingState label="加载采集配置…" />
+      ) : loadError ? (
+        <StatusPage status="error" layout="compact" title="采集配置暂时无法加载" description="请重试；如果问题持续，请稍后再试。" actions={<Button type="primary" onClick={() => load()}>重试</Button>} />
+      ) : (
+        <>
+          <div className="admin-readiness">
+            <span className={`dot dot--${gatewayStatusInfo(statusKey).color === 'green' ? 'success' : gatewayStatusInfo(statusKey).color === 'red' ? 'danger' : 'warning'}`} />
+            <strong>AI 研发数据网关 · {gatewayStateLabel(gatewayStatus)}</strong>
+            <span className="admin-readiness__meta">{gatewayStatus?.checked_at ? `最近检测 ${formatGatewayDate(gatewayStatus.checked_at)}` : '尚未检测'}{gatewayStatus?.latency_ms !== null && gatewayStatus?.latency_ms !== undefined ? ` · ${gatewayStatus.latency_ms} ms` : ''}{gatewayStatus?.stale ? ' · 状态已过期' : ''}</span>
+            {gatewayStatus?.contract_version && <span className="admin-readiness__meta">协议 {gatewayStatus.contract_version}</span>}
+            <Link className="admin-readiness__link" to="/settings/gateway">查看数据网关 →</Link>
+          </div>
+          {guardMessage && <Alert type={gatewayBlocked ? 'error' : 'warning'} showIcon message={guardMessage} />}
+
+          <section className="admin-summary" aria-label="采集概览">
+            <div className="admin-summary__cell"><div className="admin-summary__label">定时采集</div><div className="admin-summary__value">{statusLabel(schedule.enabled ? 'enabled' : 'disabled', schedule.enabled ? '已启用' : '已禁用')}</div><div className="admin-summary__note">下一次 {schedule.enabled ? scheduleSummary(schedule) : '未启用'}</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">执行周期</div><div className="admin-summary__value"><span className="admin-summary__text">{scheduleSummary(schedule)}</span></div><div className="admin-summary__note">Asia/Shanghai</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">最近运行</div><div className="admin-summary__value">{latestRun ? statusLabel(latestRun.status) : <span className="admin-summary__text">暂无</span>}</div><div className="admin-summary__note">{latestRun ? `${formatRunTime(latestRun.started_at)} · ${summarizeTeams(latestRun)}` : '尚未运行'}</div></div>
+            <div className="admin-summary__cell"><div className="admin-summary__label">采集范围</div><div className="admin-summary__value"><span className="admin-summary__text">{scopeText}</span></div><div className="admin-summary__note">由产品/PI 层级自动派生</div></div>
+          </section>
+
+          <div className="admin-grid-2">
+            <section className="admin-panel">
+              <div className="admin-panel__head"><div><h2 className="admin-panel__title">定时采集</h2><div className="admin-panel__sub">每次运行采集上一个完整周期</div></div>{statusLabel(schedule.enabled ? 'enabled' : 'disabled', schedule.enabled ? '已启用' : '已禁用')}</div>
+              <div className="admin-panel__body">
+                <div className="admin-switch-row"><Switch aria-label="启用 IR 定时采集" checked={schedule.enabled} disabled={saving || (gatewayBlocked && !schedule.enabled)} onChange={(enabled) => setSchedule((current) => ({ ...current, enabled }))} /><span className="admin-switch-row__label">启用 IR 定时采集</span><span className="admin-form-note">保存后立即生效</span></div>
+                <form noValidate aria-label="IR 定时计划" onSubmit={saveSchedule}>
+                  <div className="admin-form-grid">
+                    <div className="admin-field"><label htmlFor="collection-cadence">采集周期</label><select id="collection-cadence" aria-label="采集周期" className="admin-control" disabled={saving} value={schedule.cadence} onChange={(event) => updateCadence(event.target.value)}>{CADENCES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></div>
+                    {schedule.cadence === 'hourly' ? <div className="admin-field"><label htmlFor="collection-minute">每小时第几分钟</label><input id="collection-minute" aria-label="每小时第几分钟" className="admin-control" disabled={saving} type="number" min="0" max="59" value={schedule.minute} onChange={(event) => setSchedule((current) => ({ ...current, minute: event.target.value === '' ? '' : Number(event.target.value) }))} /></div> : <div className="admin-field"><label htmlFor="collection-time">执行时间</label><input id="collection-time" aria-label="执行时间" className="admin-control" disabled={saving} type="time" value={scheduledTime} onChange={(event) => updateTime(event.target.value)} /></div>}
+                    {schedule.cadence === 'weekly' && <div className="admin-field"><label htmlFor="collection-weekday">星期</label><select id="collection-weekday" aria-label="星期" className="admin-control" disabled={saving} value={schedule.day_of_week ?? 0} onChange={(event) => setSchedule((current) => ({ ...current, day_of_week: Number(event.target.value) }))}>{WEEKDAYS.map((day, index) => <option key={day} value={index}>{day}</option>)}</select></div>}
+                    {schedule.cadence === 'monthly' && <div className="admin-field"><label htmlFor="collection-monthday">每月日期（1–28）</label><input id="collection-monthday" aria-label="每月日期" className="admin-control" disabled={saving} type="number" min="1" max="28" value={schedule.day_of_month ?? 1} onChange={(event) => setSchedule((current) => ({ ...current, day_of_month: event.target.value === '' ? '' : Number(event.target.value) }))} /></div>}
+                    <div className="admin-field"><label>时区</label><div className="admin-control admin-control--readonly">Asia/Shanghai</div></div>
                   </div>
-                  <Text type="secondary">窗口按 [开始, 结束) 计算，单次最多 10000 条；超量时请缩短窗口。</Text>
-                </details>
-                <Button htmlType="submit" loading={running}>立即采集</Button>
-              </form>
+                  <div className="admin-form-actions"><Button type="primary" htmlType="submit" loading={saving} disabled={gatewayBlocked && schedule.enabled}>保存计划</Button><span className="admin-form-note">定时任务使用当前 Active Gateway 配置。</span></div>
+                </form>
+              </div>
             </section>
 
-            <section className="operational-workspace" aria-labelledby="collection-history-heading">
-              <div className="operational-workspace__header"><div><h2 id="collection-history-heading" className="operational-workspace__title">运行历史</h2><p className="settings-section__description">查看采集窗口、团队结果和暂存记录。</p></div><span className="operational-workspace__count">{runs.length} 条</span></div>
-              <Table className="operational-table" rowKey="id" size="small" columns={runColumns} dataSource={runs} pagination={false} expandable={{ expandedRowRender: (run) => <RunTeamDetails run={run} />, rowExpandable: (run) => Boolean(run.team_results?.length), expandRowByClick: false }} locale={{ emptyText: '暂无采集运行记录。' }} scroll={{ x: 900 }} />
+            <section className="admin-panel">
+              <div className="admin-panel__head"><div><h2 className="admin-panel__title">手动采集</h2><div className="admin-panel__sub">默认使用上一个完整周期；需要时可指定半开区间</div></div></div>
+              <div className="admin-panel__body">
+                <div className="admin-manual-period"><strong>默认：上一个完整周期</strong><div>窗口由当前填报周期决定 · {scopeText}</div></div>
+                <form noValidate aria-label="手动触发 IR 采集" onSubmit={runNow}>
+                  <div className="admin-disclosure"><details><summary>自定义时间范围</summary><div className="admin-disclosure__body"><div className="admin-form-grid"><div className="admin-field"><label htmlFor="collection-start">开始时间（Asia/Shanghai）</label><input id="collection-start" aria-label="开始时间" className="admin-control" type="datetime-local" value={window.start_at} onChange={(event) => setWindow((current) => ({ ...current, start_at: event.target.value }))} /></div><div className="admin-field"><label htmlFor="collection-end">结束时间（Asia/Shanghai）</label><input id="collection-end" aria-label="结束时间" className="admin-control" type="datetime-local" value={window.end_at} onChange={(event) => setWindow((current) => ({ ...current, end_at: event.target.value }))} /></div></div><span className="admin-form-note">窗口按 [开始, 结束) 计算，单次最多 10000 条；超量时请缩短窗口。</span></div></details></div>
+                  <div className="admin-form-actions"><Button type="primary" htmlType="submit" loading={running} disabled={gatewayBlocked}>立即采集</Button><span className="admin-form-note">采集结果进入待确认批次。</span></div>
+                </form>
+                {latestRun && <div className="admin-last-run"><div className="admin-last-run__label">最近一次运行</div><div className="admin-last-run__value">{statusLabel(latestRun.status)}<span>{formatRunTime(latestRun.started_at)}</span><span className="muted">{summarizeTeams(latestRun)}</span></div><div className="admin-last-run__note">采集窗口：{latestRun.window_start_at} → {latestRun.window_end_at}</div></div>}
+              </div>
             </section>
-          </>}
+          </div>
+
+          <section className="admin-table-card" aria-labelledby="collection-history-heading">
+            <div className="admin-table-head"><div><h2 id="collection-history-heading">运行历史</h2><span>查看采集窗口、团队结果和暂存记录</span></div><span>最近 {runs.length} 条</span></div>
+            <Table className="operational-table" rowKey="id" size="middle" columns={runColumns} dataSource={runs} pagination={false} expandable={{ expandedRowRender: (run) => <RunTeamDetails run={run} />, rowExpandable: (run) => Boolean(run.team_results?.length), expandRowByClick: false }} locale={{ emptyText: '暂无采集运行记录。' }} scroll={{ x: 1000 }} />
+            <div className="admin-panel__body admin-note">运行仅创建待确认批次，确认后写入正式 IR；团队结果按团队隔离。</div>
+          </section>
+        </>
+      )}
     </div>
   )
 }

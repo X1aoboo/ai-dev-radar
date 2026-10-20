@@ -322,3 +322,13 @@ def test_existing_import_tables_get_nullable_collection_columns():
     assert "team_id" in {column["name"] for column in inspect(engine).get_columns("import_batches")}
     assert "source_system" in {column["name"] for column in inspect(engine).get_columns("import_rows")}
     engine.dispose()
+
+
+def test_collection_schedule_response_includes_derived_scope_summary(client):
+    login(client, "admin")
+    response = client.get("/api/collection-schedules")
+    assert response.status_code == 200
+    scope = response.json()["scope"]
+    assert scope["derived_from"] == "product_pi"
+    assert scope["team_count"] >= 1
+    assert scope["pi_count"] >= 0

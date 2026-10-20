@@ -151,3 +151,40 @@ def test_activation_rechecks_live_readiness_and_failed_draft_keeps_active(gatewa
     assert runs.json()["gateway_config_id"] == active_id
     assert runs.json()["gateway_base_url"] == "https://gateway.test"
     assert "wrong-secret" not in runs.text
+
+
+def test_gateway_status_projection_is_read_only_and_has_no_connection_details(gateway_client):
+    client = gateway_client
+    login(client, "admin")
+
+    unconfigured = client.get("/api/gateway/status")
+    assert unconfigured.status_code == 200
+    body = unconfigured.json()
+    assert body["configured"] is False
+    assert body["status"] == "UNCONFIGURED"
+    assert "base_url" not in body
+    assert "bearer_token" not in body
+    assert "token_configured" not in body
+
+    with SessionLocal() as db:
+        db.add(GatewayConfiguration(
+            slot="active",
+            base_url="https://gateway.test",
+            bearer_token=TOKEN,
+            request_timeout_seconds=2,
+            revision=1,
+            created_by="admin",
+            updated_by="admin",
+        ))
+        db.commit()
+
+    configured = client.get("/api/gateway/status")
+    assert configured.status_code == 200
+    body = configured.json()
+    assert body["configured"] is True
+    assert body["status"] == "UNKNOWN"
+    assert "base_url" not in body
+    assert "bearer_token" not in body
+    assert "token_configured" not in body
+    assert "https://gateway.test" not in configured.text
+    assert TOKEN not in configured.text

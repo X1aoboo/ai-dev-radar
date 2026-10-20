@@ -41,11 +41,8 @@ def collection_session() -> tuple[Session, object]:
     return factory(), engine
 
 
-def add_team_with_ir_hierarchy(db: Session, name: str, version_name: str, *, mapped=True):
-    team = Team(
-        name=name,
-        source_mapping={"product_versions": [version_name] if mapped else []},
-    )
+def add_team_with_ir_hierarchy(db: Session, name: str, version_name: str):
+    team = Team(name=name, source_mapping={"product_versions": []})
     product = Product(name=f"{name} product", team=team)
     version = ProductVersion(name=version_name, product=product)
     iteration = Iteration(
@@ -57,6 +54,14 @@ def add_team_with_ir_hierarchy(db: Session, name: str, version_name: str, *, map
     db.add_all([team, product, version, iteration])
     db.commit()
     return team, product, version, iteration
+
+
+def add_team_without_pi(db: Session, name: str):
+    team = Team(name=name, source_mapping={"product_versions": []})
+    product = Product(name=f"{name} product", team=team)
+    db.add_all([team, product])
+    db.commit()
+    return team, product
 
 
 def gateway_record(source_id="IR-001", **overrides):
@@ -251,8 +256,6 @@ def test_product_version_pairs_scope_records_and_empty_module_is_normalized():
     )
     db.add_all([product_b, version_b, iteration_b])
     db.commit()
-    team.source_mapping = {"product_versions": ["版本A", "版本B"]}
-    db.commit()
     seen_body = None
 
     def handle(request):
@@ -293,10 +296,10 @@ def test_product_version_pairs_scope_records_and_empty_module_is_normalized():
     engine.dispose()
 
 
-def test_empty_product_mapping_skips_gateway_and_empty_result_creates_no_batch():
+def test_team_without_pi_skips_gateway_and_empty_result_creates_no_batch():
     db, engine = collection_session()
     configure_gateway(db)
-    add_team_with_ir_hierarchy(db, "团队空映射", "版本空", mapped=False)
+    add_team_without_pi(db, "团队无PI")
     add_team_with_ir_hierarchy(db, "团队无结果", "版本无结果")
     requests = []
     transport = httpx.MockTransport(lambda request: requests.append(request) or httpx.Response(
@@ -307,6 +310,7 @@ def test_empty_product_mapping_skips_gateway_and_empty_result_creates_no_batch()
     result = run(db, transport)
     assert len(requests) == 1
     assert [item["status"] for item in result.team_results] == ["skipped", "succeeded"]
+    assert result.team_results[0]["message"] == "团队未配置产品/PI，已跳过。"
     assert all(item.get("batch_id") is None for item in result.team_results)
     assert db.scalars(select(ImportBatch)).all() == []
     db.close()

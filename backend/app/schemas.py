@@ -588,11 +588,20 @@ class CollectionRunOut(BaseModel):
     completed_at: datetime | None
 
 
+class CollectionScopeOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    team_count: int
+    pi_count: int
+    derived_from: Literal["product_pi"]
+
+
 class CollectionScheduleListOut(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     schedules: list[CollectionScheduleOut]
     recent_runs: list[CollectionRunOut]
+    scope: CollectionScopeOut
 
 
 GatewayReadinessState = Literal[
@@ -660,6 +669,20 @@ class GatewayStateOut(BaseModel):
 
     active: GatewayConfigurationOut | None
     draft: GatewayConfigurationOut | None
+
+
+class GatewayStatusOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    configured: bool
+    status: GatewayReadinessState
+    stale: bool = False
+    last_known_status: GatewayReadinessState | None = None
+    checked_at: datetime | None = None
+    latency_ms: int | None = None
+    contract_version: str | None = None
+    error_code: str | None = None
+    error_message: str | None = None
 
 
 class GatewayConfigAuditOut(BaseModel):

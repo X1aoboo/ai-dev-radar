@@ -3,17 +3,18 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .auth import get_current_user, require_roles
 from .db import get_db
 from .gateway_config import gateway_transport_for
-from .models import CollectionRun, CollectionSchedule, User, UserRole
+from .models import CollectionRun, CollectionSchedule, ProductVersion, Team, User, UserRole
 from .scheduler import apply_source_collection_schedule
 from .schemas import (
     CollectionRunIn,
     CollectionRunOut,
+    CollectionScopeOut,
     CollectionScheduleListOut,
     CollectionScheduleOut,
     CollectionScheduleUpdateIn,
@@ -88,6 +89,11 @@ def list_collection_schedules(
     return CollectionScheduleListOut(
         schedules=[_schedule_out(schedule) for schedule in schedules],
         recent_runs=[_run_out(run) for run in runs],
+        scope=CollectionScopeOut(
+            team_count=int(db.scalar(select(func.count()).select_from(Team)) or 0),
+            pi_count=int(db.scalar(select(func.count()).select_from(ProductVersion)) or 0),
+            derived_from="product_pi",
+        ),
     )
 
 
