@@ -12,7 +12,7 @@ from datetime import date, datetime, timezone
 from typing import Any, Literal
 import zipfile
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
 from pydantic import ValidationError
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -23,21 +23,29 @@ from .data_management import (
     IR_FIELDS,
     calculate_data_metric,
     build_ir_overview_series,
+    derive_ai_assisted,
+    effective_actual_workload,
+    effective_ai_assisted,
+    effective_estimated_workload,
     field_diff,
     json_changes,
     merge_empty_fields,
+    overwrite_non_empty_fields,
     parse_import_file,
     record_is_valid,
     serializable_payload,
 )
 from .db import get_db
+from .ir_fields import IR_FIELD_LABELS, ir_field_schema
 from .ir_imports import (
     IRImportRowInput,
     check_ir_write_access as _check_ir_write_access,
     create_ir_import_batch,
+    detect_strict_template,
     employee_for_team as _employee_for_team,
     validate_ir_record_refs as _validate_ir_record_refs,
 )
+from .ir_template import build_ir_import_template
 from .models import (
     AuditLog,
     AIReviewOpinion,
@@ -61,9 +69,11 @@ from .schemas import (
     DataMetricDefinitionIn,
     DataMetricDefinitionOut,
     DataMetricDefinitionUpdateIn,
+    IRBulkUpdateIn,
     IRListOut,
     IRRequirementIn,
     IRRequirementOut,
+    IRSummaryOut,
     IROverviewMetricsOut,
     IRRequirementUpdateIn,
     ImportBatchOut,
@@ -461,8 +471,11 @@ def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
     iteration = record.iteration
     team = product.team
     member = _employee_for_team(db, team.id, record.responsible_employee_id)
+    sa_member = _employee_for_team(db, team.id, record.sa_employee_id)
+    se_member = _employee_for_team(db, team.id, record.se_employee_id)
     return IRRequirementOut(
         id=record.id,
+        requirement_type=record.requirement_type or "IR",
         requirement_no=record.requirement_no,
         requirement_name=record.requirement_name,
         responsible_employee_id=record.responsible_employee_id,
@@ -479,15 +492,32 @@ def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
         iteration_name=iteration.name,
         completed_at=record.completed_at,
         business_module=record.business_module,
-        requirement_scenario=record.requirement_scenario,
+        requirement_scenario=record.requirement_scenario or "",
+        progress=record.progress,
+        sa_owner_name=record.sa_owner_name or (sa_member.name if sa_member else None),
+        sa_employee_id=record.sa_employee_id,
+        sa_employee_name=sa_member.name if sa_member else None,
+        sa_employee_pending=bool(record.sa_employee_id and sa_member is None),
+        se_owner_name=record.se_owner_name or (se_member.name if se_member else None),
+        se_employee_id=record.se_employee_id,
+        se_employee_name=se_member.name if se_member else None,
+        se_employee_pending=bool(record.se_employee_id and se_member is None),
         estimated_workload=record.estimated_workload,
         actual_workload=record.actual_workload,
+        total_estimated_workload=effective_estimated_workload(record),
+        total_actual_workload=effective_actual_workload(record),
         sa_estimated_workload=record.sa_estimated_workload,
         sa_actual_workload=record.sa_actual_workload,
         se_estimated_workload=record.se_estimated_workload,
         se_actual_workload=record.se_actual_workload,
-        ai_assisted=record.ai_assisted,
+        ai_quality_level=record.ai_quality_level,
+        ai_applicability=record.ai_applicability,
+        sa_ai_assisted=record.sa_ai_assisted,
+        se_ai_assisted=record.se_ai_assisted,
+        ai_dev_mode=record.ai_dev_mode,
+        ai_assisted=effective_ai_assisted(record),
         ai_attribute_metadata=record.ai_attribute_metadata or {},
+        remark=record.remark,
         record_source=record.record_source,
         created_at=record.created_at,
         updated_at=record.updated_at,
@@ -511,14 +541,36 @@ def _ir_record_query(db: Session):
     )
 
 
-def _manual_ai_metadata(existing: dict[str, Any], actor: str) -> dict[str, Any]:
+AI_ATTRIBUTE_FIELDS = (
+    "ai_assisted",
+    "ai_quality_level",
+    "ai_applicability",
+    "sa_ai_assisted",
+    "se_ai_assisted",
+    "ai_dev_mode",
+)
+
+
+def _ai_metadata(
+    existing: dict[str, Any],
+    actor: str,
+    source: str,
+    fields: list[str] | tuple[str, ...],
+) -> dict[str, Any]:
     metadata = deepcopy(existing or {})
-    metadata["ai_assisted"] = {
-        "source": "manual",
-        "updated_by": actor,
-        "updated_at": _now().isoformat(),
-    }
+    updated_at = _now().isoformat()
+    for field in fields:
+        if field in AI_ATTRIBUTE_FIELDS:
+            metadata[field] = {
+                "source": source,
+                "updated_by": actor,
+                "updated_at": updated_at,
+            }
     return metadata
+
+
+def _manual_ai_metadata(existing: dict[str, Any], actor: str) -> dict[str, Any]:
+    return _ai_metadata(existing, actor, "manual", ["ai_assisted"])
 
 
 @router.get("/data/code-review/opinions", response_model=AIReviewOpinionListOut)
@@ -601,19 +653,120 @@ def upsert_ai_review_opinion(
     return _commit(db, record)
 
 
+def _sum_optional(values: list[float | None]) -> float | None:
+    present = [float(value) for value in values if value is not None]
+    return sum(present) if present else None
+
+
+def _ir_summary(rows: list[Any]) -> IRSummaryOut:
+    by_progress: dict[str, int] = {}
+    ai_used = 0
+    ai_known = 0
+    sa_estimated: list[float | None] = []
+    sa_actual: list[float | None] = []
+    se_estimated: list[float | None] = []
+    se_actual: list[float | None] = []
+    total_estimated: list[float | None] = []
+    total_actual: list[float | None] = []
+
+    for row in rows:
+        progress = row.progress or "待维护"
+        by_progress[progress] = by_progress.get(progress, 0) + 1
+
+        sa_flag = row.sa_ai_assisted
+        se_flag = row.se_ai_assisted
+        if sa_flag is None and se_flag is None:
+            effective_ai = row.ai_assisted
+        elif sa_flag is True or se_flag is True:
+            effective_ai = True
+        elif sa_flag is False and se_flag is False:
+            effective_ai = False
+        else:
+            effective_ai = None
+        if effective_ai is not None:
+            ai_known += 1
+            if effective_ai:
+                ai_used += 1
+
+        estimated = row.estimated_workload
+        if estimated is None:
+            parts = [row.sa_estimated_workload, row.se_estimated_workload]
+            estimated = sum(part or 0 for part in parts) if any(part is not None for part in parts) else None
+        actual = row.actual_workload
+        if actual is None:
+            parts = [row.sa_actual_workload, row.se_actual_workload]
+            actual = sum(part or 0 for part in parts) if any(part is not None for part in parts) else None
+
+        sa_estimated.append(row.sa_estimated_workload)
+        sa_actual.append(row.sa_actual_workload)
+        se_estimated.append(row.se_estimated_workload)
+        se_actual.append(row.se_actual_workload)
+        total_estimated.append(estimated)
+        total_actual.append(actual)
+
+    return IRSummaryOut(
+        total=len(rows),
+        by_progress=by_progress,
+        ai_used_count=ai_used,
+        ai_known_count=ai_known,
+        ai_usage_rate=(ai_used / ai_known) if ai_known else None,
+        sa_estimated_workload=_sum_optional(sa_estimated),
+        sa_actual_workload=_sum_optional(sa_actual),
+        se_estimated_workload=_sum_optional(se_estimated),
+        se_actual_workload=_sum_optional(se_actual),
+        total_estimated_workload=_sum_optional(total_estimated),
+        total_actual_workload=_sum_optional(total_actual),
+    )
+
+
+@router.get("/data/ir/schema")
+def get_ir_schema(
+    _current_user: User = Depends(get_current_user),
+):
+    return ir_field_schema()
+
+
+@router.get("/data/ir/import-template")
+def download_ir_import_template(
+    _current_user: User = Depends(DATA_EDITOR),
+):
+    content = build_ir_import_template()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=IR-requirements-template.xlsx; "
+                "filename*=UTF-8''IR%E9%9C%80%E6%B1%82%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx"
+            )
+        },
+    )
+
+
 @router.get("/data/ir", response_model=IRListOut)
 def list_ir_requirements(
     team_id: int | None = None,
     product_id: int | None = None,
     version_id: int | None = None,
     iteration_id: int | None = None,
+    keyword: str | None = None,
     requirement_no: str | None = None,
     responsible_employee_id: str | None = None,
     business_module: str | None = None,
     requirement_scenario: str | None = None,
+    progress: str | None = None,
+    ai_quality_level: str | None = None,
+    ai_applicability: bool | None = None,
+    sa_ai_assisted: bool | None = None,
+    se_ai_assisted: bool | None = None,
+    ai_dev_mode: str | None = None,
     ai_assisted: bool | None = None,
+    sa_employee_id: str | None = None,
+    se_employee_id: str | None = None,
     completed_from: date | None = None,
     completed_to: date | None = None,
+    sort_by: str = "completed_at",
+    sort_order: Literal["asc", "desc"] = "desc",
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(get_current_user),
@@ -621,39 +774,107 @@ def list_ir_requirements(
 ):
     if team_id is not None and current_user.role == UserRole.MAINTAINER.value:
         _check_ir_write_access(current_user, team_id)
-    stmt = _ir_record_query(db)
+    conditions = []
     if current_user.role == UserRole.MAINTAINER.value:
-        stmt = stmt.where(Product.team_id == current_user.maintainer_team_id)
+        conditions.append(Product.team_id == current_user.maintainer_team_id)
     if team_id is not None:
-        stmt = stmt.where(Product.team_id == team_id)
+        conditions.append(Product.team_id == team_id)
     if product_id is not None:
-        stmt = stmt.where(IRRequirement.product_id == product_id)
+        conditions.append(IRRequirement.product_id == product_id)
     if version_id is not None:
-        stmt = stmt.where(IRRequirement.version_id == version_id)
+        conditions.append(IRRequirement.version_id == version_id)
     if iteration_id is not None:
-        stmt = stmt.where(IRRequirement.iteration_id == iteration_id)
+        conditions.append(IRRequirement.iteration_id == iteration_id)
+    if keyword:
+        pattern = f"%{keyword.strip()}%"
+        conditions.append(or_(
+            IRRequirement.requirement_no.ilike(pattern),
+            IRRequirement.requirement_name.ilike(pattern),
+            IRRequirement.business_module.ilike(pattern),
+        ))
     if requirement_no is not None:
-        stmt = stmt.where(IRRequirement.requirement_no == requirement_no)
+        conditions.append(IRRequirement.requirement_no == requirement_no)
     if responsible_employee_id is not None:
-        stmt = stmt.where(IRRequirement.responsible_employee_id == responsible_employee_id)
+        conditions.append(IRRequirement.responsible_employee_id == responsible_employee_id)
     if business_module is not None:
-        stmt = stmt.where(IRRequirement.business_module == business_module)
+        conditions.append(IRRequirement.business_module == business_module)
     if requirement_scenario is not None:
-        stmt = stmt.where(IRRequirement.requirement_scenario == requirement_scenario)
+        conditions.append(IRRequirement.requirement_scenario == requirement_scenario)
+    if progress is not None:
+        conditions.append(IRRequirement.progress == progress)
+    if ai_quality_level is not None:
+        conditions.append(IRRequirement.ai_quality_level == ai_quality_level)
+    if ai_applicability is not None:
+        conditions.append(IRRequirement.ai_applicability == ai_applicability)
+    if sa_ai_assisted is not None:
+        conditions.append(IRRequirement.sa_ai_assisted == sa_ai_assisted)
+    if se_ai_assisted is not None:
+        conditions.append(IRRequirement.se_ai_assisted == se_ai_assisted)
+    if ai_dev_mode is not None:
+        conditions.append(IRRequirement.ai_dev_mode == ai_dev_mode)
     if ai_assisted is not None:
-        stmt = stmt.where(IRRequirement.ai_assisted == ai_assisted)
+        conditions.append(IRRequirement.ai_assisted == ai_assisted)
+    if sa_employee_id is not None:
+        conditions.append(IRRequirement.sa_employee_id == sa_employee_id)
+    if se_employee_id is not None:
+        conditions.append(IRRequirement.se_employee_id == se_employee_id)
     if completed_from is not None:
-        stmt = stmt.where(IRRequirement.completed_at >= completed_from)
+        conditions.append(IRRequirement.completed_at >= completed_from)
     if completed_to is not None:
-        stmt = stmt.where(IRRequirement.completed_at <= completed_to)
+        conditions.append(IRRequirement.completed_at <= completed_to)
 
-    total = db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0
+    sort_fields = {
+        "requirement_no": IRRequirement.requirement_no,
+        "requirement_name": IRRequirement.requirement_name,
+        "business_module": IRRequirement.business_module,
+        "progress": IRRequirement.progress,
+        "completed_at": IRRequirement.completed_at,
+        "sa_estimated_workload": IRRequirement.sa_estimated_workload,
+        "sa_actual_workload": IRRequirement.sa_actual_workload,
+        "se_estimated_workload": IRRequirement.se_estimated_workload,
+        "se_actual_workload": IRRequirement.se_actual_workload,
+        "ai_quality_level": IRRequirement.ai_quality_level,
+        "updated_at": IRRequirement.updated_at,
+        "id": IRRequirement.id,
+    }
+    sort_column = sort_fields.get(sort_by)
+    if sort_column is None:
+        raise HTTPException(status_code=422, detail="unsupported sort field")
+    direction = sort_column.asc() if sort_order == "asc" else sort_column.desc()
+
+    summary_stmt = (
+        select(
+            IRRequirement.progress,
+            IRRequirement.sa_ai_assisted,
+            IRRequirement.se_ai_assisted,
+            IRRequirement.ai_assisted,
+            IRRequirement.estimated_workload,
+            IRRequirement.actual_workload,
+            IRRequirement.sa_estimated_workload,
+            IRRequirement.sa_actual_workload,
+            IRRequirement.se_estimated_workload,
+            IRRequirement.se_actual_workload,
+        )
+        .select_from(IRRequirement)
+        .join(Product, IRRequirement.product_id == Product.id)
+        .where(*conditions)
+    )
+    summary_rows = db.execute(summary_stmt).all()
+
+    stmt = (
+        _ir_record_query(db)
+        .where(*conditions)
+        .order_by(None)
+        .order_by(direction, IRRequirement.id.desc())
+    )
+    total = len(summary_rows)
     records = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique().all()
     return IRListOut(
         items=[_ir_out(db, record) for record in records],
         total=total,
         page=page,
         page_size=page_size,
+        summary=_ir_summary(summary_rows),
     )
 
 
@@ -664,12 +885,18 @@ def create_ir_requirement(
     db: Session = Depends(get_db),
 ):
     values = payload.model_dump()
+    values["requirement_type"] = "IR"
+    values["requirement_scenario"] = values.get("requirement_scenario") or ""
+    values["ai_assisted"] = derive_ai_assisted(values)
     product = _validate_ir_record_refs(db, values)
     _check_ir_write_access(current_user, product.team_id)
     now = _now()
-    metadata = {}
-    if values.get("ai_assisted") is not None:
-        metadata = _manual_ai_metadata({}, current_user.username)
+    metadata = _ai_metadata(
+        {},
+        current_user.username,
+        "manual",
+        [field for field in AI_ATTRIBUTE_FIELDS if values.get(field) is not None],
+    )
     record = IRRequirement(
         **values,
         ai_attribute_metadata=metadata,
@@ -692,6 +919,123 @@ def create_ir_requirement(
     return _ir_out(db, record)
 
 
+def _effective_changes(record: IRRequirement, changes: dict[str, Any]) -> dict[str, Any]:
+    effective: dict[str, Any] = {}
+    for field, value in changes.items():
+        current = getattr(record, field, None)
+        current_value = serializable_payload({"value": current})["value"]
+        next_value = serializable_payload({"value": value})["value"]
+        if current_value != next_value:
+            effective[field] = value
+    return effective
+
+
+def _apply_ir_changes(
+    db: Session,
+    record: IRRequirement,
+    changes: dict[str, Any],
+    current_user: User,
+    *,
+    source: str = "manual",
+) -> dict[str, Any]:
+    """Validate and apply one record's changes without committing."""
+
+    changes = _effective_changes(record, changes)
+    if not changes:
+        return {}
+    next_values = {
+        field: changes.get(field, getattr(record, field, None))
+        for field in IR_FIELDS
+    }
+    if next_values.get("requirement_scenario") is None:
+        next_values["requirement_scenario"] = ""
+    product = _validate_ir_record_refs(db, next_values)
+    _check_ir_write_access(current_user, product.team_id)
+
+    if "sa_ai_assisted" in changes or "se_ai_assisted" in changes:
+        derived = derive_ai_assisted(next_values)
+        if "ai_assisted" not in changes or changes["ai_assisted"] != derived:
+            changes["ai_assisted"] = derived
+    if changes.get("requirement_scenario") is None:
+        changes["requirement_scenario"] = ""
+    if "requirement_no" in changes:
+        duplicate = db.scalar(
+            select(IRRequirement).where(
+                IRRequirement.requirement_no == changes["requirement_no"],
+                IRRequirement.id != record.id,
+            )
+        )
+        if duplicate is not None:
+            raise HTTPException(status_code=409, detail="requirement_no already exists")
+
+    before = {field: getattr(record, field, None) for field in changes}
+    for field, value in changes.items():
+        setattr(record, field, value)
+
+    metadata_fields = [field for field in changes if field in AI_ATTRIBUTE_FIELDS]
+    if metadata_fields:
+        record.ai_attribute_metadata = _ai_metadata(
+            record.ai_attribute_metadata,
+            current_user.username,
+            source,
+            metadata_fields,
+        )
+    record.record_source = source
+    record.updated_at = _now()
+    record.updated_by = current_user.username
+    return {
+        field: {
+            "from": serializable_payload({"value": before[field]})["value"],
+            "to": serializable_payload({"value": changes[field]})["value"],
+        }
+        for field in changes
+    }
+
+
+@router.patch("/data/ir/bulk", response_model=list[IRRequirementOut])
+def bulk_update_ir_requirements(
+    payload: IRBulkUpdateIn,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    ids = [item.id for item in payload.items]
+    records = db.scalars(
+        select(IRRequirement)
+        .options(
+            joinedload(IRRequirement.product).joinedload(Product.team),
+            joinedload(IRRequirement.version),
+            joinedload(IRRequirement.iteration),
+        )
+        .where(IRRequirement.id.in_(ids))
+    ).unique().all()
+    by_id = {record.id: record for record in records}
+    if len(by_id) != len(set(ids)):
+        raise HTTPException(status_code=404, detail="IR record not found")
+
+    try:
+        for item in payload.items:
+            record = by_id[item.id]
+            changes = item.changes.model_dump(exclude_unset=True)
+            if not changes:
+                continue
+            audit_changes = _apply_ir_changes(db, record, changes, current_user)
+            if not audit_changes:
+                continue
+            db.add(AuditLog(
+                domain="ir",
+                record_id=record.id,
+                action="bulk_update",
+                actor=current_user.username,
+                source="manual",
+                changes=audit_changes,
+            ))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return [_ir_out(db, by_id[item.id]) for item in payload.items]
+
+
 @router.patch("/data/ir/{record_id}", response_model=IRRequirementOut)
 def update_ir_requirement(
     record_id: int,
@@ -712,33 +1056,18 @@ def update_ir_requirement(
         raise HTTPException(status_code=404, detail="IR record not found")
     _check_ir_write_access(current_user, record.product.team_id)
     changes = payload.model_dump(exclude_unset=True)
-    next_values = {
-        field: changes.get(field, getattr(record, field))
-        for field in IR_FIELDS
-    }
-    product = _validate_ir_record_refs(db, next_values)
-    _check_ir_write_access(current_user, product.team_id)
-    before = {field: getattr(record, field) for field in changes}
-    for field, value in changes.items():
-        setattr(record, field, value)
-    if "ai_assisted" in changes:
-        record.ai_attribute_metadata = _manual_ai_metadata(record.ai_attribute_metadata, current_user.username)
-    record.record_source = "manual"
-    record.updated_at = _now()
-    record.updated_by = current_user.username
+    if not changes:
+        return _ir_out(db, record)
+    audit_changes = _apply_ir_changes(db, record, changes, current_user)
+    if not audit_changes:
+        return _ir_out(db, record)
     db.add(AuditLog(
         domain="ir",
         record_id=record.id,
         action="update",
         actor=current_user.username,
         source="manual",
-        changes={
-            field: {
-                "from": serializable_payload({"value": before[field]})["value"],
-                "to": serializable_payload({"value": value})["value"],
-            }
-            for field, value in changes.items()
-        },
+        changes=audit_changes,
     ))
     _commit(db, record)
     return _ir_out(db, record)
@@ -773,6 +1102,7 @@ def _batch_out(batch: ImportBatch) -> ImportBatchOut:
         source_kind=batch.source_kind,
         team_id=batch.team_id,
         filename=batch.filename,
+        update_mode=batch.update_mode or "fill_empty",
         status=batch.status,
         created_by=batch.created_by,
         created_at=batch.created_at,
@@ -807,6 +1137,7 @@ def _batch_summary(batch: ImportBatch) -> ImportBatchSummaryOut:
         source_kind=batch.source_kind,
         team_id=batch.team_id,
         filename=batch.filename,
+        update_mode=batch.update_mode or "fill_empty",
         status=batch.status,
         created_by=batch.created_by,
         created_at=batch.created_at,
@@ -852,10 +1183,13 @@ async def _import_preview_payload(request: Request) -> ImportPreviewIn:
 @router.post("/data/ir/imports/preview", response_model=ImportBatchOut, status_code=201)
 async def preview_ir_import(
     request: Request,
+    mode: Literal["upsert", "fill_empty"] = Query(default="fill_empty"),
     current_user: User = Depends(DATA_EDITOR),
     db: Session = Depends(get_db),
 ):
     payload = await _import_preview_payload(request)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="文件没有数据行")
     batch = create_ir_import_batch(
         db,
         [IRImportRowInput(raw=row) for row in payload.rows],
@@ -863,6 +1197,8 @@ async def preview_ir_import(
         filename=payload.filename,
         created_by=current_user.username,
         current_user=current_user,
+        update_mode=mode,
+        strict_template=detect_strict_template(payload.rows),
     )
     db.commit()
     db.refresh(batch)
@@ -963,6 +1299,8 @@ def confirm_ir_import(
     try:
         for row in batch.rows:
             payload = IRRequirementIn.model_validate(row.payload).model_dump()
+            payload["requirement_type"] = "IR"
+            payload["ai_assisted"] = derive_ai_assisted(payload)
             product = _validate_ir_record_refs(db, payload)
             _check_ir_write_access(current_user, product.team_id)
             existing = db.scalar(
@@ -970,15 +1308,13 @@ def confirm_ir_import(
             )
             if existing is None:
                 now = _now()
-                metadata = {}
-                if payload.get("ai_assisted") is not None:
-                    metadata = {
-                        "ai_assisted": {
-                            "source": batch.source_kind,
-                            "updated_by": current_user.username,
-                            "updated_at": now.isoformat(),
-                        }
-                    }
+                payload["requirement_scenario"] = payload.get("requirement_scenario") or ""
+                metadata = _ai_metadata(
+                    {},
+                    current_user.username,
+                    batch.source_kind,
+                    [field for field in AI_ATTRIBUTE_FIELDS if payload.get(field) is not None],
+                )
                 existing = IRRequirement(
                     **payload,
                     ai_attribute_metadata=metadata,
@@ -999,16 +1335,20 @@ def confirm_ir_import(
                 ))
                 created += 1
             else:
-                changes = merge_empty_fields(existing, payload)
-                if any(change["field"] == "ai_assisted" for change in changes):
-                    existing.ai_attribute_metadata = {
-                        **(existing.ai_attribute_metadata or {}),
-                        "ai_assisted": {
-                            "source": batch.source_kind,
-                            "updated_by": current_user.username,
-                            "updated_at": _now().isoformat(),
-                        },
-                    }
+                changes = (
+                    overwrite_non_empty_fields(existing, payload)
+                    if batch.update_mode == "upsert"
+                    else merge_empty_fields(existing, payload)
+                )
+                changed_fields = {change["field"] for change in changes}
+                ai_fields = [field for field in changed_fields if field in AI_ATTRIBUTE_FIELDS]
+                if ai_fields:
+                    existing.ai_attribute_metadata = _ai_metadata(
+                        existing.ai_attribute_metadata,
+                        current_user.username,
+                        batch.source_kind,
+                        ai_fields,
+                    )
                 if changes:
                     existing.updated_at = _now()
                     existing.updated_by = current_user.username

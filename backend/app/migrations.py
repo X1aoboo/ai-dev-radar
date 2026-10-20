@@ -90,6 +90,55 @@ def ensure_data_management_schema(db_engine: Engine = engine) -> None:
                 )
 
 
+def ensure_ir_schema(db_engine: Engine = engine) -> None:
+    """Add the IR template fields and import update mode to existing databases.
+
+    New tables are created by ``Base.metadata.create_all``; this only patches
+    databases created before the IR workbench refactor. All new columns are
+    nullable except the backwards-compatible defaults.
+    """
+
+    inspector = inspect(db_engine)
+    tables = set(inspector.get_table_names())
+
+    if "ir_requirements" in tables:
+        columns = {column["name"] for column in inspector.get_columns("ir_requirements")}
+        additions = {
+            "requirement_type": "VARCHAR(10) NOT NULL DEFAULT 'IR'",
+            "progress": "VARCHAR(20)",
+            "sa_owner_name": "VARCHAR(100)",
+            "sa_employee_id": "VARCHAR(50)",
+            "se_owner_name": "VARCHAR(100)",
+            "se_employee_id": "VARCHAR(50)",
+            "ai_quality_level": "VARCHAR(20)",
+            "ai_applicability": "BOOLEAN",
+            "sa_ai_assisted": "BOOLEAN",
+            "se_ai_assisted": "BOOLEAN",
+            "ai_dev_mode": "VARCHAR(60)",
+            "remark": "TEXT",
+        }
+        missing = [(name, sql_type) for name, sql_type in additions.items() if name not in columns]
+        if missing:
+            with db_engine.begin() as connection:
+                for name, sql_type in missing:
+                    connection.execute(
+                        text(f"ALTER TABLE ir_requirements ADD COLUMN {name} {sql_type}")
+                    )
+                connection.execute(
+                    text("UPDATE ir_requirements SET requirement_type = 'IR' "
+                         "WHERE requirement_type IS NULL OR requirement_type = ''")
+                )
+
+    if "import_batches" in tables:
+        columns = {column["name"] for column in inspector.get_columns("import_batches")}
+        if "update_mode" not in columns:
+            with db_engine.begin() as connection:
+                connection.execute(
+                    text("ALTER TABLE import_batches ADD COLUMN update_mode VARCHAR(20) "
+                         "NOT NULL DEFAULT 'fill_empty'")
+                )
+
+
 def ensure_maturity_schema(db_engine: Engine = engine) -> None:
     """只补齐成熟度存储，不根据旧事实或指标数据生成评估记录。"""
 

@@ -225,6 +225,7 @@ class IterationUpdateIn(BaseModel):
 class IRRequirementIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    requirement_type: Literal["IR"] = "IR"
     requirement_no: str = Field(min_length=1, max_length=100)
     requirement_name: str = Field(min_length=1, max_length=200)
     responsible_employee_id: str | None = Field(default=None, max_length=50)
@@ -234,19 +235,31 @@ class IRRequirementIn(BaseModel):
     iteration_id: int = Field(ge=1)
     completed_at: date
     business_module: str = Field(min_length=1, max_length=100)
-    requirement_scenario: str = Field(min_length=1, max_length=200)
+    requirement_scenario: str | None = Field(default=None, max_length=200)
+    progress: str | None = Field(default=None, max_length=20)
+    sa_owner_name: str | None = Field(default=None, max_length=100)
+    sa_employee_id: str | None = Field(default=None, max_length=50)
+    se_owner_name: str | None = Field(default=None, max_length=100)
+    se_employee_id: str | None = Field(default=None, max_length=50)
     estimated_workload: float | None = Field(default=None, ge=0)
     actual_workload: float | None = Field(default=None, ge=0)
     sa_estimated_workload: float | None = Field(default=None, ge=0)
     sa_actual_workload: float | None = Field(default=None, ge=0)
     se_estimated_workload: float | None = Field(default=None, ge=0)
     se_actual_workload: float | None = Field(default=None, ge=0)
+    ai_quality_level: str | None = Field(default=None, max_length=20)
+    ai_applicability: bool | None = None
+    sa_ai_assisted: bool | None = None
+    se_ai_assisted: bool | None = None
+    ai_dev_mode: str | None = Field(default=None, max_length=60)
     ai_assisted: bool | None = None
+    remark: str | None = Field(default=None, max_length=2000)
 
 
 class IRRequirementUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    requirement_type: Literal["IR"] | None = None
     requirement_no: str | None = Field(default=None, min_length=1, max_length=100)
     requirement_name: str | None = Field(default=None, min_length=1, max_length=200)
     responsible_employee_id: str | None = Field(default=None, max_length=50)
@@ -256,18 +269,57 @@ class IRRequirementUpdateIn(BaseModel):
     iteration_id: int | None = Field(default=None, ge=1)
     completed_at: date | None = None
     business_module: str | None = Field(default=None, min_length=1, max_length=100)
-    requirement_scenario: str | None = Field(default=None, min_length=1, max_length=200)
+    requirement_scenario: str | None = Field(default=None, max_length=200)
+    progress: str | None = Field(default=None, max_length=20)
+    sa_owner_name: str | None = Field(default=None, max_length=100)
+    sa_employee_id: str | None = Field(default=None, max_length=50)
+    se_owner_name: str | None = Field(default=None, max_length=100)
+    se_employee_id: str | None = Field(default=None, max_length=50)
     estimated_workload: float | None = Field(default=None, ge=0)
     actual_workload: float | None = Field(default=None, ge=0)
     sa_estimated_workload: float | None = Field(default=None, ge=0)
     sa_actual_workload: float | None = Field(default=None, ge=0)
     se_estimated_workload: float | None = Field(default=None, ge=0)
     se_actual_workload: float | None = Field(default=None, ge=0)
+    ai_quality_level: str | None = Field(default=None, max_length=20)
+    ai_applicability: bool | None = None
+    sa_ai_assisted: bool | None = None
+    se_ai_assisted: bool | None = None
+    ai_dev_mode: str | None = Field(default=None, max_length=60)
     ai_assisted: bool | None = None
+    remark: str | None = Field(default=None, max_length=2000)
+
+
+class IRBulkUpdateItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    changes: IRRequirementUpdateIn
+
+
+class IRBulkUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[IRBulkUpdateItem] = Field(min_length=1, max_length=100)
+
+
+class IRSummaryOut(BaseModel):
+    total: int
+    by_progress: dict[str, int]
+    ai_used_count: int
+    ai_known_count: int
+    ai_usage_rate: float | None
+    sa_estimated_workload: float | None
+    sa_actual_workload: float | None
+    se_estimated_workload: float | None
+    se_actual_workload: float | None
+    total_estimated_workload: float | None
+    total_actual_workload: float | None
 
 
 class IRRequirementOut(BaseModel):
     id: int
+    requirement_type: str
     requirement_no: str
     requirement_name: str
     responsible_employee_id: str | None
@@ -285,14 +337,31 @@ class IRRequirementOut(BaseModel):
     completed_at: date
     business_module: str
     requirement_scenario: str
+    progress: str | None
+    sa_owner_name: str | None
+    sa_employee_id: str | None
+    sa_employee_name: str | None
+    sa_employee_pending: bool
+    se_owner_name: str | None
+    se_employee_id: str | None
+    se_employee_name: str | None
+    se_employee_pending: bool
     estimated_workload: float | None
     actual_workload: float | None
+    total_estimated_workload: float | None
+    total_actual_workload: float | None
     sa_estimated_workload: float | None
     sa_actual_workload: float | None
     se_estimated_workload: float | None
     se_actual_workload: float | None
+    ai_quality_level: str | None
+    ai_applicability: bool | None
+    sa_ai_assisted: bool | None
+    se_ai_assisted: bool | None
+    ai_dev_mode: str | None
     ai_assisted: bool | None
     ai_attribute_metadata: dict[str, Any]
+    remark: str | None
     record_source: str
     created_at: datetime
     updated_at: datetime
@@ -333,6 +402,7 @@ class IRListOut(BaseModel):
     total: int
     page: int
     page_size: int
+    summary: IRSummaryOut
 
 
 class ImportPreviewIn(BaseModel):
@@ -362,6 +432,7 @@ class ImportBatchOut(BaseModel):
     source_kind: str
     team_id: int | None = None
     filename: str | None
+    update_mode: str = "fill_empty"
     status: str
     created_by: str
     created_at: datetime
@@ -380,6 +451,7 @@ class ImportBatchSummaryOut(BaseModel):
     source_kind: str
     team_id: int | None
     filename: str | None
+    update_mode: str = "fill_empty"
     status: str
     created_by: str
     created_at: datetime

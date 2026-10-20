@@ -229,11 +229,16 @@ class MaturityRecord(Base):
 
 
 class IRRequirement(Base):
-    """IR 源数据记录；首版按固定 SA/SE 活动字段保存工作量。"""
+    """IR 源数据记录；SA/SE 活动工作量与 AI 研发属性并存。
+
+    ``completed_at`` 为兼容字段名，页面语义是“设计时间”，继续作为月度统计
+    的时间锚点。
+    """
 
     __tablename__ = "ir_requirements"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    requirement_type: Mapped[str] = mapped_column(String(10), default="IR", server_default="IR")
     requirement_no: Mapped[str] = mapped_column(String(100), unique=True)
     requirement_name: Mapped[str] = mapped_column(String(200))
     responsible_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
@@ -243,15 +248,26 @@ class IRRequirement(Base):
     iteration_id: Mapped[int] = mapped_column(ForeignKey("iterations.id"))
     completed_at: Mapped[date] = mapped_column(Date)
     business_module: Mapped[str] = mapped_column(String(100))
-    requirement_scenario: Mapped[str] = mapped_column(String(200))
+    requirement_scenario: Mapped[str] = mapped_column(String(200), default="")
+    progress: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    sa_owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sa_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    se_owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    se_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
     estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
     actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
     sa_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
     sa_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
     se_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
     se_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_quality_level: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    ai_applicability: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    sa_ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    se_ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ai_dev_mode: Mapped[str | None] = mapped_column(String(60), nullable=True)
     ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     ai_attribute_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
     record_source: Mapped[str] = mapped_column(String(20), default="manual")
     created_at: Mapped[datetime] = mapped_column(
         DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
@@ -305,6 +321,7 @@ class ImportBatch(Base):
     source_kind: Mapped[str] = mapped_column(String(20))
     team_id: Mapped[int | None] = mapped_column(ForeignKey("teams.id"), nullable=True)
     filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    update_mode: Mapped[str] = mapped_column(String(20), default="fill_empty", server_default="fill_empty")
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_by: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(

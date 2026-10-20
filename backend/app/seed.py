@@ -27,7 +27,6 @@ from .models import (
     AIReviewOpinion,
     Activity,
     AuditLog,
-    DataMetricDefinition,
     FactRecord,
     IRRequirement,
     ImportBatch,
@@ -366,6 +365,7 @@ def seed_demo(db: Session, today: date) -> None:
         for sample_index in range(2):
             index = month_index * 2 + sample_index
             db.add(IRRequirement(
+                requirement_type="IR",
                 requirement_no=f"IR-DEMO-{index + 1:03d}",
                 requirement_name=f"CNAE 演示需求 {index + 1}",
                 responsible_employee_id=f"A{sample_index + 1:03d}",
@@ -375,59 +375,43 @@ def seed_demo(db: Session, today: date) -> None:
                 completed_at=fact_date,
                 business_module="CNAE",
                 requirement_scenario="AI研发效能数据管理",
+                progress="完成",
+                sa_owner_name="团队A成员1",
+                sa_employee_id="A001",
+                se_owner_name="团队A成员2",
+                se_employee_id="A002",
                 estimated_workload=10.0 + sample_index,
                 actual_workload=5.0 + sample_index,
                 sa_estimated_workload=4.0,
                 sa_actual_workload=2.0,
                 se_estimated_workload=6.0 + sample_index,
                 se_actual_workload=3.0 + sample_index,
+                ai_quality_level="优秀" if sample_index == 0 else "良好",
+                ai_applicability=True,
+                sa_ai_assisted=sample_index == 0,
+                se_ai_assisted=sample_index == 0,
+                ai_dev_mode="设计开发一体化" if sample_index == 0 else "超级单兵",
                 ai_assisted=sample_index == 0,
                 ai_attribute_metadata={
-                    "ai_assisted": {
+                    field: {
                         "source": "manual",
                         "updated_by": "演示种子",
                         "updated_at": entered_at.isoformat(),
                     }
+                    for field in (
+                        "ai_assisted",
+                        "ai_quality_level",
+                        "ai_applicability",
+                        "sa_ai_assisted",
+                        "se_ai_assisted",
+                        "ai_dev_mode",
+                    )
                 },
+                remark="演示数据",
                 record_source="seed",
                 updated_by="演示种子",
                 updated_at=entered_at,
             ))
-
-
-def seed_data_metrics(db: Session) -> None:
-    definitions = [
-        DataMetricDefinition(
-            domain="ir",
-            code="ir-ai-penetration",
-            name="IR需求AI渗透率",
-            metric_type="penetration",
-            numerator_field="ai_assisted",
-            denominator_field="record_count",
-            filter_definition={},
-        ),
-        DataMetricDefinition(
-            domain="ir",
-            code="ir-sa-efficiency",
-            name="SA设计效率提升",
-            metric_type="efficiency",
-            activity_code="sa",
-            numerator_field="sa_estimated_workload",
-            denominator_field="sa_actual_workload",
-            filter_definition={},
-        ),
-        DataMetricDefinition(
-            domain="ir",
-            code="ir-se-efficiency",
-            name="SE设计效率提升",
-            metric_type="efficiency",
-            activity_code="se",
-            numerator_field="se_estimated_workload",
-            denominator_field="se_actual_workload",
-            filter_definition={},
-        ),
-    ]
-    db.add_all(definitions)
 
 
 def clear(db: Session) -> None:
@@ -437,7 +421,6 @@ def clear(db: Session) -> None:
     db.execute(delete(ImportBatch))
     db.execute(delete(AIReviewOpinion))
     db.execute(delete(IRRequirement))
-    db.execute(delete(DataMetricDefinition))
     db.execute(delete(MaturityRecord))
     db.execute(delete(FactRecord))
     db.execute(delete(Iteration))
@@ -455,7 +438,6 @@ def run_seed(db: Session, today: date | None = None) -> None:
     clear(db)
     seed_catalog(db)
     seed_demo(db, today)
-    seed_data_metrics(db)
     db.commit()
 
 

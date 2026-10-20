@@ -17,74 +17,27 @@ from typing import Any
 from xml.etree import ElementTree
 
 
-IR_FIELDS = (
-    "requirement_no",
-    "requirement_name",
-    "responsible_employee_id",
-    "parent_requirement_no",
-    "product_id",
-    "version_id",
-    "iteration_id",
-    "completed_at",
-    "business_module",
-    "requirement_scenario",
-    "estimated_workload",
-    "actual_workload",
-    "sa_estimated_workload",
-    "sa_actual_workload",
-    "se_estimated_workload",
-    "se_actual_workload",
-    "ai_assisted",
+from .ir_fields import (
+    IR_BOOL_FIELDS,
+    IR_DATE_FIELDS,
+    IR_DB_FIELDS,
+    IR_ENUM_ALIASES,
+    IR_ENUM_FIELDS,
+    IR_FIELD_BY_KEY,
+    IR_FIELD_LABELS,
+    IR_FIELDS,
+    IR_HEADER_ALIASES,
+    IR_IMPORT_REQUIRED_FIELDS,
+    IR_INT_FIELDS,
+    IR_LEGACY_REQUIRED_FIELDS,
+    IR_NUMERIC_FIELDS,
+    IR_OWNER_FIELDS,
+    IR_REQUIRED_FIELDS,
 )
 
-IR_REQUIRED_FIELDS = (
-    "requirement_no",
-    "requirement_name",
-    "product_id",
-    "version_id",
-    "iteration_id",
-    "completed_at",
-    "business_module",
-    "requirement_scenario",
-)
 
-IR_FIELD_LABELS = {
-    "requirement_no": "需求编号",
-    "requirement_name": "需求名称",
-    "responsible_employee_id": "需求责任人工号",
-    "parent_requirement_no": "父需求编号",
-    "product_id": "产品ID",
-    "version_id": "版本ID",
-    "iteration_id": "迭代ID",
-    "completed_at": "完成时间",
-    "business_module": "业务模块",
-    "requirement_scenario": "需求场景",
-    "estimated_workload": "预估工作量",
-    "actual_workload": "实际工作量",
-    "sa_estimated_workload": "SA设计预估工作量",
-    "sa_actual_workload": "SA设计实际工作量",
-    "se_estimated_workload": "SE设计预估工作量",
-    "se_actual_workload": "SE设计实际工作量",
-    "ai_assisted": "是否使用AI辅助研发",
-}
-
-_HEADER_ALIASES = {
-    **{field: field for field in IR_FIELDS},
-    **{label: field for field, label in IR_FIELD_LABELS.items()},
-    "需求责任人": "responsible_employee_id",
-    "是否使用AI": "ai_assisted",
-    "是否使用AI辅助研发": "ai_assisted",
-}
-
-_FLOAT_FIELDS = {
-    "estimated_workload",
-    "actual_workload",
-    "sa_estimated_workload",
-    "sa_actual_workload",
-    "se_estimated_workload",
-    "se_actual_workload",
-}
-_INT_FIELDS = {"product_id", "version_id", "iteration_id"}
+IR_FLOAT_FIELDS = IR_NUMERIC_FIELDS
+IR_FIELD_KEYS = frozenset(IR_FIELDS)
 
 
 def _clean(value: Any) -> Any:
@@ -92,6 +45,15 @@ def _clean(value: Any) -> Any:
         value = value.strip()
         return value or None
     return value
+
+
+_EXCEL_EPOCH = date(1899, 12, 30)
+
+
+def _excel_serial_to_date(value: float) -> date | None:
+    if value < 1 or value > 2_958_465:
+        return None
+    return _EXCEL_EPOCH.fromordinal(_EXCEL_EPOCH.toordinal() + int(value))
 
 
 def _parse_date(value: Any) -> date | None:
@@ -102,7 +64,29 @@ def _parse_date(value: Any) -> date | None:
         return value.date()
     if isinstance(value, date):
         return value
-    return date.fromisoformat(str(value))
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        serial = _excel_serial_to_date(float(value))
+        if serial is not None:
+            return serial
+    text = str(value).strip()
+    if not text:
+        return None
+    if text.isdigit() and len(text) == 8:
+        return date(int(text[:4]), int(text[4:6]), int(text[6:]))
+    if text.isdigit() and len(text) <= 7:
+        serial = _excel_serial_to_date(float(text))
+        if serial is not None:
+            return serial
+    normalized = text.replace("/", "-").replace(".", "-")
+    if " " in normalized:
+        normalized = normalized.split(" ", 1)[0]
+    try:
+        return date.fromisoformat(normalized)
+    except ValueError:
+        parts = normalized.split("-")
+        if len(parts) == 3 and all(part.isdigit() for part in parts):
+            return date(int(parts[0]), int(parts[1]), int(parts[2]))
+        raise ValueError("must be a valid date") from None
 
 
 def _parse_bool(value: Any) -> bool | None:
@@ -119,37 +103,83 @@ def _parse_bool(value: Any) -> bool | None:
     raise ValueError("must be a boolean")
 
 
-def normalize_ir_row(row: Mapping[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    """把 API/CSV/Excel 行规范化为 IR 字段，并返回字段格式错误。"""
+def _normalize_enum(field: str, value: Any) -> Any:
+    value = _clean(value)
+    if value is None:
+        return None
+    aliases = IR_ENUM_ALIASES.get(field, {})
+    normalized = aliases.get(str(value))
+    if normalized is None:
+        options = " / ".join(IR_FIELD_BY_KEY[field].options)
+        raise ValueError(f"must be one of {options}")
+    return normalized
+
+
+def _has_any(normalized: Mapping[str, Any], keys: Sequence[str]) -> bool:
+    return any(_clean(normalized.get(key)) is not None for key in keys)
+
+
+def normalize_ir_row(
+    row: Mapping[str, Any],
+    *,
+    strict_template: bool = False,
+) -> tuple[dict[str, Any], list[str]]:
+    """Normalize API/CSV/Excel row values and return field-level errors.
+
+    ``strict_template`` is used for the user-facing Excel template; it requires
+    progress and SE, which legacy collector rows do not provide.
+    """
 
     normalized: dict[str, Any] = {}
     errors: list[str] = []
     for raw_key, raw_value in row.items():
-        key = _HEADER_ALIASES.get(str(raw_key).strip())
+        key = IR_HEADER_ALIASES.get(str(raw_key).strip())
         if key is None:
             continue
         value = _clean(raw_value)
         try:
-            if key in _FLOAT_FIELDS and value is not None:
+            if key in IR_OWNER_FIELDS:
+                value = value
+            elif key in IR_FLOAT_FIELDS and value is not None:
                 value = float(value)
                 if not math.isfinite(value) or value < 0:
                     raise ValueError("must be a finite non-negative number")
-            elif key in _INT_FIELDS and value is not None:
+            elif key in IR_INT_FIELDS and value is not None:
                 value = int(value)
                 if value < 1:
                     raise ValueError("must be positive")
-            elif key == "completed_at" and value is not None:
+            elif key in IR_DATE_FIELDS and value is not None:
                 value = _parse_date(value)
-            elif key == "ai_assisted":
+            elif key in IR_BOOL_FIELDS:
                 value = _parse_bool(value)
+            elif key in IR_ENUM_FIELDS:
+                value = _normalize_enum(key, value)
+            elif isinstance(value, str):
+                value = value.strip() or None
         except (TypeError, ValueError) as exc:
-            errors.append(f"{IR_FIELD_LABELS[key]}：{exc}")
+            errors.append(f"{IR_FIELD_LABELS.get(key, key)}：{exc}")
             continue
         normalized[key] = value
 
-    for field in IR_REQUIRED_FIELDS:
+    if _clean(normalized.get("requirement_type")) is None:
+        normalized["requirement_type"] = "IR"
+
+    if not _has_any(normalized, ("team_name", "product_id")):
+        errors.append("缺少归属组或产品")
+    if not _has_any(normalized, ("version_name", "version_id")):
+        errors.append("缺少PI或版本")
+    if not _has_any(normalized, ("iteration_name", "iteration_id")):
+        errors.append("缺少迭代")
+
+    required = IR_IMPORT_REQUIRED_FIELDS if strict_template else IR_LEGACY_REQUIRED_FIELDS
+    for field in required:
+        if field in {"team_name", "version_name", "iteration_name"}:
+            # Name-based references are validated by the resolver; the
+            # corresponding id is an acceptable legacy alternative.
+            continue
         if _clean(normalized.get(field)) is None:
-            errors.append(f"缺少{IR_FIELD_LABELS[field]}")
+            errors.append(f"缺少{IR_FIELD_LABELS.get(field, field)}")
+
     return normalized, errors
 
 
@@ -169,8 +199,13 @@ def record_is_valid(record: Any) -> bool:
     return all(_clean(getattr(record, field, None)) is not None for field in IR_REQUIRED_FIELDS)
 
 
-def field_diff(existing: Any | None, payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """返回导入确认将采取的字段动作，不把差异直接写入数据库。"""
+def field_diff(
+    existing: Any | None,
+    payload: Mapping[str, Any],
+    *,
+    mode: str = "fill_empty",
+) -> dict[str, dict[str, Any]]:
+    """Return the field actions the batch would take without writing data."""
 
     diff: dict[str, dict[str, Any]] = {}
     for field in IR_FIELDS:
@@ -182,10 +217,12 @@ def field_diff(existing: Any | None, payload: Mapping[str, Any]) -> dict[str, di
         current = getattr(existing, field, None)
         current_serialized = serialize_value(current)
         incoming_serialized = serialize_value(incoming)
-        if current is None and incoming is not None:
-            action = "fill"
-        elif incoming is None or current_serialized == incoming_serialized:
+        if incoming is None or current_serialized == incoming_serialized:
             action = "unchanged"
+        elif current is None:
+            action = "fill"
+        elif mode == "upsert":
+            action = "overwrite"
         else:
             action = "keep"
         diff[field] = {
@@ -208,6 +245,76 @@ def merge_empty_fields(existing: Any, payload: Mapping[str, Any]) -> list[dict[s
         setattr(existing, field, incoming)
         changes.append({"field": field, "from": None, "to": serialize_value(incoming)})
     return changes
+
+
+def overwrite_non_empty_fields(existing: Any, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+    """Use non-empty incoming values to update an existing record."""
+
+    changes: list[dict[str, Any]] = []
+    for field in IR_FIELDS:
+        incoming = payload.get(field)
+        current = getattr(existing, field, None)
+        if incoming is None or serialize_value(current) == serialize_value(incoming):
+            continue
+        setattr(existing, field, incoming)
+        changes.append({
+            "field": field,
+            "from": serialize_value(current),
+            "to": serialize_value(incoming),
+        })
+    return changes
+
+
+def effective_estimated_workload(record: Any) -> float | None:
+    stored = getattr(record, "estimated_workload", None)
+    if stored is not None:
+        return float(stored)
+    parts = [
+        getattr(record, "sa_estimated_workload", None),
+        getattr(record, "se_estimated_workload", None),
+    ]
+    if all(part is None for part in parts):
+        return None
+    return float(sum(part or 0 for part in parts))
+
+
+def effective_actual_workload(record: Any) -> float | None:
+    stored = getattr(record, "actual_workload", None)
+    if stored is not None:
+        return float(stored)
+    parts = [
+        getattr(record, "sa_actual_workload", None),
+        getattr(record, "se_actual_workload", None),
+    ]
+    if all(part is None for part in parts):
+        return None
+    return float(sum(part or 0 for part in parts))
+
+
+def derive_ai_assisted(values: Mapping[str, Any]) -> bool | None:
+    """Derive the aggregate AI flag from SA/SE flags, preserving legacy values."""
+
+    sa = values.get("sa_ai_assisted")
+    se = values.get("se_ai_assisted")
+    if sa is None and se is None:
+        return values.get("ai_assisted")
+    if sa is True or se is True:
+        return True
+    if sa is False and se is False:
+        return False
+    return None
+
+
+def effective_ai_assisted(record: Any) -> bool | None:
+    sa = getattr(record, "sa_ai_assisted", None)
+    se = getattr(record, "se_ai_assisted", None)
+    if sa is None and se is None:
+        return getattr(record, "ai_assisted", None)
+    if sa is True or se is True:
+        return True
+    if sa is False and se is False:
+        return False
+    return None
 
 
 def apply_filter(records: Iterable[Any], filters: Mapping[str, Any]) -> list[Any]:
@@ -293,13 +400,22 @@ def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], perio
         records_by_period.setdefault(period_id, []).append(record)
 
     def point(period_id: str, period_records: Sequence[Any]) -> dict[str, Any]:
-        known_ai_records = [record for record in period_records if record.ai_assisted is not None]
-        ai_records = [record for record in known_ai_records if record.ai_assisted is True]
+        known_ai_records = [
+            record for record in period_records
+            if effective_ai_assisted(record) is not None
+        ]
+        ai_records = [
+            record for record in known_ai_records
+            if effective_ai_assisted(record) is True
+        ]
         workload_records = [
             record for record in ai_records
             if all(
                 isinstance(value, (int, float)) and math.isfinite(value)
-                for value in (record.estimated_workload, record.actual_workload)
+                for value in (
+                    effective_estimated_workload(record),
+                    effective_actual_workload(record),
+                )
             )
         ]
         return {
@@ -308,8 +424,8 @@ def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], perio
             "known_ai_count": len(known_ai_records),
             "ai_assisted_count": len(ai_records) if known_ai_records else None,
             "ai_workload_count": len(workload_records),
-            "ai_estimated_workload": sum(record.estimated_workload for record in workload_records) if workload_records else None,
-            "ai_actual_workload": sum(record.actual_workload for record in workload_records) if workload_records else None,
+            "ai_estimated_workload": sum(effective_estimated_workload(record) for record in workload_records) if workload_records else None,
+            "ai_actual_workload": sum(effective_actual_workload(record) for record in workload_records) if workload_records else None,
         }
 
     return {
@@ -347,9 +463,13 @@ def _xlsx_rows(content: bytes) -> list[list[str]]:
                 if _xml_local_name(item.tag) == "si":
                     shared_strings.append("".join(node.text or "" for node in item.iter() if _xml_local_name(node.tag) == "t"))
 
-        sheet_name = "xl/worksheets/sheet1.xml"
-        if sheet_name not in archive.namelist():
-            raise ValueError("Excel 文件缺少第一个工作表")
+        sheet_names = sorted(
+            name for name in archive.namelist()
+            if name.startswith("xl/worksheets/sheet") and name.endswith(".xml")
+        )
+        if not sheet_names:
+            raise ValueError("Excel 文件缺少工作表")
+        sheet_name = sheet_names[0]
         root = ElementTree.fromstring(archive.read(sheet_name))
         rows: list[list[str]] = []
         for row in root.iter():
@@ -370,9 +490,35 @@ def _xlsx_rows(content: bytes) -> list[list[str]]:
                 if cell_type == "s" and raw:
                     raw = shared_strings[int(raw)]
                 values[_xlsx_column_index(reference)] = raw
-            if values:
+            if values and any(str(value).strip() for value in values.values()):
                 rows.append([values.get(index, "") for index in range(max(values) + 1)])
         return rows
+
+
+def _decode_csv(content: bytes) -> str:
+    for encoding in ("utf-8-sig", "utf-8", "gb18030"):
+        try:
+            return content.decode(encoding)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError("CSV 文件编码无法识别，请使用 UTF-8 或 GB18030")
+
+
+def _rows_to_dicts(rows: list[list[str]]) -> list[dict[str, Any]]:
+    if not rows:
+        return []
+    headers = [str(value).strip() for value in rows[0]]
+    if not any(headers):
+        return []
+    non_empty = [header for header in headers if header]
+    if len(non_empty) != len(set(non_empty)):
+        raise ValueError("文件存在重复列名")
+    result: list[dict[str, Any]] = []
+    for row in rows[1:]:
+        if not any(str(value).strip() for value in row):
+            continue
+        result.append({header: row[index] if index < len(row) else "" for index, header in enumerate(headers) if header})
+    return result
 
 
 def parse_import_file(content: bytes, filename: str) -> list[dict[str, Any]]:
@@ -380,14 +526,11 @@ def parse_import_file(content: bytes, filename: str) -> list[dict[str, Any]]:
 
     suffix = PurePath(filename).suffix.lower()
     if suffix == ".csv":
-        text = content.decode("utf-8-sig")
-        return [dict(row) for row in csv.DictReader(io.StringIO(text))]
+        reader = csv.reader(io.StringIO(_decode_csv(content)))
+        rows = [[value.strip() for value in row] for row in reader]
+        return _rows_to_dicts(rows)
     if suffix == ".xlsx":
-        rows = _xlsx_rows(content)
-        if not rows:
-            return []
-        headers = rows[0]
-        return [dict(zip(headers, row, strict=False)) for row in rows[1:]]
+        return _rows_to_dicts(_xlsx_rows(content))
     raise ValueError("仅支持 CSV 或 XLSX 文件")
 
 

@@ -24,12 +24,12 @@ from .migrations import (
     ensure_data_management_schema,
     ensure_fact_schema,
     ensure_gateway_schema,
+    ensure_ir_schema,
     ensure_maturity_schema,
 )
 from .models import (  # noqa: F401
     Activity,
     AuditLog,
-    DataMetricDefinition,
     FactRecord,
     GatewayConfigAudit,
     GatewayConfiguration,
@@ -96,6 +96,7 @@ async def lifespan(app: FastAPI):
     ensure_fact_schema()
     ensure_auth_schema()
     ensure_data_management_schema()
+    ensure_ir_schema()
     ensure_maturity_schema()
     ensure_gateway_schema()
     with SessionLocal() as db:
