@@ -28,6 +28,7 @@ vi.mock('antd', () => ({
   Breadcrumb: ({ items = [] }) => <nav>{items.map((item) => <span key={item.title}>{item.title}</span>)}</nav>,
   Button: ({ children, onClick, ...props }) => <button type="button" onClick={onClick} {...props}>{children}</button>,
   Drawer: ({ children, open, onClose }) => open ? <div data-drawer><button data-close-drawer onClick={onClose}>关闭</button>{children}</div> : null,
+  Modal: ({ children, open, title }) => open ? <div role="dialog" aria-label={title} data-modal>{children}</div> : null,
   Empty: ({ description }) => <span>{description}</span>,
   Form: MockForm,
   Input: Object.assign(MockInput, { Password: MockInput.Password }),
@@ -512,9 +513,13 @@ test('assigns a named content mode without changing route ownership', async () =
     ['/', 'dashboard', 'admin'],
     ['/analytics/activities', 'analytics', 'viewer'],
     ['/analytics/teams/2', 'analytics', 'viewer'],
-    ['/data/requirements/ir', 'operational', 'viewer'],
-    ['/settings/collections', 'operational', 'admin'],
-    ['/settings/gateway', 'readable', 'admin'],
+    ['/data/requirements/ir', 'workbench', 'viewer'],
+    ['/settings/collections', 'admin', 'admin'],
+    ['/settings/metrics', 'catalog', 'viewer'],
+    ['/settings/teams', 'management', 'admin'],
+    ['/settings/products', 'management', 'admin'],
+    ['/settings/gateway', 'admin', 'admin'],
+    ['/settings/users', 'admin', 'admin'],
   ]) {
     const renderer = await renderAt(path, role)
     expect(contentMode(renderer)).toContain(`app-shell__content--${mode}`)

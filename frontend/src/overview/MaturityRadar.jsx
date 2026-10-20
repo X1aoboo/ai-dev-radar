@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import React, { useRef } from 'react'
 import { DATAVIZ_COLORS } from './overviewLogic'
 
 const CAPABILITY_RADAR_LABEL_LINES = {

@@ -1,3 +1,4 @@
+import React from 'react'
 export default function FilterToolbar({ label = '筛选条件', children, actions, className = '' }) {
   return (
     <section className={`filter-toolbar ${className}`.trim()} aria-label={label || '筛选条件'}>

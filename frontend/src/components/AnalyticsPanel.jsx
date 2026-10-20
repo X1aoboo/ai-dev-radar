@@ -1,3 +1,4 @@
+import React from 'react'
 export default function AnalyticsPanel({ id, title, titleExtra, description, action, children, className = '' }) {
   return (
     <section id={id} className={`analytics-panel ${className}`.trim()}>

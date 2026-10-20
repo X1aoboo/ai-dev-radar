@@ -1,3 +1,4 @@
+import React from 'react'
 import { INITIAL_FILTER, iterationPeriods, latestPeriodId } from './overviewLogic'
 import { CalendarOutlined, ClockCircleOutlined, DownOutlined, TagOutlined } from '@ant-design/icons'
 import FilterToolbar from '../components/FilterToolbar'

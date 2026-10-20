@@ -1,4 +1,4 @@
-import { Fragment, useId } from 'react'
+import React, { Fragment, useId } from 'react'
 
 import EChart from './EChart'
 

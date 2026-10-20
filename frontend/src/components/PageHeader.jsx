@@ -1,3 +1,4 @@
+import React from 'react'
 export default function PageHeader({ eyebrow, title, description, actions, className = '' }) {
   return (
     <header className={`page-header ${className}`.trim()}>

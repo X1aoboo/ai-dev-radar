@@ -1,3 +1,4 @@
+import React from 'react'
 import assert from 'node:assert/strict'
 import { afterEach, expect, test } from 'vitest'
 import { act, create } from 'react-test-renderer'

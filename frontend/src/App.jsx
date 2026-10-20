@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as AntdApp, Breadcrumb, Button, ConfigProvider, Drawer, Tooltip } from 'antd'
 import zhCN from 'antd/locale/zh_CN'
 import { BellOutlined, LogoutOutlined, MenuFoldOutlined, MenuOutlined, QuestionCircleOutlined, SearchOutlined, UserOutlined } from '@ant-design/icons'
@@ -327,11 +327,17 @@ function AppShell({ user, onLogout }) {
     ? 'dashboard'
     : location.pathname.startsWith('/analytics/')
       ? 'analytics'
-      : location.pathname === '/settings/gateway'
-        ? 'readable'
-        : location.pathname.startsWith('/data/') || location.pathname.startsWith('/settings/')
-          ? 'operational'
-          : 'readable'
+      : ['/settings/gateway', '/settings/collections', '/settings/users'].includes(location.pathname)
+        ? 'admin'
+        : location.pathname === '/settings/teams' || location.pathname === '/settings/products'
+          ? 'management'
+          : location.pathname === '/settings/metrics'
+            ? 'catalog'
+            : location.pathname.startsWith('/data/')
+              ? 'workbench'
+              : location.pathname.startsWith('/settings/')
+                ? 'operational'
+                : 'readable'
   return (
     <div className={`app-shell${!narrow && collapsed ? ' app-shell--collapsed' : ''}`}>
       <a className="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>

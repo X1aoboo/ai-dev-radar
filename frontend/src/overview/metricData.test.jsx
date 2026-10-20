@@ -1,3 +1,4 @@
+import React from 'react'
 import assert from 'node:assert/strict'
 import { test } from 'vitest'
 

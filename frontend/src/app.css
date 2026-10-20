@@ -412,8 +412,42 @@ textarea:focus-visible {
   max-width: 1600px;
 }
 
+.app-shell__content--workbench {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--size-topbar));
+  max-width: none;
+  padding: 16px clamp(20px, calc(.75vw + 8px), 28px) 16px;
+}
+
+.app-shell__content--catalog {
+  max-width: none;
+  padding: 16px clamp(20px, calc(.75vw + 8px), 28px) 36px;
+}
+
+.app-shell__content--admin {
+  max-width: none;
+  padding: 16px clamp(20px, calc(.75vw + 8px), 28px) 34px;
+}
+
+.app-shell__content--management {
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--size-topbar));
+  max-width: none;
+  padding: 16px clamp(20px, calc(.75vw + 8px), 28px) 18px;
+}
+
 .app-shell__content--readable {
   max-width: 1120px;
+}
+
+@media (max-height: 780px) {
+  .app-shell__content--workbench,
+  .app-shell__content--management {
+    height: auto;
+    min-height: calc(100dvh - var(--size-topbar));
+  }
 }
 
 .app-loading,
