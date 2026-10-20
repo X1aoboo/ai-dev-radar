@@ -11,3 +11,5 @@ output/
 .scratch/
 .agents/
 e2e-results/
+
+.DS_Store
