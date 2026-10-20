@@ -147,6 +147,13 @@ TEAMS = [
     ("团队D", {"m": 0.27, "size": 0.6}),
 ]
 
+TEAM_ROLE_PAIRS = [
+    ("SA", "SE"),
+    ("MDE", "开发"),
+    ("测试", "开发"),
+    ("SA", "MDE"),
+]
+
 # 每个活动的采纳系数（编码/检视类高，白盒/三方件类低），沿用原型取值
 ACT_FACTOR = {
     "sa": 0.6, "se": 0.7, "dd": 0.8, "cd": 1.0, "tcg": 0.85, "tce": 0.7,
@@ -195,16 +202,16 @@ def seed_demo(db: Session, today: date) -> None:
     db.flush()
 
     products = []
-    for team in teams:
+    for team_index, team in enumerate(teams):
         product = Product(team_id=team.id, name=f"{team.name}产品")
         db.add(product)
         products.append(product)
-        for index in range(1, 3):
+        for index, role in enumerate(TEAM_ROLE_PAIRS[team_index % len(TEAM_ROLE_PAIRS)], start=1):
             db.add(TeamMember(
                 team_id=team.id,
                 employee_id=f"{team.name[-1]}{index:03d}",
                 name=f"{team.name}成员{index}",
-                role="研发工程师" if index == 1 else "测试工程师",
+                role=role,
             ))
     db.flush()
 

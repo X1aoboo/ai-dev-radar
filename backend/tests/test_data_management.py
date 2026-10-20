@@ -145,6 +145,7 @@ def create_ir_context(client, team_id=1):
             "employee_id": f"E{team_id:03d}-{suffix}",
             "name": f"成员{team_id}",
             "role": "研发工程师",
+            "role": "开发",
         },
     )
     assert member.status_code == 201, member.text

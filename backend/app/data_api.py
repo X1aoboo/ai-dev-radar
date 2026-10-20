@@ -61,6 +61,8 @@ from .models import (
     User,
     UserRole,
 )
+from .team_excel import build_team_export, build_team_import_template
+from .team_imports import TeamImportError, analyze_team_rows, apply_team_rows
 from .schemas import (
     AIReviewOpinionIn,
     AIReviewOpinionListOut,
@@ -93,6 +95,9 @@ from .schemas import (
     VersionUpdateIn,
     TeamMemberIn,
     TeamMemberOut,
+    TeamImportConfirmIn,
+    TeamImportPreviewOut,
+    TeamImportResultOut,
     TeamMemberUpdateIn,
 )
 
@@ -463,6 +468,118 @@ def delete_team_member(
         raise HTTPException(status_code=404, detail="team member not found")
     db.delete(member)
     db.commit()
+
+
+
+@router.get("/teams/import-template")
+def download_team_import_template(
+    _current_user: User = Depends(get_current_user),
+):
+    content = build_team_import_template()
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                "attachment; filename=team-personnel-template.xlsx; "
+                "filename*=UTF-8''%E5%9B%A2%E9%98%9F%E4%BA%BA%E5%91%98%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx"
+            )
+        },
+    )
+
+
+@router.get("/teams/export")
+def export_teams(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    team_stmt = select(Team).order_by(Team.id)
+    if current_user.role == UserRole.MAINTAINER.value:
+        team_stmt = team_stmt.where(Team.id == current_user.maintainer_team_id)
+    teams = db.scalars(team_stmt).all()
+    team_ids = [team.id for team in teams]
+    members = db.scalars(
+        select(TeamMember)
+        .where(TeamMember.team_id.in_(team_ids))
+        .order_by(TeamMember.team_id, TeamMember.employee_id)
+    ).all() if team_ids else []
+    members_by_team: dict[int, list[tuple[str, str, str]]] = {team_id: [] for team_id in team_ids}
+    for member in members:
+        members_by_team.setdefault(member.team_id, []).append((member.employee_id, member.name, member.role))
+    content = build_team_export([
+        (team.name, members_by_team.get(team.id, []))
+        for team in teams
+    ])
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=team-personnel-{date.today().isoformat()}.xlsx; "
+                "filename*=UTF-8''%E5%9B%A2%E9%98%9F%E4%BA%BA%E5%91%98%E5%AF%BC%E5%87%BA.xlsx"
+            )
+        },
+    )
+
+
+@router.post("/teams/imports/preview", response_model=TeamImportPreviewOut)
+async def preview_team_import(
+    request: Request,
+    _current_user: User = Depends(ADMIN),
+    db: Session = Depends(get_db),
+):
+    content = await request.body()
+    filename = request.headers.get("x-filename") or request.query_params.get("filename")
+    if not filename:
+        raise HTTPException(status_code=422, detail="filename is required for file import")
+    try:
+        rows = parse_import_file(content, filename)
+    except (ValueError, zipfile.BadZipFile) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    if not rows:
+        raise HTTPException(status_code=422, detail="文件没有数据行")
+    preview = analyze_team_rows(db, rows)
+    valid_rows = sum(1 for row in preview if row["action"] != "invalid")
+    invalid_rows = len(preview) - valid_rows
+    summary = {
+        "total_rows": len(preview),
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "create": sum(1 for row in preview if row["action"] == "create"),
+        "update": sum(1 for row in preview if row["action"] == "update"),
+        "unchanged": sum(1 for row in preview if row["action"] == "unchanged"),
+        "teams_create": len({row["team_name"] for row in preview if row["team_action"] == "create"}),
+    }
+    return TeamImportPreviewOut(
+        filename=filename,
+        total_rows=len(preview),
+        valid_rows=valid_rows,
+        invalid_rows=invalid_rows,
+        rows=preview,
+        summary=summary,
+    )
+
+
+@router.post("/teams/imports/confirm", response_model=TeamImportResultOut)
+def confirm_team_import(
+    payload: TeamImportConfirmIn,
+    _current_user: User = Depends(ADMIN),
+    db: Session = Depends(get_db),
+):
+    rows = [
+        {
+            "团队名称": row.team_name,
+            "工号": row.employee_id,
+            "姓名": row.name,
+            "角色": row.role,
+        }
+        for row in payload.rows
+    ]
+    try:
+        return apply_team_rows(db, rows)
+    except TeamImportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
 
 
 def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:

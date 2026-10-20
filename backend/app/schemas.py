@@ -37,7 +37,6 @@ class TeamOut(BaseModel):
 
 
 class SourceMappingIn(BaseModel):
-    """团队数据源映射的结构化输入，避免配置页编辑裸 JSON。"""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -168,6 +167,48 @@ class TeamMemberOut(BaseModel):
     name: str
     role: str
     created_at: datetime
+
+
+class TeamImportRowIn(BaseModel):
+    team_name: str = Field(min_length=1, max_length=100)
+    employee_id: str = Field(min_length=1, max_length=50)
+    name: str = Field(min_length=1, max_length=100)
+    role: str = Field(min_length=1, max_length=50)
+
+
+class TeamImportConfirmIn(BaseModel):
+    rows: list[TeamImportRowIn]
+
+
+class TeamImportRowOut(BaseModel):
+    row_number: int
+    team_name: str
+    employee_id: str
+    name: str
+    role: str
+    action: Literal["create", "update", "unchanged", "invalid"]
+    team_action: Literal["create", "existing"]
+    changes: dict[str, Any]
+    errors: list[str]
+    warnings: list[str]
+    target_member_id: int | None
+
+
+class TeamImportPreviewOut(BaseModel):
+    filename: str | None
+    total_rows: int
+    valid_rows: int
+    invalid_rows: int
+    rows: list[TeamImportRowOut]
+    summary: dict[str, int]
+
+
+class TeamImportResultOut(BaseModel):
+    created_teams: int
+    existing_teams: int
+    created_members: int
+    updated_members: int
+    unchanged_members: int
 
 
 class ProductIn(BaseModel):
