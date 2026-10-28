@@ -8,9 +8,13 @@
 
 所有功能开发、页面重构、交互改版或其他行为/设计变动，先提出方案/原型，与用户对齐并得到确认后再改代码；不要先实现再解释。
 
+### Frontend Prototype
+
+涉及前端页面、布局、交互或视觉变动时，编码前必须同步生成可评审原型系统（优先可运行的静态 HTML 或等价交互原型），覆盖主要页面、关键状态和交互；原型需标注示意数据、口径、空态和未决项，并在 Change Design 中链接。原型经用户评审确认后才能进入实现；原型不替代业务/架构设计文档。
+
 ### Documentation Impact
 
-每次代码改动实施前及结束前都评估 Business、Architecture、Standards、ADR、Change Design 的影响。每次 Plan 必须给出各项操作、路径和原因；无设计事实变化时允许不改文档，最终明确 `Documentation Impact: None` 与理由。
+每次代码改动实施前及结束前都评估 Business、Architecture、Standards、ADR、Change Design、Prototype 的影响。每次 Plan 必须给出各项操作、路径和原因；无设计事实变化时允许不改文档，最终明确 `Documentation Impact: None` 与理由。
 
 ### Current-State Documentation
 
@@ -26,4 +30,4 @@
 
 ### Completion Gate
 
-设计事实变化的任务只有在实现完成、相关验证通过、当前设计同步、所需 ADR 处理、Change Design 完成、导航有效及代码/设计一致后才完成。运行 `npm run check:docs`，并人工核对语义。最终报告列出 Documentation 更新、ADR、Change Design 和验证边界。
+设计事实变化的任务只有在实现完成、前端变更的原型评审通过（如涉及）、相关验证通过、当前设计同步、所需 ADR 处理、Change Design 完成、导航有效及代码/设计一致后才完成。运行 `npm run check:docs`，并人工核对语义。最终报告列出 Documentation 更新、ADR、Change Design 和验证边界。

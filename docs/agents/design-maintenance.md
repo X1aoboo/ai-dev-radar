@@ -20,9 +20,12 @@
 - Standards: UPDATE / CREATE / NONE — 路径及原因
 - ADR: CREATE / SUPERSEDE / NONE — 决策及原因
 - Change Design: CREATE / UPDATE / NONE — 规模及记录路径
+- Prototype: CREATE / UPDATE / NONE — 路径、覆盖视图及原因（前端变更时必填）
 ```
 
 medium/large 在编码前写 active Change Design，足以指导实现；方案变化先修正设计。重要长期决策按 [ADR Protocol](../adr/README.md) 评估，记录原因与取舍。
+
+涉及前端页面、布局、交互或视觉变更时，Plan 必须包含 Prototype 项：输出路径、覆盖视图/状态、评审方式。原型放在 `prototypes/<change-name>/`，至少包含 `index.html` 与 `README.md`；示意数据必须明确标注，口径与 Change Design 一致。原型链接写入 Change Design，评审结论回写后才能编码；原型本身不替代业务/架构设计文档。
 
 ## Update Resulting Design
 

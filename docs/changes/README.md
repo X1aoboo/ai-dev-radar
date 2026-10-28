@@ -10,6 +10,8 @@ Small：通常单模块、局部、低风险，不改变公共 API、持久模�
 
 编码前创建 `active/<change-name>.md`，Status 为 Active；方案变化先更新记录。验证通过、受影响当前设计与索引同步、ADR 处理后，补最终结果与验证，将 Status 改为 Completed，移动到 completed 并更新两个目录索引。未完成的范围须明确说明，不能借归档隐藏未完成需求。
 
+涉及前端页面、布局、交互或视觉变更时，编码前还必须有 `prototypes/<change-name>/` 下的可评审原型（至少 `index.html` 与 `README.md`），并把原型链接、覆盖视图和评审结论写入记录；未完成原型评审不得进入实现。
+
 入口：[Active](active/README.md)、[Completed](completed/README.md)。目录 README 是导航，不是变更记录。
 
 ## Template
@@ -34,6 +36,9 @@ Active
 
 ## Design
 组件、实现路径及交互。
+
+## Prototype
+前端变更时链接可评审原型、覆盖视图和评审结论；无前端变更写 NONE。
 
 ## Business Impact
 能力和规则。
