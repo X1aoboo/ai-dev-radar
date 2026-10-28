@@ -107,6 +107,127 @@ def test_ir_overview_series_keeps_unknown_ai_and_incomplete_workload_missing():
     assert september["ai_actual_workload"] == 0
 
 
+def test_build_requirement_overview_series_activity_and_role_semantics():
+    from app.requirement_fields import DEVELOPMENT_PROFILE
+    from app.data_management import build_requirement_overview_series
+
+    teams = [SimpleNamespace(id=1, name="团队A")]
+
+    def design_record(completed_at, *, ai_assisted=None, sa_ai=None, se_ai=None,
+                      estimated=None, actual=None, sa_estimated=None, sa_actual=None,
+                      se_estimated=None, se_actual=None):
+        return SimpleNamespace(
+            product=SimpleNamespace(team_id=1, team=teams[0]),
+            completed_at=completed_at,
+            ai_assisted=ai_assisted,
+            sa_ai_assisted=sa_ai,
+            se_ai_assisted=se_ai,
+            estimated_workload=estimated,
+            actual_workload=actual,
+            sa_estimated_workload=sa_estimated,
+            sa_actual_workload=sa_actual,
+            se_estimated_workload=se_estimated,
+            se_actual_workload=se_actual,
+        )
+
+    design_records = [
+        design_record(date(2026, 8, 3), sa_ai=True, se_ai=True, sa_estimated=3, sa_actual=2,
+                      se_estimated=5, se_actual=4),
+        design_record(date(2026, 8, 4), sa_ai=False, se_ai=False, sa_estimated=1, sa_actual=1),
+        design_record(date(2026, 8, 5), ai_assisted=True, estimated=10, actual=5),
+        design_record(date(2026, 8, 6)),
+        design_record(date(2026, 8, 7), sa_ai=True, sa_actual=4),
+    ]
+
+    all_point = build_requirement_overview_series(
+        design_records, teams, ["2026-08"], profile=DESIGN_PROFILE
+    )["domain_summary"][0]
+    assert all_point == {
+        "period_id": "2026-08",
+        "fact_count": 5,
+        "known_ai_count": 4,
+        "ai_assisted_count": 3,
+        "ai_workload_count": 2,
+        "ai_estimated_workload": 18,
+        "ai_actual_workload": 11,
+    }
+
+    sa_point = build_requirement_overview_series(
+        design_records, teams, ["2026-08"], profile=DESIGN_PROFILE, role="sa"
+    )["domain_summary"][0]
+    assert sa_point["known_ai_count"] == 3
+    assert sa_point["ai_assisted_count"] == 2
+    assert sa_point["ai_workload_count"] == 1
+    assert sa_point["ai_estimated_workload"] == 3
+    assert sa_point["ai_actual_workload"] == 2
+
+    se_point = build_requirement_overview_series(
+        design_records, teams, ["2026-08"], profile=DESIGN_PROFILE, role="se"
+    )["domain_summary"][0]
+    assert se_point["known_ai_count"] == 2
+    assert se_point["ai_assisted_count"] == 1
+    assert se_point["ai_workload_count"] == 1
+    assert se_point["ai_estimated_workload"] == 5
+    assert se_point["ai_actual_workload"] == 4
+
+    def development_record(completed_at, *, ai_assisted=None, implementation_ai=None,
+                           development_ai=None, implementation_estimated=None,
+                           implementation_actual=None, development_estimated=None,
+                           development_actual=None):
+        return SimpleNamespace(
+            product=SimpleNamespace(team_id=1, team=teams[0]),
+            completed_at=completed_at,
+            ai_assisted=ai_assisted,
+            implementation_ai_assisted=implementation_ai,
+            development_ai_assisted=development_ai,
+            implementation_estimated_workload=implementation_estimated,
+            implementation_actual_workload=implementation_actual,
+            development_estimated_workload=development_estimated,
+            development_actual_workload=development_actual,
+        )
+
+    development_records = [
+        development_record(date(2026, 8, 3), implementation_ai=True, development_ai=False,
+                           implementation_estimated=3, implementation_actual=2,
+                           development_estimated=5, development_actual=4),
+        development_record(date(2026, 8, 4), implementation_ai=False, development_ai=True,
+                           development_estimated=2, development_actual=1),
+        development_record(date(2026, 8, 5), implementation_ai=True,
+                           implementation_estimated=4, implementation_actual=4,
+                           development_actual=2),
+        development_record(date(2026, 8, 6)),
+    ]
+    development_all = build_requirement_overview_series(
+        development_records, teams, ["2026-08"], profile=DEVELOPMENT_PROFILE
+    )["domain_summary"][0]
+    assert development_all["fact_count"] == 4
+    assert development_all["known_ai_count"] == 3
+    assert development_all["ai_assisted_count"] == 3
+    assert development_all["ai_workload_count"] == 3
+    assert development_all["ai_estimated_workload"] == 14
+    assert development_all["ai_actual_workload"] == 13
+
+    implementation_point = build_requirement_overview_series(
+        development_records, teams, ["2026-08"],
+        profile=DEVELOPMENT_PROFILE, role="implementation",
+    )["domain_summary"][0]
+    assert implementation_point["known_ai_count"] == 3
+    assert implementation_point["ai_assisted_count"] == 2
+    assert implementation_point["ai_workload_count"] == 2
+    assert implementation_point["ai_estimated_workload"] == 7
+    assert implementation_point["ai_actual_workload"] == 6
+
+    development_point = build_requirement_overview_series(
+        development_records, teams, ["2026-08"],
+        profile=DEVELOPMENT_PROFILE, role="development",
+    )["domain_summary"][0]
+    assert development_point["known_ai_count"] == 2
+    assert development_point["ai_assisted_count"] == 1
+    assert development_point["ai_workload_count"] == 1
+    assert development_point["ai_estimated_workload"] == 2
+    assert development_point["ai_actual_workload"] == 1
+
+
 def create_ir_context(client, team_id=1):
     suffix = uuid4().hex[:8]
     product = client.post(
@@ -329,27 +450,39 @@ def test_ir_import_is_atomic_when_any_row_is_invalid(client):
 
 
 
-def test_ir_query_and_metrics_use_valid_formal_records(client):
+def test_ir_query_and_metrics_use_design_activity_records(client):
     login(client)
     product, version, iteration = create_ir_context(client)
     product_b, version_b, iteration_b = create_ir_context(client, team_id=2)
     assert client.post(
         "/api/data/ir",
-        json=ir_payload(product, version, iteration, business_module="CNAE-TEST"),
+        json=ir_payload(
+            product, version, iteration,
+            business_module="CNAE-TEST", progress="完成",
+        ),
     ).status_code == 201
-    assert client.post(
-        "/api/data/ir",
-        json=ir_payload(product_b, version_b, iteration_b, business_module="CNAE-TEST", ai_assisted=False),
-    ).status_code == 201
-    # SR is a valid design type but must stay out of the provisional IR KPIs.
     assert client.post(
         "/api/data/ir",
         json=ir_payload(
-            product,
-            version,
-            iteration,
-            requirement_type="SR",
-            business_module="CNAE-TEST",
+            product_b, version_b, iteration_b,
+            business_module="CNAE-TEST", progress="完成", ai_assisted=False,
+        ),
+    ).status_code == 201
+    # SR is a design record type and now enters the design activity overview.
+    assert client.post(
+        "/api/data/ir",
+        json=ir_payload(
+            product, version, iteration,
+            requirement_type="SR", business_module="CNAE-TEST", progress="完成",
+        ),
+    ).status_code == 201
+    # In-progress records never enter the dashboard aggregate.
+    assert client.post(
+        "/api/data/ir",
+        json=ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-IN-PROGRESS",
+            business_module="CNAE-TEST", progress="进行中", ai_assisted=False,
         ),
     ).status_code == 201
 
@@ -364,13 +497,12 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
         },
     )
     assert filtered.status_code == 200
-    # Both the IR and the SR design records match the query filters.
     assert filtered.json()["total"] == 2
 
     overview = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-09"})
     assert overview.status_code == 200, overview.text
     assert overview.json()["period_ids"] == ["2026-08", "2026-09"]
-    assert overview.json()["domain_summary"][0]["fact_count"] >= 2
+    assert overview.json()["domain_summary"][0]["fact_count"] >= 3
     assert "requirement_no" not in overview.text
 
     version_scope = client.get(
@@ -379,27 +511,30 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
     )
     assert version_scope.status_code == 200
     august = version_scope.json()["domain_summary"][0]
-    assert august["fact_count"] == 1
-    assert august["known_ai_count"] == 1
-    assert august["ai_assisted_count"] == 1
-    assert august["ai_workload_count"] == 1
-    assert august["ai_estimated_workload"] == 10
-    assert august["ai_actual_workload"] == 5
+    assert august["fact_count"] == 2
+    assert august["known_ai_count"] == 2
+    assert august["ai_assisted_count"] == 2
+    assert august["ai_workload_count"] == 2
+    assert august["ai_estimated_workload"] == 20
+    assert august["ai_actual_workload"] == 10
 
     false_ai_scope = client.get(
         "/api/data-metrics/overview",
         params={"from_month": "2026-08", "to_month": "2026-08", "version_id": str(version_b["id"])},
     )
     assert false_ai_scope.status_code == 200
-    assert false_ai_scope.json()["domain_summary"][0]["ai_assisted_count"] == 0
-    assert false_ai_scope.json()["domain_summary"][0]["ai_workload_count"] == 0
-    assert false_ai_scope.json()["domain_summary"][0]["ai_estimated_workload"] is None
+    false_ai_point = false_ai_scope.json()["domain_summary"][0]
+    assert false_ai_point["fact_count"] == 1
+    assert false_ai_point["known_ai_count"] == 1
+    assert false_ai_point["ai_assisted_count"] == 0
+    assert false_ai_point["ai_workload_count"] == 0
+    assert false_ai_point["ai_estimated_workload"] is None
 
     login(client, "maintainer.团队A")
     team_scope = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-08"})
     assert team_scope.status_code == 200
     assert {series["team_id"] for series in team_scope.json()["series"]} == {1}
-    assert team_scope.json()["domain_summary"][0]["fact_count"] >= 1
+    assert team_scope.json()["domain_summary"][0]["fact_count"] >= 2
 
     invalid_window = client.get("/api/data-metrics/overview", params={"from_month": "2026-09", "to_month": "2026-08"})
     assert invalid_window.status_code == 422
@@ -982,3 +1117,132 @@ def test_collector_legacy_batch_still_accepts_missing_design_required_fields(cli
     assert record["ai_assisted"] is False
     assert record["valid"] is True
     assert record["record_source"] == "collector"
+
+
+def test_overview_design_activity_progress_roles_and_types(client):
+    login(client)
+    product, version, iteration = create_ir_context(client)
+    created = [
+        ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-A", progress="完成",
+            ai_assisted=None,
+            sa_ai_assisted=True, se_ai_assisted=True,
+            estimated_workload=None, actual_workload=None,
+            sa_estimated_workload=3, sa_actual_workload=2,
+            se_estimated_workload=5, se_actual_workload=4,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-B", progress="已关闭",
+            ai_assisted=None,
+            sa_ai_assisted=False, se_ai_assisted=False,
+            estimated_workload=None, actual_workload=None,
+            sa_estimated_workload=1, sa_actual_workload=1,
+            se_estimated_workload=None, se_actual_workload=None,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="SR-OVERVIEW-C", requirement_type="SR", progress="完成",
+            ai_assisted=True, estimated_workload=10, actual_workload=5,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-D", progress="进行中",
+            ai_assisted=True,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-E", progress="未开始",
+            ai_assisted=True,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="SR-OVERVIEW-G", requirement_type="SR", progress="完成",
+            ai_assisted=True,
+            estimated_workload=None, actual_workload=None,
+            sa_estimated_workload=None, sa_actual_workload=None,
+            se_estimated_workload=None, se_actual_workload=None,
+        ),
+        ir_payload(
+            product, version, iteration,
+            requirement_no="IR-OVERVIEW-H", progress="完成",
+            ai_assisted=None,
+            estimated_workload=None, actual_workload=None,
+            sa_estimated_workload=None, sa_actual_workload=None,
+            se_estimated_workload=None, se_actual_workload=None,
+        ),
+    ]
+    for payload in created:
+        response = client.post("/api/data/ir", json=payload)
+        assert response.status_code == 201, response.text
+
+    base_params = {
+        "from_month": "2026-08",
+        "to_month": "2026-08",
+        "version_id": str(version["id"]),
+    }
+    default_overview = client.get("/api/data-metrics/overview", params=base_params)
+    assert default_overview.status_code == 200, default_overview.text
+    design_all = default_overview.json()["domain_summary"][0]
+    # IR + SR 完成/已关闭 = 5; 进行中 and 未开始 are excluded.
+    assert design_all["fact_count"] == 5
+    assert design_all["known_ai_count"] == 4
+    assert design_all["ai_assisted_count"] == 3
+    assert design_all["ai_workload_count"] == 2
+    assert design_all["ai_estimated_workload"] == 18
+    assert design_all["ai_actual_workload"] == 11
+    assert default_overview.json()["series"][0]["values"][0] == design_all
+
+    explicit = client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "all"},
+    )
+    assert explicit.status_code == 200
+    assert explicit.json()["domain_summary"][0] == design_all
+
+    sa_overview = client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "sa"},
+    )
+    assert sa_overview.status_code == 200, sa_overview.text
+    sa_point = sa_overview.json()["domain_summary"][0]
+    assert sa_point["fact_count"] == 5
+    assert sa_point["known_ai_count"] == 2
+    assert sa_point["ai_assisted_count"] == 1
+    assert sa_point["ai_workload_count"] == 1
+    assert sa_point["ai_estimated_workload"] == 3
+    assert sa_point["ai_actual_workload"] == 2
+
+    se_overview = client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "se"},
+    )
+    assert se_overview.status_code == 200, se_overview.text
+    se_point = se_overview.json()["domain_summary"][0]
+    assert se_point["known_ai_count"] == 2
+    assert se_point["ai_assisted_count"] == 1
+    assert se_point["ai_workload_count"] == 1
+    assert se_point["ai_estimated_workload"] == 5
+    assert se_point["ai_actual_workload"] == 4
+
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "development", "role": "sa"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "implementation"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "unknown", "role": "all"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "unknown"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "version_id": "999999"},
+    ).status_code == 404

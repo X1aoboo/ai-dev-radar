@@ -3,7 +3,7 @@ import { metricCompanyAverageForWindow, metricTeamValuesForWindow } from '../ove
 const KPI_SOURCES = [
   { code: 'ai-demand-penetration', sourceType: 'penetration', valueKind: 'domainMetric' },
   { code: 'ai-rd-efficiency', sourceType: 'efficiency', valueKind: 'domainMetric' },
-  { code: 'ai-covered-ir-count', sourceType: 'penetration', valueKind: 'numerator' },
+  { code: 'ai-covered-requirement-count', sourceType: 'penetration', valueKind: 'numerator' },
   { code: 'ai-efficiency-workload', sourceType: 'efficiency', valueKind: 'saved-workload' },
 ]
 

@@ -404,11 +404,102 @@ def summarize_records(
     return summary
 
 
-def build_ir_overview_series(
+def _overview_role_fields(
+    profile: RequirementProfile,
+    role: str,
+) -> tuple[str, str, str] | None:
+    """Resolve the AI flag and workload columns for one activity role."""
+
+    if role == "all":
+        return None
+    expected_estimated = f"{role}_estimated_workload"
+    for estimated_field, actual_field in profile.workload_components:
+        if estimated_field != expected_estimated:
+            continue
+        ai_field = f"{role}_ai_assisted"
+        if ai_field not in profile.field_by_key:
+            break
+        return ai_field, estimated_field, actual_field
+    raise ValueError(f"unsupported overview role {role!r} for {profile.key} activity")
+
+
+def _finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(value)
+    )
+
+
+def _overview_point(
+    period_id: str,
+    period_records: Sequence[Any],
+    *,
+    profile: RequirementProfile,
+    role_fields: tuple[str, str, str] | None,
+) -> dict[str, Any]:
+    if role_fields is None:
+        ai_flags = [
+            effective_ai_assisted(record, profile=profile)
+            for record in period_records
+        ]
+        estimated_values = [
+            effective_estimated_workload(record, profile=profile)
+            for record in period_records
+        ]
+        actual_values = [
+            effective_actual_workload(record, profile=profile)
+            for record in period_records
+        ]
+    else:
+        ai_field, estimated_field, actual_field = role_fields
+        ai_flags = [getattr(record, ai_field, None) for record in period_records]
+        estimated_values = [getattr(record, estimated_field, None) for record in period_records]
+        actual_values = [getattr(record, actual_field, None) for record in period_records]
+
+    known_indexes = [
+        index for index, flag in enumerate(ai_flags) if flag is not None
+    ]
+    ai_indexes = [
+        index for index in known_indexes if ai_flags[index] is True
+    ]
+    workload_indexes = [
+        index
+        for index in ai_indexes
+        if _finite_number(estimated_values[index])
+        and _finite_number(actual_values[index])
+    ]
+    return {
+        "period_id": period_id,
+        "fact_count": len(period_records),
+        "known_ai_count": len(known_indexes),
+        "ai_assisted_count": len(ai_indexes) if known_indexes else None,
+        "ai_workload_count": len(workload_indexes),
+        "ai_estimated_workload": sum(
+            estimated_values[index] for index in workload_indexes
+        ) if workload_indexes else None,
+        "ai_actual_workload": sum(
+            actual_values[index] for index in workload_indexes
+        ) if workload_indexes else None,
+    }
+
+
+def build_requirement_overview_series(
     records: Iterable[Any],
     teams: Sequence[Any],
     period_ids: Sequence[str],
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+    role: str = "all",
 ) -> dict[str, Any]:
+    """Aggregate activity records into monthly team/domain overview points.
+
+    Records are expected to be pre-filtered by the caller (progress, version and
+    permission scope). ``role`` selects either the activity-level effective
+    fields (``all``) or one role's own AI flag and workload columns.
+    """
+
+    role_fields = _overview_role_fields(profile, role)
     records_by_team_period: dict[tuple[int, str], list[Any]] = {}
     records_by_period: dict[str, list[Any]] = {}
     team_ids = {team.id for team in teams}
@@ -421,39 +512,12 @@ def build_ir_overview_series(
         records_by_period.setdefault(period_id, []).append(record)
 
     def point(period_id: str, period_records: Sequence[Any]) -> dict[str, Any]:
-        known_ai_records = [
-            record for record in period_records
-            if effective_ai_assisted(record, profile=DESIGN_PROFILE) is not None
-        ]
-        ai_records = [
-            record for record in known_ai_records
-            if effective_ai_assisted(record, profile=DESIGN_PROFILE) is True
-        ]
-        workload_records = [
-            record for record in ai_records
-            if all(
-                isinstance(value, (int, float)) and math.isfinite(value)
-                for value in (
-                    effective_estimated_workload(record, profile=DESIGN_PROFILE),
-                    effective_actual_workload(record, profile=DESIGN_PROFILE),
-                )
-            )
-        ]
-        return {
-            "period_id": period_id,
-            "fact_count": len(period_records),
-            "known_ai_count": len(known_ai_records),
-            "ai_assisted_count": len(ai_records) if known_ai_records else None,
-            "ai_workload_count": len(workload_records),
-            "ai_estimated_workload": sum(
-                effective_estimated_workload(record, profile=DESIGN_PROFILE)
-                for record in workload_records
-            ) if workload_records else None,
-            "ai_actual_workload": sum(
-                effective_actual_workload(record, profile=DESIGN_PROFILE)
-                for record in workload_records
-            ) if workload_records else None,
-        }
+        return _overview_point(
+            period_id,
+            period_records,
+            profile=profile,
+            role_fields=role_fields,
+        )
 
     return {
         "period_ids": list(period_ids),
@@ -461,12 +525,30 @@ def build_ir_overview_series(
             {
                 "team_id": team.id,
                 "team_name": team.name,
-                "values": [point(period_id, records_by_team_period.get((team.id, period_id), [])) for period_id in period_ids],
+                "values": [
+                    point(period_id, records_by_team_period.get((team.id, period_id), []))
+                    for period_id in period_ids
+                ],
             }
             for team in teams
         ],
-        "domain_summary": [point(period_id, records_by_period.get(period_id, [])) for period_id in period_ids],
+        "domain_summary": [
+            point(period_id, records_by_period.get(period_id, []))
+            for period_id in period_ids
+        ],
     }
+
+
+def build_ir_overview_series(
+    records: Iterable[Any],
+    teams: Sequence[Any],
+    period_ids: Sequence[str],
+) -> dict[str, Any]:
+    """Design activity compatibility wrapper for the overview aggregation."""
+
+    return build_requirement_overview_series(
+        records, teams, period_ids, profile=DESIGN_PROFILE, role="all"
+    )
 
 
 def _xml_local_name(tag: str) -> str:

@@ -11,7 +11,18 @@ import PageHeader from '../components/PageHeader'
 import EChart from '../components/EChart'
 import FilterBar from '../overview/FilterBar'
 import { hasNumericValues, useComputedMetrics } from '../overview/metricData'
-import { buildIROverviewMetricData, IR_OVERVIEW_KPIS, irCoverageBreakdown, irOverviewMetricSummary, useIROverviewMetrics } from '../overview/irKpiData'
+import {
+  REQUIREMENT_ACTIVITY_BY_KEY,
+  REQUIREMENT_KPIS,
+  REQUIREMENT_ROLE_ACTIVITIES,
+  buildRequirementKpiData,
+  buildRequirementKpiModel,
+  buildRequirementTeamMatrixModel,
+  requirementCoverageBreakdown,
+  requirementRoleActivity,
+  requirementKpiSummary,
+  useRequirementOverviewMetrics,
+} from '../overview/requirementKpiData'
 import { buildTrendOption, efficiencyOutlierAxisLabel, hasEfficiencyOutlier } from '../overview/chartOption'
 import { factTrendSnapshot, lifecycleMetricSlots, maturityMatrixData, metricDataForPeriods } from '../overview/executiveLogic'
 import MaturityRadar from '../overview/MaturityRadar'
@@ -409,7 +420,7 @@ function CapabilityEvidencePanels({ metrics, dataByMetric, periodId, teamColors,
   )
 }
 
-function activityCoverageOption(breakdown) {
+function activityCoverageOption(breakdown, label) {
   const countMetric = { type: 'count' }
   const count = (value) => formatMetricValue(countMetric, value)
   const categories = breakdown.status === 'unknown-only'
@@ -432,7 +443,7 @@ function activityCoverageOption(breakdown) {
       left: 'center',
       top: 'middle',
       style: {
-        text: `${count(breakdown.total)}\nIR需求`,
+        text: `${count(breakdown.total)}\n${label}`,
         fill: DATAVIZ_COLORS.inkSecondary,
         fontSize: 17,
         fontWeight: 650,
@@ -441,7 +452,7 @@ function activityCoverageOption(breakdown) {
       },
     },
     series: [{
-      name: 'IR需求AI属性拆解',
+      name: `${label}AI属性拆解`,
       type: 'pie',
       radius: ['48%', '74%'],
       center: ['50%', '50%'],
@@ -454,8 +465,8 @@ function activityCoverageOption(breakdown) {
   }
 }
 
-function ActivityVolumeBreakdown({ metricData, periodIds, loading = false, error = false }) {
-  const observedBreakdown = irCoverageBreakdown(metricData, periodIds)
+function ActivityVolumeBreakdown({ metricData, periodIds, label = '设计活动记录', loading = false, error = false }) {
+  const observedBreakdown = requirementCoverageBreakdown(metricData, periodIds)
   const breakdown = ['ready', 'unknown-only'].includes(observedBreakdown.status)
     ? observedBreakdown
     : { status: observedBreakdown.status, total: null, covered: null, uncovered: null, unknown: null }
@@ -469,16 +480,16 @@ function ActivityVolumeBreakdown({ metricData, periodIds, loading = false, error
   return <div className="activity-volume-breakdown">
     <div className="activity-volume-breakdown__chart">
       <EChart
-        option={activityCoverageOption(breakdown)}
+        option={activityCoverageOption(breakdown, label)}
         height="var(--activity-volume-chart-height, 156px)"
-        ariaLabel={`IR需求整体覆盖拆解：合计${count(breakdown.total)}；${rows.map((row) => `${row.label}${count(row.value)}`).join('，')}`}
+        ariaLabel={`${label}覆盖拆解：合计${count(breakdown.total)}；${rows.map((row) => `${row.label}${count(row.value)}`).join('，')}`}
       />
       {(loading || error || ['missing', 'invalid'].includes(breakdown.status)) && <span className="activity-summary-chart-state" role={loading ? 'status' : error ? 'alert' : 'img'}>
-        {loading ? '正在加载整体 IR 覆盖拆解…' : error ? '整体 IR 覆盖拆解暂不可用；计数保持缺失。' : breakdown.status === 'missing' ? '暂无 IR 需求事实' : 'IR 覆盖计数不完整'}
+        {loading ? `正在加载${label}覆盖拆解…` : error ? `${label}覆盖拆解暂不可用；计数保持缺失。` : breakdown.status === 'missing' ? `暂无${label}` : `${label}计数不完整`}
       </span>}
     </div>
-    <table className="activity-volume-breakdown__table">
-      <thead><tr><th scope="col">IR需求范围</th><th scope="col">数量</th><th scope="col">占比</th></tr></thead>
+    <table className="activity-volume-breakdown__table" aria-label={`${label}AI属性拆解`}>
+      <thead><tr><th scope="col">{label}范围</th><th scope="col">数量</th><th scope="col">占比</th></tr></thead>
       <tbody>{rows.map((row) => <tr key={row.id}>
         <th scope="row"><i className={`activity-volume-breakdown__swatch activity-volume-breakdown__swatch--${row.id}`} />{row.label}</th>
         <td>{count(row.value)}</td><td>{percentage(row.value)}</td>
@@ -488,7 +499,7 @@ function ActivityVolumeBreakdown({ metricData, periodIds, loading = false, error
   </div>
 }
 
-function activityWorkloadOption(periodIds, workloadValues, growthValues) {
+function activityWorkloadOption(periodIds, workloadValues, growthValues, label = '设计活动') {
   return {
     animationDuration: 180,
     color: [DATAVIZ_COLORS.team[0], DATAVIZ_COLORS.team[1]],
@@ -530,7 +541,7 @@ function activityWorkloadOption(periodIds, workloadValues, growthValues) {
     ],
     series: [
       {
-        name: 'AI提效工作量',
+        name: `${label}AI提效工作量`,
         type: 'bar',
         data: workloadValues.map((value) => Number.isFinite(value) ? value : null),
         barMaxWidth: 28,
@@ -549,6 +560,65 @@ function activityWorkloadOption(periodIds, workloadValues, growthValues) {
         itemStyle: { color: DATAVIZ_COLORS.team[1] },
       },
     ],
+  }
+}
+
+function activityWorkloadTrend(metricData, priorData, trendMonthIds, priorYearMonths) {
+  const workloadMetric = metricData?.['ai-efficiency-workload']
+  const priorWorkloadMetric = priorData?.['ai-efficiency-workload']
+  const valuesByMonth = new Map((workloadMetric?.domain_summary ?? []).map((point) => [String(point.period_id), point.value ?? null]))
+  const priorValuesByMonth = new Map((priorWorkloadMetric?.domain_summary ?? []).map((point) => [String(point.period_id), point.value ?? null]))
+  const values = trendMonthIds.map((id) => valuesByMonth.get(String(id)) ?? null)
+  const prior = priorYearMonths.map((id) => priorValuesByMonth.get(String(id)) ?? null)
+  return { values, growth: values.map((value, index) => yearOverYearGrowth(value, prior[index])) }
+}
+
+function ActivityWorkloadTrendPanel({ label, metricData, priorData, trendMonthIds, priorYearMonths, loading, error }) {
+  const trend = useMemo(
+    () => activityWorkloadTrend(metricData, priorData, trendMonthIds, priorYearMonths),
+    [metricData, priorData, priorYearMonths, trendMonthIds],
+  )
+  const option = useMemo(() => activityWorkloadOption(trendMonthIds, trend.values, trend.growth, label), [label, trend, trendMonthIds])
+  const hasData = [...trend.values, ...trend.growth].some((value) => Number.isFinite(value))
+  const ariaLabel = `${label}近六个月 AI提效工作量蓝色柱状图和同比增幅绿色曲线：${trendMonthIds.map((id, index) => `${id} 工作量 ${formatMetricValue({ type: 'count', unit: '人天' }, trend.values[index])}，同比 ${Number.isFinite(trend.growth[index]) ? `${(trend.growth[index] * 100).toFixed(1)}%` : '缺失'}`).join('；')}`
+  return <section className="activity-workload-activity" aria-label={`${label}AI提效工作量趋势`}>
+    <h4>{label}</h4>
+    <div className="activity-workload-chart">
+      <EChart option={option} height="var(--activity-workload-chart-height, 156px)" ariaLabel={ariaLabel} />
+      {(loading || error || !hasData) && <span className="activity-summary-chart-state" role={loading ? 'status' : error ? 'alert' : 'img'}>
+        {loading ? `正在加载${label}工作量趋势…` : error ? `${label}工作量趋势暂不可用；数据保持缺失。` : `当前六个月没有${label}AI提效工作量记录；同比点保持缺失。`}
+      </span>}
+    </div>
+  </section>
+}
+
+function pageWideActivityTeamModel(designData, developmentData, month, monthTrendIds, cyclePeriodIds, teams, teamColors) {
+  const model = buildRequirementTeamMatrixModel({
+    entries: [
+      { key: 'design', label: '设计活动', dataByMetric: designData },
+      { key: 'development', label: '开发活动', dataByMetric: developmentData },
+    ],
+    month,
+    monthTrendIds,
+    cyclePeriodIds,
+    teams,
+    view: 'cycle',
+  })
+  return {
+    columns: model.columns,
+    columnGroups: model.columnGroups,
+    rows: model.rows.map((row) => ({
+      ...row,
+      color: row.kind === 'team' ? teamColors[String(row.id)] : undefined,
+      values: row.values.map((value, index) => {
+        const definition = model.columns[index].definition
+        return {
+          text: activityKpiValue({ definition }, value.value, true),
+          changeText: activityKpiDelta({ definition }, value.delta),
+          changeTone: changeTone(value.delta),
+        }
+      }),
+    })),
   }
 }
 
@@ -596,40 +666,9 @@ function ActivityRawSummaryTable({ rows, month }) {
   </table>
 }
 
-function pageWideActivityTeamModel(dataByMetric, month, monthTrendIds, cyclePeriodIds, teams) {
-  const kpis = IR_OVERVIEW_KPIS.map((definition) => ({
-    code: definition.code,
-    definition,
-    summary: irOverviewMetricSummary({
-      data: dataByMetric[definition.code],
-      metric: definition,
-      month,
-      monthTrendIds,
-      periodIds: cyclePeriodIds,
-    }),
-  }))
-  const valuesForTeam = (teamId) => kpis.map(({ summary }) => {
-    const team = summary?.periodTeams.find((item) => String(item.teamId) === String(teamId))
-    return { textValue: team?.value ?? null, changeValue: team?.delta ?? null }
-  })
-  return {
-    kpis,
-    teamRows: [
-      {
-        id: 'company-average',
-        label: '全公司均值',
-        kind: 'average',
-        values: kpis.map(({ summary }) => ({
-          textValue: summary?.periodCompanyAverage ?? null,
-          changeValue: summary?.periodCompanyAverageDelta ?? null,
-        })),
-      },
-      ...teams.map((team) => ({ id: team.id, label: team.name, kind: 'team', values: valuesForTeam(team.id) })),
-    ],
-  }
-}
-
 const ACTIVITY_DIRECTORY_ICONS = {
+  设计活动: <FileTextOutlined />,
+  开发活动: <PieChartOutlined />,
   SA设计: <FileTextOutlined />,
   SE设计: <TeamOutlined />,
   开发设计: <PieChartOutlined />,
@@ -652,17 +691,20 @@ const CAPABILITY_DIRECTORY_ICONS = {
 
 function ActivityPageWideSummary({ activities, teams, teamColors, month, cycle, cyclePeriodIds, trendMonthIds, onSelectTeam, onSessionExpired }) {
   const cycleLabel = analysisWindowLabel(month, cycle)
-  const currentIrFromMonth = [cyclePeriodIds[0], trendMonthIds[0]].filter(Boolean).sort()[0] ?? month
+  const sourceFromMonth = [cyclePeriodIds[0], trendMonthIds[0]].filter(Boolean).sort()[0] ?? month
   const priorYearMonths = useMemo(() => monthWindow(month, 18).slice(0, 6), [month])
-  const currentIr = useIROverviewMetrics(currentIrFromMonth, month, 'all', onSessionExpired)
-  const priorYearIr = useIROverviewMetrics(priorYearMonths[0] ?? month, priorYearMonths.at(-1) ?? month, 'all', onSessionExpired)
-  const currentIrData = useMemo(() => currentIr.data ? buildIROverviewMetricData(currentIr.data) : {}, [currentIr.data])
-  const priorYearIrData = useMemo(() => priorYearIr.data ? buildIROverviewMetricData(priorYearIr.data) : {}, [priorYearIr.data])
-  const irTeamModel = useMemo(
-    () => pageWideActivityTeamModel(currentIrData, month, trendMonthIds, cyclePeriodIds, teams),
-    [currentIrData, cyclePeriodIds, month, teams, trendMonthIds],
+  const designCurrent = useRequirementOverviewMetrics(sourceFromMonth, month, 'all', 'design', 'all', onSessionExpired)
+  const developmentCurrent = useRequirementOverviewMetrics(sourceFromMonth, month, 'all', 'development', 'all', onSessionExpired)
+  const designPrior = useRequirementOverviewMetrics(priorYearMonths[0] ?? month, priorYearMonths.at(-1) ?? month, 'all', 'design', 'all', onSessionExpired)
+  const developmentPrior = useRequirementOverviewMetrics(priorYearMonths[0] ?? month, priorYearMonths.at(-1) ?? month, 'all', 'development', 'all', onSessionExpired)
+  const designData = useMemo(() => designCurrent.data ? buildRequirementKpiData(designCurrent.data) : {}, [designCurrent.data])
+  const developmentData = useMemo(() => developmentCurrent.data ? buildRequirementKpiData(developmentCurrent.data) : {}, [developmentCurrent.data])
+  const designPriorData = useMemo(() => designPrior.data ? buildRequirementKpiData(designPrior.data) : {}, [designPrior.data])
+  const developmentPriorData = useMemo(() => developmentPrior.data ? buildRequirementKpiData(developmentPrior.data) : {}, [developmentPrior.data])
+  const teamData = useMemo(
+    () => pageWideActivityTeamModel(designData, developmentData, month, trendMonthIds, cyclePeriodIds, teams, teamColors),
+    [cyclePeriodIds, designData, developmentData, month, teamColors, teams, trendMonthIds],
   )
-  const teamData = useMemo(() => activityTeamMatrix(irTeamModel, teamColors), [irTeamModel, teamColors])
   const rawSourceActivities = useMemo(() => activities
     .map((activity) => ({ ...activity, metrics: activity.metrics.filter((metric) => ['tcg-rate', 'tce-count'].includes(metric.code)) }))
     .filter((activity) => activity.metrics.length > 0), [activities])
@@ -676,23 +718,11 @@ function ActivityPageWideSummary({ activities, teams, teamColors, month, cycle, 
   }), [month])
   const rawMetrics = useComputedMetrics(rawSourceActivities, rawMetricFilter, onSessionExpired)
   const rawMetricsByCode = useMemo(() => Object.fromEntries(rawSourceActivities.flatMap((activity) => activity.metrics.map((metric) => [metric.code, { metric, data: rawMetrics.data[metric.id] }]))), [rawMetrics.data, rawSourceActivities])
-  const workloadMetric = currentIrData['ai-efficiency-workload']
-  const priorWorkloadMetric = priorYearIrData['ai-efficiency-workload']
-  const workloadTrend = useMemo(() => {
-    const valuesByMonth = new Map((workloadMetric?.domain_summary ?? []).map((point) => [String(point.period_id), point.value ?? null]))
-    const priorValuesByMonth = new Map((priorWorkloadMetric?.domain_summary ?? []).map((point) => [String(point.period_id), point.value ?? null]))
-    const values = trendMonthIds.map((id) => valuesByMonth.get(String(id)) ?? null)
-    const prior = priorYearMonths.map((id) => priorValuesByMonth.get(String(id)) ?? null)
-    return { values, growth: values.map((value, index) => yearOverYearGrowth(value, prior[index])) }
-  }, [priorWorkloadMetric, priorYearMonths, trendMonthIds, workloadMetric])
-  const workloadOption = useMemo(
-    () => activityWorkloadOption(trendMonthIds, workloadTrend.values, workloadTrend.growth),
-    [trendMonthIds, workloadTrend],
-  )
-  const hasWorkloadData = [...workloadTrend.values, ...workloadTrend.growth].some((value) => Number.isFinite(value))
+  const summaryByActivity = useMemo(() => ({
+    design: new Map(REQUIREMENT_KPIS.map((metric) => [metric.code, requirementKpiSummary({ data: designData[metric.code], metric, month, monthTrendIds: trendMonthIds, periodIds: [month] })])),
+    development: new Map(REQUIREMENT_KPIS.map((metric) => [metric.code, requirementKpiSummary({ data: developmentData[metric.code], metric, month, monthTrendIds: trendMonthIds, periodIds: [month] })])),
+  }), [designData, developmentData, month, trendMonthIds])
   const countSummary = useMemo(() => {
-    const irMetric = currentIrData['ai-covered-ir-count']
-    const irCountSummary = irOverviewMetricSummary({ data: irMetric, metric: IR_OVERVIEW_KPIS[2], month, monthTrendIds: trendMonthIds, periodIds: [month] })
     const factCountRow = (label, code, valueKey, source) => {
       const record = rawMetricsByCode[code]
       const configured = Boolean(record)
@@ -712,31 +742,49 @@ function ActivityPageWideSummary({ activities, teams, teamColors, month, cycle, 
         error: configured && Boolean(rawMetrics.errors[record.metric.id]),
       }
     }
-    const irTrendValues = irCountSummary?.monthTrend ?? []
-    const irValue = irCountSummary?.monthValue ?? null
-    const irPreviousValue = irCountSummary?.previousMonthValue ?? null
+    const requirementRow = (entry, label, source) => {
+      const summary = summaryByActivity[entry.key].get('ai-covered-requirement-count')
+      const value = summary?.monthValue ?? null
+      const previousValue = summary?.previousMonthValue ?? null
+      return {
+        label,
+        configured: true,
+        source,
+        value,
+        previousValue,
+        deltaValue: Number.isFinite(value) && Number.isFinite(previousValue) ? value - previousValue : null,
+        deltaText: activityCountDelta(value, previousValue),
+        trendValues: summary?.monthTrend ?? [],
+        loading: entry.loading,
+        error: Boolean(entry.error),
+      }
+    }
+    const entries = [
+      { key: 'design', label: '设计活动', loading: designCurrent.loading, error: designCurrent.error },
+      { key: 'development', label: '开发活动', loading: developmentCurrent.loading, error: developmentCurrent.error },
+    ]
     return [
-      { label: 'AI覆盖IR需求数', configured: true, source: 'IR 总览 · AI覆盖需求数', value: irValue, previousValue: irPreviousValue, deltaValue: Number.isFinite(irValue) && Number.isFinite(irPreviousValue) ? irValue - irPreviousValue : null, deltaText: activityCountDelta(irValue, irPreviousValue), trendValues: irTrendValues, loading: currentIr.loading, error: Boolean(currentIr.error) },
-      { label: 'AI覆盖AR需求数', configured: false, source: '目录未定义唯一 AR 覆盖数量' },
-      { label: 'SE设计文档生成数', configured: false, source: '目录未定义设计文档生成数量' },
-      { label: '开发详细设计生成数', configured: false, source: '目录未定义详细设计生成数量' },
+      requirementRow(entries[0], '设计活动AI覆盖数', '设计活动 · AI覆盖需求数'),
+      requirementRow(entries[1], '开发活动AI覆盖数', '开发活动 · AI覆盖需求数'),
       factCountRow('测试用例生成数', 'tcg-rate', 'numerator', 'tcg-rate · AI生成用例数'),
       factCountRow('测试用例执行数', 'tce-count', 'value', 'tce-count · 执行用例数'),
     ]
-  }, [currentIr.loading, currentIr.error, currentIrData, month, rawMetrics.errors, rawMetrics.loading, rawMetricsByCode, trendMonthIds])
-  const coverageMetricData = currentIrData['ai-demand-penetration']
-  const hasError = Boolean(currentIr.error || Object.keys(rawMetrics.errors).length)
+  }, [designCurrent.error, designCurrent.loading, developmentCurrent.error, developmentCurrent.loading, month, rawMetrics.errors, rawMetrics.loading, rawMetricsByCode, summaryByActivity, trendMonthIds])
+  const combinedLoading = designCurrent.loading || developmentCurrent.loading
+  const combinedError = designCurrent.error || developmentCurrent.error
+  const hasError = Boolean(combinedError || Object.keys(rawMetrics.errors).length)
 
   return <div className="activity-page-summary">
-    <AnalyticsPanel className="activity-team-matrix" title="团队差异" description={currentIr.loading
-      ? <span role="status">正在加载整体 IR 团队差异…</span>
-      : currentIr.error
-        ? <span role="alert">整体 IR 团队差异暂不可用；数值保持缺失。</span>
-        : `${cycleLabel}截至${month} · 页面整体 IR 指标，有数据团队等权比较；不随活动选择变化。点击团队下钻。`}>
+    <AnalyticsPanel className="activity-team-matrix" title="团队差异" description={combinedLoading
+      ? <span role="status">正在加载设计/开发活动团队差异…</span>
+      : combinedError
+        ? <span role="alert">设计/开发活动团队差异暂不可用；数值保持缺失。</span>
+        : `${cycleLabel}截至${month} · 设计活动与开发活动分别统计，有数据团队等权比较；不随活动选择变化。点击团队下钻。`}>
       <div className="activity-team-matrix__surface">
         <TeamMatrix
-          label={`页面整体 IR 团队差异 · ${cycleLabel}截至${month}`}
+          label={`页面整体需求活动团队差异 · ${cycleLabel}截至${month}`}
           columns={teamData.columns}
+          columnGroups={teamData.columnGroups}
           rows={teamData.rows}
           showChanges
           visibleChangeHeaders
@@ -746,19 +794,16 @@ function ActivityPageWideSummary({ activities, teams, teamColors, month, cycle, 
       </div>
     </AnalyticsPanel>
     <div className="activity-lower-grid">
-      <AnalyticsPanel title="指标拆解与业务量" description={`${cycleLabel}截至${month} · IR需求整体AI属性拆解；未知属性单独保留。`}>
-        <div className="activity-lower-grid__reserved-surface">
-          <ActivityVolumeBreakdown metricData={coverageMetricData} periodIds={cyclePeriodIds} loading={currentIr.loading} error={Boolean(currentIr.error)} />
+      <AnalyticsPanel title="指标拆解与业务量" description={`${cycleLabel}截至${month} · 设计活动与开发活动AI属性分别拆解；未知属性单独保留，不合并。`}>
+        <div className="activity-dual-breakdown">
+          <section><h4>设计活动记录</h4><ActivityVolumeBreakdown metricData={designData['ai-demand-penetration']} periodIds={cyclePeriodIds} label="设计活动记录" loading={designCurrent.loading} error={Boolean(designCurrent.error)} /></section>
+          <section><h4>开发活动记录</h4><ActivityVolumeBreakdown metricData={developmentData['ai-demand-penetration']} periodIds={cyclePeriodIds} label="开发活动记录" loading={developmentCurrent.loading} error={Boolean(developmentCurrent.error)} /></section>
         </div>
       </AnalyticsPanel>
-      <AnalyticsPanel title="AI提效工作量趋势" description="蓝柱：IR每月节省人天；绿线：同比增幅。缺去年同期或其值不为正时留空。">
-        <div className="activity-lower-grid__reserved-surface activity-lower-grid__reserved-surface--trend">
-          <div className="activity-workload-chart">
-            <EChart option={workloadOption} height="var(--activity-workload-chart-height, 156px)" ariaLabel={`整体 IR 近六个月 AI提效工作量蓝色柱状图和同比增幅绿色曲线：${trendMonthIds.map((id, index) => `${id} 工作量 ${formatMetricValue({ type: 'count', unit: '人天' }, workloadTrend.values[index])}，同比 ${Number.isFinite(workloadTrend.growth[index]) ? `${(workloadTrend.growth[index] * 100).toFixed(1)}%` : '缺失'}`).join('；')}`} />
-            {(currentIr.loading || currentIr.error || !hasWorkloadData) && <span className="activity-summary-chart-state" role={currentIr.loading ? 'status' : currentIr.error ? 'alert' : 'img'}>
-              {currentIr.loading ? '正在加载整体 IR 工作量趋势…' : currentIr.error ? '整体 IR 工作量趋势暂不可用；数据保持缺失。' : '当前六个月没有 IR 工作量事实；同比点保持缺失。'}
-            </span>}
-          </div>
+      <AnalyticsPanel title="AI提效工作量趋势" description="设计活动与开发活动分别展示每月节省人天与同比增幅；不合并为一条序列。缺去年同期或其值不为正时留空。">
+        <div className="activity-dual-workload">
+          <ActivityWorkloadTrendPanel label="设计活动" metricData={designData} priorData={designPriorData} trendMonthIds={trendMonthIds} priorYearMonths={priorYearMonths} loading={designCurrent.loading || designPrior.loading} error={Boolean(designCurrent.error)} />
+          <ActivityWorkloadTrendPanel label="开发活动" metricData={developmentData} priorData={developmentPriorData} trendMonthIds={trendMonthIds} priorYearMonths={priorYearMonths} loading={developmentCurrent.loading || developmentPrior.loading} error={Boolean(developmentCurrent.error)} />
         </div>
       </AnalyticsPanel>
       <AnalyticsPanel title={`原始指标摘要 · ${month}`} description={hasError ? <span role="alert">部分原始指标暂不可用；行结构保留，数值保持缺失。</span> : '按月展示 · 环比变化为本月减上月；趋势为同一来源近六个月，缺失周期留空。'}>
@@ -769,6 +814,7 @@ function ActivityPageWideSummary({ activities, teams, teamColors, month, cycle, 
     </div>
   </div>
 }
+
 
 function BooleanStatusList({ rows, teamColors, onNavigate }) {
   return (
@@ -1117,6 +1163,17 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
   const cycle = ['half', 'year'].includes(filter?.cycle) ? filter.cycle : '6m'
   const cyclePeriodIds = useMemo(() => analysisWindowMonths(month, cycle), [cycle, month])
   const coreWindowLimit = Math.max(6, cyclePeriodIds.length)
+  const requirementSourceFromMonth = [cyclePeriodIds[0], activityTrendMonthIds[0]].filter(Boolean).sort()[0] ?? month
+  const roleOverview = {
+    sa: useRequirementOverviewMetrics(requirementSourceFromMonth, month, 'all', 'design', 'sa', onSessionExpired, { enabled: kind === 'key', benchmark: false }),
+    se: useRequirementOverviewMetrics(requirementSourceFromMonth, month, 'all', 'design', 'se', onSessionExpired, { enabled: kind === 'key', benchmark: false }),
+    dd: useRequirementOverviewMetrics(requirementSourceFromMonth, month, 'all', 'development', 'implementation', onSessionExpired, { enabled: kind === 'key', benchmark: false }),
+    cd: useRequirementOverviewMetrics(requirementSourceFromMonth, month, 'all', 'development', 'development', onSessionExpired, { enabled: kind === 'key', benchmark: false }),
+  }
+  const roleDataByKey = useMemo(
+    () => Object.fromEntries(Object.entries(roleOverview).map(([key, state]) => [key, state.data ? buildRequirementKpiData(state.data) : {}])),
+    [roleOverview.sa.data, roleOverview.se.data, roleOverview.dd.data, roleOverview.cd.data],
+  )
   const metricFilter = useMemo(() => ({
     dimension: metricDimension,
     granularity,
@@ -1163,7 +1220,7 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
     ? buildActivityKpiModel({
       activity: selectedActivity,
       dataByMetric: coreMetrics.data,
-      kpiDefinitions: IR_OVERVIEW_KPIS,
+      kpiDefinitions: REQUIREMENT_KPIS,
       month,
       previousMonth: monthWindow(month, 2)[0],
       monthTrendIds: activityTrendMonthIds,
@@ -1171,6 +1228,20 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
       teams,
     })
     : { kpis: [], teamRows: [] }, [activityTrendMonthIds, coreMetrics.data, cyclePeriodIds, kind, month, selectedActivity, teams])
+  const selectedRoleSource = kind === 'key' ? requirementRoleActivity(selectedActivity) : null
+  const requirementKpiModel = useMemo(() => selectedRoleSource
+    ? buildRequirementKpiModel({
+      dataByMetric: roleDataByKey[selectedRoleSource.key] ?? {},
+      month,
+      monthTrendIds: activityTrendMonthIds,
+      cyclePeriodIds,
+      teams,
+    })
+    : { kpis: [], teamRows: [] }, [activityTrendMonthIds, cyclePeriodIds, month, roleDataByKey, selectedRoleSource, teams])
+  const displayKpiModel = selectedRoleSource ? requirementKpiModel : activityKpiModel
+  const displayKpiState = selectedRoleSource ? roleOverview[selectedRoleSource.key] : null
+  const displayKpiLoading = selectedRoleSource ? displayKpiState.loading : coreMetrics.loading && !keepCommittedActivityVisible
+  const displayKpiError = selectedRoleSource ? displayKpiState.error : null
   const capabilityNumericMetrics = selectedCapability?.metrics.filter((metric) => metric.type !== 'boolean') ?? []
   const capabilityStatusMetrics = [...capabilityNumericMetrics].sort((left, right) => Number(left.type === 'count') - Number(right.type === 'count'))
   const capabilityTeamDifferenceBase = teamDifferenceData(capabilityNumericMetrics, metrics.data, metricPeriodId, teams, teamColors)
@@ -1237,15 +1308,17 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
   }
 
   function activityKpiCards(scope) {
-    return activityKpiModel.kpis.map((kpi) => {
+    return displayKpiModel.kpis.map((kpi) => {
       const isMonth = scope === 'month'
       const value = isMonth ? kpi.monthValue : kpi.cycleValue
       const baseline = isMonth ? kpi.previousMonthValue : kpi.previousCycleValue
       const delta = isMonth ? kpi.monthDelta : kpi.cycleDelta
-      const error = kpi.metric && coreMetrics.errors[kpi.metric.id] ? METRIC_UNAVAILABLE_MESSAGE : undefined
+      const error = selectedRoleSource
+        ? (displayKpiError ? METRIC_UNAVAILABLE_MESSAGE : undefined)
+        : (kpi.metric && coreMetrics.errors[kpi.metric.id] ? METRIC_UNAVAILABLE_MESSAGE : undefined)
       return <MetricKpiCard
         key={kpi.code}
-        icon={IR_KPI_ICONS[kpi.definition.code]}
+        icon={REQUIREMENT_KPI_ICONS[kpi.definition.code]}
         label={kpi.definition.name}
         value={formatMetricValue(kpi.definition, value)}
         unit={kpi.definition.unit}
@@ -1256,7 +1329,7 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
         trendValues={isMonth ? kpi.monthTrend : kpi.cycleTrend}
         trendLabel={`${selectedActivity.name} · ${kpi.definition.name}${isMonth ? '月度' : '统计周期'}趋势`}
         accent={kpi.definition.accent}
-        loading={coreMetrics.loading && !keepCommittedActivityVisible}
+        loading={displayKpiLoading}
         error={error}
       />
     })
@@ -1309,14 +1382,35 @@ export function AnalyticsDetailPage({ kind, title, description, catalog = [], te
             onSelect={selectActivity}
           />
           <div className="analytics-workspace activity-workspace" aria-busy={activitySelectionPending || undefined}>
-          <AnalyticsSection title={`月度核心成效 · ${month}`} description="按所选活动匹配的 FactRecord 原始量口径计算；不使用 IR 总览数据。">
+          <AnalyticsSection title={`月度核心成效 · ${month}`} description={selectedRoleSource ? `按需求角色聚合口径计算：${REQUIREMENT_ACTIVITY_BY_KEY[selectedRoleSource.activity].label} · ${selectedRoleSource.roleLabel} 角色，只统计完成/已关闭记录。` : "按所选活动匹配的 FactRecord 原始量口径计算。"}>
             <div className="activity-outcome-grid">{activityKpiCards('month')}</div>
           </AnalyticsSection>
-          <AnalyticsSection title={`周期整体成效 · ${analysisWindowLabel(month, cycle)}（截至${month}）`} description="周期值按匹配 FactRecord 原始量重算；变化中，比例/提效为周期差，覆盖数/工作量为本月贡献。">
+          <AnalyticsSection title={`周期整体成效 · ${analysisWindowLabel(month, cycle)}（截至${month}）`} description={selectedRoleSource ? "周期值按角色记录重算；比例/提效为周期差，覆盖数/工作量为本月贡献。" : "周期值按匹配 FactRecord 原始量重算；比例/提效为周期差，覆盖数/工作量为本月贡献。"}>
             <div className="activity-outcome-grid">{activityKpiCards('cycle')}</div>
           </AnalyticsSection>
-          <AnalyticsSection title="核心趋势" description={`AI需求渗透率和AI研发提效分别展示团队及同指标全公司均值；原始趋势筛选为${metricDimension === 'iteration' ? '版本/迭代' : `${granularity === 'day' ? '日' : granularity === 'week' ? '周' : '月'}`}。`}>
-            <div className="activity-trend-grid">{activityKpiModel.kpis.slice(0, 2).map((kpi) => kpi.metric
+          <AnalyticsSection title="核心趋势" description={selectedRoleSource ? `需求角色聚合趋势：${REQUIREMENT_ACTIVITY_BY_KEY[selectedRoleSource.activity].label} · ${selectedRoleSource.roleLabel} 角色，同指标全公司均值。` : `AI需求渗透率和AI研发提效分别展示团队及同指标全公司均值；原始趋势筛选为${metricDimension === 'iteration' ? '版本/迭代' : `${granularity === 'day' ? '日' : granularity === 'week' ? '周' : '月'}`}。`}>
+            <div className="activity-trend-grid">{selectedRoleSource
+              ? displayKpiModel.kpis.slice(0, 2).map((kpi) => {
+                const rawData = roleDataByKey[selectedRoleSource.key]?.[kpi.definition.code]
+                const data = rawData ? metricDataForPeriods(rawData, activityTrendMonthIds) : null
+                const hasTrend = hasNumericValues(data)
+                const option = data && hasTrend
+                  ? buildTrendOption({ data, metric: kpi.definition, teamColors, selectedPeriodId: 'all', averageLabel: '全公司均值', compact: false, showPointMarkers: true, tooltipTrigger: 'item' })
+                  : null
+                return <ChartCard
+                  key={`role-${kpi.code}`}
+                  title={`${selectedActivity.name} · ${kpi.definition.name}趋势`}
+                  description={`来源：${REQUIREMENT_ACTIVITY_BY_KEY[selectedRoleSource.activity].label} · ${selectedRoleSource.roleLabel} 角色聚合（完成/已关闭）`}
+                  option={option}
+                  height="var(--activity-core-chart-height, 210px)"
+                  reservePlotSpace
+                  ariaLabel={`${selectedActivity.name}${kpi.definition.name}需求角色趋势图`}
+                  loading={displayKpiLoading}
+                  error={displayKpiError ? METRIC_UNAVAILABLE_MESSAGE : undefined}
+                  empty={`当前统计周期暂无${selectedActivity.name}${kpi.definition.name}数据。`}
+                />
+              })
+              : displayKpiModel.kpis.slice(0, 2).map((kpi) => kpi.metric
               ? <MetricAnalysisCard
                 key={kpi.code}
                 activity={selectedActivity}
@@ -1500,67 +1594,94 @@ function activityTeamMatrix(model, teamColors) {
   return { columns, rows }
 }
 
-const IR_KPI_ICONS = {
+const REQUIREMENT_KPI_ICONS = {
   'ai-demand-penetration': <PieChartOutlined />,
   'ai-rd-efficiency': <ThunderboltOutlined />,
-  'ai-covered-ir-count': <FileTextOutlined />,
+  'ai-covered-requirement-count': <FileTextOutlined />,
   'ai-efficiency-workload': <ClockCircleOutlined />,
 }
 
-function ExecutiveOverallTrend({ rows, dataByMetric, periodIds, month, teamColors, onNavigate, loading, error }) {
-  const [metricId, setMetricId] = useState(null)
-  const row = rows.find((item) => String(item.metric.code) === String(metricId)) ?? rows[0] ?? null
-  useEffect(() => {
-    if (!rows.some((item) => String(item.metric.code) === String(metricId))) setMetricId(rows[0]?.metric.code ?? null)
-  }, [rows, metricId])
-  const rawData = row ? dataByMetric[row.metric.code] : null
-  const data = rawData ? metricDataForPeriods(rawData, periodIds) : null
-  const hasTrend = hasNumericValues(data)
-  const currentMonthPoint = rawData?.domain_summary?.find((point) => String(point.period_id) === String(month))
-  const currentMonthNote = currentMonthPoint?.ir_fact_count === 0
-    ? '所选月暂无 IR'
-    : currentMonthPoint && !Number.isFinite(currentMonthPoint.value) ? '所选月无可计算值' : null
-  const visibleTeams = data?.series?.filter((series) => (series.values ?? []).some((point) => Number.isFinite(point?.value))) ?? []
-  const overlapNote = visibleTeams.length === 1 ? ` · ${visibleTeams[0].team_name} 1/${data?.series?.length ?? 0}，暂不可多团队对照` : ''
-  const averageLabel = '全公司均值'
-  const trendOption = row && data && hasTrend ? buildTrendOption({ data, metric: row.metric, teamColors, selectedPeriodId: month, averageLabel }) : null
-  const option = trendOption ? {
-    ...trendOption,
-    ...(row.metric.unit ? { yAxis: { ...trendOption.yAxis, name: row.metric.unit } } : {}),
-    ...(row.metric.unit ? { yAxis: { ...trendOption.yAxis, name: row.metric.unit } } : {}),
-    series: trendOption.series.map((series) => ({
-      ...series,
-      data: series.data.map((point) => Number.isFinite(point?.value) && point.symbol === 'none'
-        ? { ...point, symbol: series.name === averageLabel ? 'diamond' : 'circle', symbolSize: 5 }
-        : point),
-    })),
-  } : null
-  const action = <div className="executive-trend-actions" role="group" aria-label="核心指标">
-    {rows.map((item) => <button key={item.metric.code} type="button" aria-label={item.metric.name} aria-pressed={String(item.metric.code) === String(row?.metric.code)} onClick={() => setMetricId(item.metric.code)}>{item.metric.name}</button>)}
-  </div>
-  return <AnalyticsPanel className="executive-overall-trend" title="核心指标趋势" titleExtra={action} description={row ? `IR需求临时数据${row.metric.unit ? ` · 单位：${row.metric.unit}` : ''}${currentMonthNote ? ` · ${currentMonthNote}` : ''}${overlapNote}` : '当前没有可展示的全局KPI'}>
-    <div className="executive-overall-trend__plot" style={{ height: 360 }}>
-      {!row ? <div className="analytics-empty">当前没有可展示的全局KPI。</div>
-        : error ? <div className="analytics-empty analytics-empty--error" role="alert">IR指标趋势加载失败：{error.message}</div>
-          : loading && !rawData ? <div className="analytics-empty" role="status">正在加载IR指标趋势…</div>
-            : !hasTrend ? <div className="analytics-empty analytics-empty--current" role="status">当前 IR 时间窗口没有可展示的团队事实。</div>
-              : <EChart option={option} height={360} ariaLabel={`${row.metric.name}IR需求团队与全公司均值趋势图${row.metric.unit ? `，单位 ${row.metric.unit}` : ''}`} onClick={() => onNavigate?.('/data/requirements/design')} />}
+function ExecutiveActivityTrendGrid({ entries, periodIds, teamColors, onNavigate }) {
+  return <AnalyticsPanel className="executive-overall-trend" title="核心趋势" description="设计活动与开发活动分别展示团队与全公司均值，不合并为同一条需求序列。">
+    <div className="executive-activity-trend-grid">
+      {entries.flatMap((entry) => REQUIREMENT_KPIS.slice(0, 2).map((metric) => {
+        const rawData = entry.dataByMetric?.[metric.code]
+        const data = rawData ? metricDataForPeriods(rawData, periodIds) : null
+        const hasTrend = hasNumericValues(data)
+        const option = data && hasTrend
+          ? buildTrendOption({ data, metric, teamColors, selectedPeriodId: 'all', averageLabel: '全公司均值' })
+          : null
+        const empty = entry.error
+          ? `当前${entry.label}${metric.name}数据暂不可用。`
+          : `当前${entry.label}窗口暂无${metric.name}记录。`
+        return <ChartCard
+          key={`${entry.key}-${metric.code}`}
+          title={`${entry.label} · ${metric.name}`}
+          description={`来源：${entry.label}需求记录（完成/已关闭）`}
+          option={option}
+          height={220}
+          reservePlotSpace
+          ariaLabel={`${entry.label}${metric.name}团队与全公司均值趋势图`}
+          loading={entry.loading}
+          error={entry.error ? '需求活动指标加载失败。' : undefined}
+          empty={empty}
+          onClick={() => onNavigate?.(`/data/requirements/${entry.key}`)}
+        />
+      }))}
     </div>
   </AnalyticsPanel>
 }
 
-function ExecutiveLifecycle({ activities = [], metricRows = [], dataByMetric, errors = {}, month, periodIds = [], teams = [], teamColors = {}, onNavigate }) {
+const FACT_LIFECYCLE_STAGES = [
+  { id: 'tcg', label: '测试用例生成', code: 'tcg', icon: <ClockCircleOutlined /> },
+  { id: 'tce', label: '测试用例执行', code: 'tce', emptyMessage: '目录仅定义用例执行数和执行率，没有渗透率或提效类型指标。', icon: <ThunderboltOutlined /> },
+]
+
+const LIFECYCLE_ICONS = {
+  sa: <FileTextOutlined />,
+  se: <TeamOutlined />,
+  dd: <PieChartOutlined />,
+  cd: <CodeOutlined />,
+  tcg: <ClockCircleOutlined />,
+  tce: <ThunderboltOutlined />,
+}
+
+function roleStageSlots(stage, month, periodIds) {
+  return REQUIREMENT_KPIS.slice(0, 2).map((metric) => {
+    const summary = requirementKpiSummary({ data: stage.dataByMetric?.[metric.code], metric, month, periodIds })
+    return {
+      id: metric.code === 'ai-rd-efficiency' ? 'efficiency' : 'penetration',
+      metric,
+      value: summary?.monthValue ?? null,
+      delta: summary?.monthDelta ?? null,
+    }
+  })
+}
+
+function ExecutiveLifecycle({ activities = [], metricRows = [], dataByMetric, errors = {}, roleEntries = [], month, periodIds = [], teams = [], teamColors = {}, onNavigate }) {
   const lifecycleStages = useMemo(() => {
     const byCode = new Map(activities.filter((activity) => activity.kind === 'key').map((activity) => [activity.code, activity]))
-    return [
-      { id: 'sa', label: 'SA设计', activity: byCode.get('sa'), icon: <FileTextOutlined /> },
-      { id: 'se', label: 'SE设计', activity: byCode.get('se'), icon: <TeamOutlined /> },
-      { id: 'dd', label: '开发设计', activity: byCode.get('dd'), icon: <PieChartOutlined /> },
-      { id: 'cd', label: '编码开发', activity: byCode.get('cd'), icon: <CodeOutlined /> },
-      { id: 'tcg', label: '测试用例生成', activity: byCode.get('tcg'), icon: <ClockCircleOutlined /> },
-      { id: 'tce', label: '测试用例执行', activity: byCode.get('tce'), emptyMessage: '目录仅定义用例执行数和执行率，没有渗透率或提效类型指标。', icon: <ThunderboltOutlined /> },
-    ]
-  }, [activities])
+    const roleStages = roleEntries.map((entry) => ({
+      id: entry.key,
+      label: entry.label,
+      source: 'role',
+      sourceLabel: '需求角色聚合',
+      description: `${REQUIREMENT_ACTIVITY_BY_KEY[entry.activity].label} · ${entry.roleLabel} 角色`,
+      dataByMetric: entry.dataByMetric,
+      error: entry.error,
+      loading: entry.loading,
+      icon: LIFECYCLE_ICONS[entry.key],
+      role: entry,
+    }))
+    const factStages = FACT_LIFECYCLE_STAGES.map((stage) => ({
+      ...stage,
+      source: 'fact',
+      sourceLabel: 'FactRecord',
+      activity: byCode.get(stage.code),
+      icon: LIFECYCLE_ICONS[stage.id] ?? <CodeOutlined />,
+    }))
+    return [...roleStages, ...factStages]
+  }, [activities, roleEntries])
   const [selectedStageId, setSelectedStageId] = useState('sa')
   const selectedStage = lifecycleStages.find((stage) => stage.id === selectedStageId) ?? lifecycleStages[0] ?? null
   useEffect(() => {
@@ -1569,58 +1690,126 @@ function ExecutiveLifecycle({ activities = [], metricRows = [], dataByMetric, er
     }
   }, [lifecycleStages, selectedStageId])
 
+  function stageSlots(stage) {
+    if (!stage) return []
+    if (stage.source === 'role') return roleStageSlots(stage, month, periodIds)
+    return lifecycleMetricSlots(stage.activity).map((slot) => {
+      const metric = slot.metric
+      const row = metric && metricRows.find((item) => String(item.metric.id) === String(metric.id))
+      const snapshot = row && dataByMetric[metric.id] ? factSnapshot(row, dataByMetric[metric.id], month, teams.length) : null
+      return { ...slot, metric, value: snapshot?.current ?? null, delta: snapshot?.delta ?? null, snapshot }
+    })
+  }
+
+  function slotText(slot, stage) {
+    if (stage?.source === 'role') {
+      return {
+        value: formatMetricValue(slot.metric, slot.value),
+        delta: formatMetricDelta(slot.metric, slot.delta, true),
+      }
+    }
+    return {
+      value: slot.snapshot?.value ?? '—',
+      delta: formatMetricDelta(slot.metric, slot.snapshot?.delta, true),
+    }
+  }
+
+  function renderRoleTrend(stage, metric) {
+    const rawData = stage.dataByMetric?.[metric.code]
+    const data = rawData ? metricDataForPeriods(rawData, periodIds) : null
+    const hasTrend = hasNumericValues(data)
+    const option = data && hasTrend
+      ? buildTrendOption({ data, metric, teamColors, selectedPeriodId: 'all', averageLabel: '全公司均值', compact: true })
+      : null
+    return <ChartCard
+      key={`${stage.id}-${metric.code}`}
+      title={`${stage.label} · ${metric.code === 'ai-demand-penetration' ? '渗透率' : '提效'}趋势`}
+      description={`来源：${stage.description} · 完成/已关闭记录`}
+      option={option}
+      height={158}
+      reservePlotSpace
+      ariaLabel={`${stage.label}${metric.name}趋势图`}
+      error={stage.error ? '需求角色指标加载失败。' : undefined}
+      empty={`当前统计周期暂无${stage.label}${metric.name}数据。`}
+    />
+  }
+
+  function renderFactTrend(stage, slot) {
+    const metric = slot.metric
+    const rawData = metric ? dataByMetric[metric.id] : null
+    const data = rawData ? metricDataForPeriods(rawData, periodIds) : null
+    const hasTrend = Boolean(metric) && hasNumericValues(data)
+    const hasOutlier = hasEfficiencyOutlier(data, metric)
+    const outlierAxisLabel = hasOutlier ? efficiencyOutlierAxisLabel(data, metric) : null
+    const baseOption = data && hasTrend ? buildTrendOption({ data, metric, teamColors, selectedPeriodId: 'all', averageLabel: '领域平均', compact: true }) : null
+    const option = baseOption ? {
+      ...baseOption,
+      grid: { ...baseOption.grid, left: 0, right: 0, top: 34, bottom: 3 },
+      xAxis: { ...baseOption.xAxis, axisLabel: { ...baseOption.xAxis.axisLabel, margin: 4 } },
+      yAxis: { ...baseOption.yAxis, axisLabel: { ...baseOption.yAxis.axisLabel, margin: 4 } },
+    } : null
+    const description = metric
+      ? `来源：FactRecord · ${stage.activity?.name ?? stage.label} · ${metric.name}${outlierAxisLabel ? ` · 图轴 ${outlierAxisLabel}` : ''}`
+      : undefined
+    return <ChartCard key={slot.id} title={`${stage.label} · ${slot.label}趋势`} description={description} option={option} height={158} reservePlotSpace ariaLabel={`${stage.label}${slot.label}趋势图`} error={metric && errors[metric.id] ? `指标加载失败：${errors[metric.id].message}` : undefined} empty={metric ? `当前统计周期暂无${metric.name}事实。` : `目录未配置${slot.label}类型指标。`} onClick={metric ? () => onNavigate?.(`/analytics/metrics/${metric.id}`) : undefined} />
+  }
+
   return (
-    <AnalyticsPanel className="executive-lifecycle" title="研发关键环节" titleExtra={<Button type="link" onClick={() => onNavigate?.('/analytics/activities')}>查看研发活动</Button>} description="每个环节展示需求渗透率与研发提效；缺失保持为空。" action={<span className="executive-lifecycle__legend"><span>AI需求渗透率</span><span>AI研发提效</span></span>}>
+    <AnalyticsPanel className="executive-lifecycle" title="研发关键环节" titleExtra={<Button type="link" onClick={() => onNavigate?.('/analytics/activities')}>查看研发活动</Button>} description="SA设计、SE设计、开发设计、编码开发使用需求角色聚合；测试用例生成/执行保留 FactRecord。缺失保持为空。" action={<span className="executive-lifecycle__legend"><span>AI需求渗透率</span><span>AI研发提效</span></span>}>
       <div className="executive-lifecycle__list" role="group" aria-label="选择关键研发环节">
         {lifecycleStages.map((stage) => {
-          const slots = lifecycleMetricSlots(stage.activity)
+          const slots = stageSlots(stage)
           return <button key={stage.id} type="button" className="executive-lifecycle__item" aria-label={`选择关键环节：${stage.label}`} aria-pressed={stage.id === selectedStage?.id} onClick={() => setSelectedStageId(stage.id)}>
-          <span className="executive-lifecycle__icon" aria-hidden="true">{stage.icon}</span><strong>{stage.label}</strong>
-          {slots.map((slot) => {
-            const metric = slot.metric
-            const row = metric && metricRows.find((item) => String(item.metric.id) === String(metric.id))
-            const snapshot = row && dataByMetric[metric.id] ? factSnapshot(row, dataByMetric[metric.id], month, teams.length) : null
-            const deltaTone = changeTone(snapshot?.delta)
-            const change = formatMetricDelta(metric, snapshot?.delta, true)
-            return <span className="executive-lifecycle__metric" key={slot.id} title={metric?.name ?? stage.emptyMessage ?? `当前目录没有${slot.label}类型的指标`}>
-              <small aria-label={slot.label}>{slot.id === 'penetration' ? '渗透率' : '提效'}</small>
-              <span className="executive-lifecycle__metric-result">
-                <b>{snapshot?.value ?? '—'}</b>
-                <i className={`executive-lifecycle__delta executive-lifecycle__delta--${deltaTone}`} aria-label={`较上月变化 ${formatMetricDelta(metric, snapshot?.delta)}`} title={`较上月变化 ${formatMetricDelta(metric, snapshot?.delta)}`}>{change}</i>
+            <span className="executive-lifecycle__icon" aria-hidden="true">{stage.icon}</span><strong>{stage.label}</strong>
+            <small className="executive-lifecycle__source">{stage.sourceLabel}</small>
+            {slots.map((slot) => {
+              const text = slotText(slot, stage)
+              const deltaTone = changeTone(slot.delta)
+              return <span className="executive-lifecycle__metric" key={slot.metric?.code ?? slot.id} title={slot.metric?.name ?? stage.emptyMessage ?? `当前目录没有${slot.label}类型的指标`}>
+                <small aria-label={slot.id === 'penetration' ? '渗透率' : '提效'}>{slot.id === 'penetration' ? '渗透率' : '提效'}</small>
+                <span className="executive-lifecycle__metric-result">
+                  <b>{text.value}</b>
+                  <i className={`executive-lifecycle__delta executive-lifecycle__delta--${deltaTone}`} aria-label={`较上月变化 ${text.delta}`} title={`较上月变化 ${text.delta}`}>{text.delta}</i>
+                </span>
               </span>
-            </span>
-          })}
+            })}
           </button>
         })}
       </div>
       {selectedStage && <div className="executive-lifecycle__detail">
         {selectedStage.emptyMessage && <p className="executive-lifecycle__empty-note">{selectedStage.emptyMessage}</p>}
         <div className="executive-lifecycle__trend-grid">
-          {lifecycleMetricSlots(selectedStage.activity).map((slot) => {
-            const metric = slot.metric
-            const rawData = metric ? dataByMetric[metric.id] : null
-            const data = rawData ? metricDataForPeriods(rawData, periodIds) : null
-            const hasTrend = Boolean(metric) && hasNumericValues(data)
-            const hasOutlier = hasEfficiencyOutlier(data, metric)
-            const outlierAxisLabel = hasOutlier ? efficiencyOutlierAxisLabel(data, metric) : null
-            const baseOption = data && hasTrend ? buildTrendOption({ data, metric, teamColors, selectedPeriodId: 'all', averageLabel: '领域平均', compact: true }) : null
-            const option = baseOption ? {
-              ...baseOption,
-              grid: { ...baseOption.grid, left: 0, right: 0, top: 34, bottom: 3 },
-              xAxis: { ...baseOption.xAxis, axisLabel: { ...baseOption.xAxis.axisLabel, margin: 4 } },
-              yAxis: { ...baseOption.yAxis, axisLabel: { ...baseOption.yAxis.axisLabel, margin: 4 } },
-            } : null
-            const sourceLabel = selectedStage.activity?.name ?? selectedStage.label
-            const description = metric
-              ? `来源：${sourceLabel} · ${metric.name}${outlierAxisLabel ? ` · 图轴 ${outlierAxisLabel}，越界点贴边显示并保留悬浮原值` : ''}`
-              : undefined
-            const empty = metric ? `当前统计周期暂无${metric.name}事实。` : `目录未配置${slot.label}类型指标。`
-            return <ChartCard key={slot.id} title={`${selectedStage.label} · ${slot.label}趋势`} description={description} option={option} height={158} reservePlotSpace ariaLabel={`${selectedStage.label}${slot.label}趋势图，团队与领域平均`} error={metric && errors[metric.id] ? `指标加载失败：${errors[metric.id].message}` : undefined} empty={empty} onClick={metric ? () => onNavigate?.(`/analytics/metrics/${metric.id}`) : undefined} />
-          })}
+          {selectedStage.source === 'role'
+            ? REQUIREMENT_KPIS.slice(0, 2).map((metric) => renderRoleTrend(selectedStage, metric))
+            : lifecycleMetricSlots(selectedStage.activity).map((slot) => renderFactTrend(selectedStage, slot))}
         </div>
       </div>}
     </AnalyticsPanel>
   )
+}
+
+function activityCoverageLine(entry, scope, summaries) {
+  const coverageSummary = summaries?.[entry.key]?.get('ai-demand-penetration')
+  const workloadSummary = summaries?.[entry.key]?.get('ai-rd-efficiency')
+  const coverage = scope === 'month' ? coverageSummary?.monthCoverage : coverageSummary?.periodCoverage
+  const workloadCoverage = scope === 'month' ? workloadSummary?.monthCoverage : workloadSummary?.periodCoverage
+  const scopeLabel = scope === 'month' ? '当月' : '周期'
+  return `${scopeLabel} ${entry.label}记录 ${coverage?.factCount ?? 0} 条 · AI属性已维护 ${coverage?.knownAiCount ?? 0}/${coverage?.factCount ?? 0} · AI辅助 ${workloadCoverage?.aiAssistedCount ?? '—'} 条 · 完整工作量 ${workloadCoverage?.aiWorkloadCount ?? 0} 条`
+}
+
+function activityMissingDetail(entry, metric, coverage, summaries, scope) {
+  if (!coverage) return undefined
+  if (coverage.factCount === 0) return scope === 'month' ? `本月暂无${entry.label}记录` : `周期内暂无${entry.label}记录`
+  if (coverage.knownAiCount === 0) return '未维护 AI 属性'
+  if (metric.code === 'ai-rd-efficiency' && coverage.aiWorkloadCount > 0) {
+    const summary = summaries?.get(metric.code)
+    const value = summary?.[scope === 'month' ? 'monthValue' : 'periodValue']
+    if (value === null) return 'AI 辅助工作量为 0，无法计算提效'
+  }
+  if (['ai-rd-efficiency', 'ai-efficiency-workload'].includes(metric.code) && coverage.aiWorkloadCount === 0) {
+    return coverage.aiAssistedCount === 0 ? `暂无 AI 辅助${entry.label}记录` : 'AI 辅助工作量缺失'
+  }
+  return undefined
 }
 
 export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, maturityState, onFilterChange, onMaturityChange, onNavigate, onSessionExpired }) {
@@ -1638,59 +1827,71 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
   const metricRows = useMemo(() => buildMetricRows({ activities: overviewActivities, dataByMetric: metrics.data, errors: metrics.errors, month, teams }), [overviewActivities, metrics.data, metrics.errors, month, teams])
   const monthlyTrendMonths = monthWindow(month, 6)
   const periodMonths = analysisWindowMonths(month, cycle)
-  const irSourceMonths = monthWindow(month, 12)
-  const irOverview = useIROverviewMetrics(irSourceMonths[0], month, versionId, onSessionExpired)
-  const irDataByMetric = useMemo(() => irOverview.data ? buildIROverviewMetricData(irOverview.data) : {}, [irOverview.data])
-  const irKpiRows = useMemo(() => IR_OVERVIEW_KPIS.map((metric) => ({ metric, activity: { name: 'IR需求' } })), [])
-  const metricSummaries = new Map(irKpiRows.map((row) => [row.metric.code, irOverviewMetricSummary({ data: irDataByMetric[row.metric.code], metric: row.metric, month, monthTrendIds: monthlyTrendMonths, periodIds: periodMonths })]))
-  const monthCoverage = metricSummaries.get('ai-demand-penetration')?.monthCoverage
-  const monthWorkloadCoverage = metricSummaries.get('ai-rd-efficiency')?.monthCoverage
-  const periodCoverage = metricSummaries.get('ai-demand-penetration')?.periodCoverage
-  const periodWorkloadCoverage = metricSummaries.get('ai-rd-efficiency')?.periodCoverage
+  const sourceMonths = monthWindow(month, 12)
+  const sourceFromMonth = sourceMonths[0] ?? month
+  const designOverview = useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'design', 'all', onSessionExpired)
+  const developmentOverview = useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'development', 'all', onSessionExpired)
+  const roleOverview = {
+    sa: useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'design', 'sa', onSessionExpired, { benchmark: false }),
+    se: useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'design', 'se', onSessionExpired, { benchmark: false }),
+    dd: useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'development', 'implementation', onSessionExpired, { benchmark: false }),
+    cd: useRequirementOverviewMetrics(sourceFromMonth, month, versionId, 'development', 'development', onSessionExpired, { benchmark: false }),
+  }
+  const designDataByMetric = useMemo(() => designOverview.data ? buildRequirementKpiData(designOverview.data) : {}, [designOverview.data])
+  const developmentDataByMetric = useMemo(() => developmentOverview.data ? buildRequirementKpiData(developmentOverview.data) : {}, [developmentOverview.data])
+  const roleDataByKey = useMemo(() => Object.fromEntries(Object.entries(roleOverview).map(([key, state]) => [key, state.data ? buildRequirementKpiData(state.data) : {}])), [roleOverview.sa.data, roleOverview.se.data, roleOverview.dd.data, roleOverview.cd.data])
+  const activityEntries = useMemo(() => [
+    { key: 'design', label: '设计活动', dataByMetric: designDataByMetric, loading: designOverview.loading, error: designOverview.error },
+    { key: 'development', label: '开发活动', dataByMetric: developmentDataByMetric, loading: developmentOverview.loading, error: developmentOverview.error },
+  ], [designDataByMetric, designOverview.error, designOverview.loading, developmentDataByMetric, developmentOverview.error, developmentOverview.loading])
+  const activitySummaries = useMemo(() => Object.fromEntries(activityEntries.map((entry) => [entry.key, new Map(REQUIREMENT_KPIS.map((metric) => [
+    metric.code,
+    requirementKpiSummary({ data: entry.dataByMetric[metric.code], metric, month, monthTrendIds: monthlyTrendMonths, periodIds: periodMonths }),
+  ]))])), [activityEntries, month, monthlyTrendMonths, periodMonths])
+  const roleEntries = useMemo(() => Object.values(REQUIREMENT_ROLE_ACTIVITIES).map((source) => ({
+    ...source,
+    dataByMetric: roleDataByKey[source.key] ?? {},
+    loading: roleOverview[source.key].loading,
+    error: roleOverview[source.key].error,
+  })), [roleDataByKey, roleOverview.sa.loading, roleOverview.sa.error, roleOverview.se.loading, roleOverview.se.error, roleOverview.dd.loading, roleOverview.dd.error, roleOverview.cd.loading, roleOverview.cd.error])
   const periodLabel = analysisWindowLabel(month, cycle)
   const teamColors = useColorSlotsForTeams(teams)
-  const irTeams = useMemo(() => {
-    const available = (irOverview.data?.series ?? []).map((series) => ({ id: series.team_id, name: series.team_name }))
-    return available.length ? available : teams.map(({ id, name }) => ({ id, name }))
-  }, [irOverview.data?.series, teams])
+  const matrixTeams = useMemo(() => {
+    const byId = new Map()
+    for (const entry of activityEntries) {
+      for (const series of Object.values(entry.dataByMetric)[0]?.series ?? []) byId.set(String(series.team_id), { id: series.team_id, name: series.team_name })
+    }
+    if (!byId.size) teams.forEach(({ id, name }) => byId.set(String(id), { id, name }))
+    return [...byId.values()]
+  }, [activityEntries, teams])
   const [teamView, setTeamView] = useState('month')
   const [selectedTeamId, setSelectedTeamId] = useState(null)
   useEffect(() => {
-    if (!irTeams.some((team) => String(team.id) === String(selectedTeamId))) setSelectedTeamId(irTeams[0]?.id ?? null)
-  }, [irTeams, selectedTeamId])
-  const selectedTeam = irTeams.find((team) => String(team.id) === String(selectedTeamId)) ?? null
-  const teamMatrixColumns = irKpiRows.map((row) => ({ id: row.metric.code, label: row.metric.name, ...(row.metric.unit ? { context: row.metric.unit } : {}) }))
-  const teamMatrixRows = [
-    {
-      id: 'company-average',
-      label: '全公司均值',
-      kind: 'average',
-      values: irKpiRows.map((row) => {
-        const summary = metricSummaries.get(row.metric.code)
-        const value = teamView === 'month' ? summary?.monthCompanyAverage : summary?.periodCompanyAverage
-        const delta = teamView === 'month' ? summary?.monthCompanyAverageDelta : summary?.periodCompanyAverageDelta
-        return { text: formatMetricValue(row.metric, value), changeText: formatMetricDelta(row.metric, delta, true), changeTone: changeTone(delta) }
-      }),
-    },
-    ...irTeams.map((team) => ({
-      id: team.id,
-      label: team.name,
-      kind: 'team',
-      color: teamColors[String(team.id)],
-      values: irKpiRows.map((row) => {
-        const summary = metricSummaries.get(row.metric.code)
-        const teamSummary = teamView === 'month'
-          ? summary?.monthTeams.find((item) => String(item.teamId) === String(team.id))
-          : summary?.periodTeams.find((item) => String(item.teamId) === String(team.id))
-        return {
-          text: formatMetricValue(row.metric, teamSummary?.value),
-          changeText: formatMetricDelta(row.metric, teamSummary?.delta, true),
-          changeTone: changeTone(teamSummary?.delta),
-        }
-      }),
-    })),
-  ]
-  const previewRows = irKpiRows.filter((row) => ['ai-demand-penetration', 'ai-rd-efficiency'].includes(row.metric.code))
+    if (!matrixTeams.some((team) => String(team.id) === String(selectedTeamId))) setSelectedTeamId(matrixTeams[0]?.id ?? null)
+  }, [matrixTeams, selectedTeamId])
+  const selectedTeam = matrixTeams.find((team) => String(team.id) === String(selectedTeamId)) ?? null
+  const teamMatrixModel = useMemo(() => buildRequirementTeamMatrixModel({
+    entries: activityEntries.map(({ key, label, dataByMetric }) => ({ key, label, dataByMetric })),
+    month,
+    monthTrendIds: monthlyTrendMonths,
+    cyclePeriodIds: periodMonths,
+    teams: matrixTeams,
+    view: teamView === 'month' ? 'month' : 'cycle',
+  }), [activityEntries, matrixTeams, month, monthlyTrendMonths, periodMonths, teamView])
+  const teamMatrixColumns = teamMatrixModel.columns
+  const teamMatrixRows = useMemo(() => teamMatrixModel.rows.map((row) => ({
+    ...row,
+    color: row.kind === 'team' ? teamColors[String(row.id)] : undefined,
+    values: row.values.map((value, index) => {
+      const definition = teamMatrixModel.columns[index].definition
+      return {
+        text: formatMetricValue(definition, value.value),
+        changeText: formatMetricDelta(definition, value.delta, true),
+        changeTone: changeTone(value.delta),
+      }
+    }),
+  })), [teamColors, teamMatrixModel])
+  const previewEntries = useMemo(() => activityEntries.flatMap((entry) => REQUIREMENT_KPIS.slice(0, 2).map((metric) => ({ entry, metric }))), [activityEntries])
   const maturityActivities = selectedMaturity.data?.activities ?? []
   const previousMaturityActivities = new Map((selectedMaturity.history.at(-2)?.data?.activities ?? []).map((activity) => [String(activity.activity_id), activity]))
   const maturityMatrix = maturityMatrixData(selectedMaturity.data)
@@ -1698,6 +1899,9 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
     { name: `本期领域平均 · ${month}`, color: DATAVIZ_COLORS.team[0], values: maturityActivities.map((activity) => activity.score) },
     { name: `上期领域平均 · ${monthlyTrendMonths.at(-2) ?? '—'}`, color: DATAVIZ_COLORS.companyAverage, dashed: true, values: maturityActivities.map((activity) => previousMaturityActivities.get(String(activity.activity_id))?.score ?? null) },
   ]
+  const scopeStates = [designOverview, developmentOverview]
+  const scopeLoading = scopeStates.some((state) => state.loading)
+  const scopeError = scopeStates.find((state) => state.error)?.error ?? null
 
   function changeMonth(nextMonth) {
     setLocalMonth(nextMonth)
@@ -1716,61 +1920,71 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
     return `${prefix} ${formatMetricDelta(metric, delta, true)}`
   }
 
-  function irCoverageSummary(scope, coverage, workloadCoverage) {
-    return `${scope} IR 需求 ${coverage?.factCount ?? 0} 条 · AI 属性已维护 ${coverage?.knownAiCount ?? 0}/${coverage?.factCount ?? 0} · AI 辅助 IR ${workloadCoverage?.aiAssistedCount ?? '—'} 条 · 完整工作量 ${workloadCoverage?.aiWorkloadCount ?? 0} 条`
-  }
-
-  function irMissingDetail(metric, coverage, scope) {
-    if (!coverage) return undefined
-    if (coverage.factCount === 0) return scope === '所选月份' ? '本月暂无 IR' : '周期内暂无 IR'
-    if (coverage.knownAiCount === 0) return '未维护 AI 属性'
-    if (metric.code === 'ai-rd-efficiency' && coverage.aiWorkloadCount > 0) {
-      const value = metricSummaries.get(metric.code)?.[scope === '所选月份' ? 'monthValue' : 'periodValue']
-      if (value === null) return 'AI 辅助 IR 工作量为 0，无法计算提效'
-    }
-    if (['ai-rd-efficiency', 'ai-efficiency-workload'].includes(metric.code) && coverage.aiWorkloadCount === 0) {
-      return coverage.aiAssistedCount === 0 ? '暂无 AI 辅助 IR' : 'AI 辅助 IR 工作量缺失'
-    }
-    return undefined
+  function kpiCards(scope) {
+    const isMonth = scope === 'month'
+    return activityEntries.map((entry) => <div key={entry.key} className="executive-kpi-activity">
+      <h3 className="executive-kpi-activity__title">{entry.label}</h3>
+      <div className="executive-kpi-grid" aria-label={`${entry.label}${isMonth ? '月度' : '统计周期'} KPI`}>
+        {REQUIREMENT_KPIS.map((metric) => {
+          const summaries = activitySummaries[entry.key]
+          const summary = summaries.get(metric.code)
+          const coverage = summary?.[isMonth ? 'monthCoverage' : 'periodCoverage']
+          const value = isMonth ? summary?.monthValue : summary?.periodValue
+          const deltaValue = isMonth ? summary?.monthDelta : summary?.periodDelta
+          const baseline = isMonth ? summary?.previousMonthValue : summary?.previousPeriodValue
+          const missingDetail = !entry.loading && !entry.error && !Number.isFinite(value)
+            ? activityMissingDetail(entry, metric, coverage, activitySummaries[entry.key], isMonth ? 'month' : 'period')
+            : undefined
+          const comparison = [
+            isMonth
+              ? (Number.isFinite(baseline) ? `vs 上月 ${formatMetricValue(metric, baseline)}` : 'vs 上月 —')
+              : (Number.isFinite(baseline) ? `vs 前累计 ${formatMetricValue(metric, baseline)}` : 'vs 前累计 —'),
+            missingDetail,
+          ].filter(Boolean).join(' · ')
+          const deltaPrefix = isMonth ? '环比' : (metric.periodDeltaLabel ?? '较前期')
+          return <MetricKpiCard
+            key={`${entry.key}-${scope}-${metric.code}`}
+            icon={REQUIREMENT_KPI_ICONS[metric.code]}
+            accessory={<KpiAccessory />}
+            label={metric.name}
+            value={formatMetricValue(metric, value)}
+            unit={metric.unit}
+            delta={metricDelta(metric, deltaValue, deltaPrefix)}
+            deltaTone={changeTone(deltaValue)}
+            comparison={comparison}
+            trendValues={Number.isFinite(value) ? (isMonth ? summary?.monthTrend : summary?.periodTrend) ?? [] : []}
+            trendLabel={`${entry.label}${metric.name}${isMonth ? '近六个月' : periodLabel + '累计'}趋势`}
+            accent={metric.accent}
+            loading={entry.loading}
+            error={entry.error ? '需求活动指标加载失败。' : undefined}
+          />
+        })}
+      </div>
+    </div>)
   }
 
   return (
     <div className="executive-overview analytics-page">
       <AnalysisPageHead
         title="研发总览"
-        description="按用户选择月份与统计周期查看整体效能。全局 KPI 暂取 IR 需求，活动明细保留 FactRecord 口径。"
+        description="按用户选择月份与统计周期查看整体效能。设计活动与开发活动分别聚合需求记录，只统计完成/已关闭记录，不跨活动相加。"
         actions={<OverviewFilterControls month={month} onMonthChange={changeMonth} cycle={cycle} onCycleChange={changeCycle} />}
       />
       <AnalyticsSection
         title={`月度核心成效 · ${month}`}
-        action={<span className="executive-kpi-coverage" role={irOverview.error ? 'alert' : 'status'} title={irOverview.error?.message}>{irOverview.loading ? 'IR 指标加载中' : irOverview.error ? 'IR 指标加载失败' : irCoverageSummary('当月', monthCoverage, monthWorkloadCoverage)}</span>}
+        action={<span className="executive-kpi-coverage" role={scopeError ? 'alert' : 'status'} title={scopeError?.message}>{scopeLoading ? '需求活动指标加载中' : scopeError ? '需求活动指标加载失败' : activityEntries.map((entry) => activityCoverageLine(entry, 'month', activitySummaries)).join(' ｜ ')}</span>}
       >
-        <div className="executive-kpi-grid" aria-label="月度全局 KPI">
-          {irKpiRows.map((row) => {
-            const summary = metricSummaries.get(row.metric.code)
-            const coverage = summary?.monthCoverage
-            const missingDetail = !irOverview.loading && !irOverview.error && !Number.isFinite(summary?.monthValue) ? irMissingDetail(row.metric, coverage, '所选月份') : undefined
-            const comparison = [Number.isFinite(summary?.previousMonthValue) ? `vs 上月 ${formatMetricValue(row.metric, summary.previousMonthValue)}` : 'vs 上月 —', missingDetail].filter(Boolean).join(' · ')
-            return <MetricKpiCard key={row.metric.code} icon={IR_KPI_ICONS[row.metric.code]} accessory={<KpiAccessory />} label={row.metric.name} value={formatMetricValue(row.metric, summary?.monthValue)} unit={row.metric.unit} delta={metricDelta(row.metric, summary?.monthDelta, '环比')} deltaTone={changeTone(summary?.monthDelta)} comparison={comparison} trendValues={Number.isFinite(summary?.monthValue) ? summary?.monthTrend ?? [] : []} trendLabel={`${row.metric.name}近六个月趋势`} accent={row.metric.accent} loading={irOverview.loading} />
-          })}
-        </div>
+        <div aria-label="月度全局 KPI">{kpiCards('month')}</div>
       </AnalyticsSection>
-      <AnalyticsSection title={`周期整体成效 · ${periodLabel}（截至${month}）`} action={<span className="executive-kpi-coverage" role={irOverview.error ? 'alert' : 'status'} title={irOverview.error?.message}>{irOverview.loading ? 'IR 指标加载中' : irOverview.error ? 'IR 指标加载失败' : irCoverageSummary(periodLabel, periodCoverage, periodWorkloadCoverage)}</span>}>
-        <div className="executive-kpi-grid" aria-label="统计周期全局 KPI">
-          {irKpiRows.map((row) => {
-            const summary = metricSummaries.get(row.metric.code)
-            const coverage = summary?.periodCoverage
-            const deltaPrefix = row.metric.periodDeltaLabel ?? '较前期'
-            const delta = metricDelta(row.metric, summary?.periodDelta, deltaPrefix)
-            const missingDetail = !irOverview.loading && !irOverview.error && !Number.isFinite(summary?.periodValue) ? irMissingDetail(row.metric, coverage, '所选统计周期') : undefined
-            const comparison = [Number.isFinite(summary?.previousPeriodValue) ? `vs 前累计 ${formatMetricValue(row.metric, summary.previousPeriodValue)}` : 'vs 前累计 —', missingDetail].filter(Boolean).join(' · ')
-            return <MetricKpiCard key={row.metric.code} icon={IR_KPI_ICONS[row.metric.code]} accessory={<KpiAccessory />} label={row.metric.name} value={formatMetricValue(row.metric, summary?.periodValue)} unit={row.metric.unit} delta={delta} deltaTone={changeTone(summary?.periodDelta)} comparison={comparison} trendValues={Number.isFinite(summary?.periodValue) ? summary?.periodTrend ?? [] : []} trendLabel={`${row.metric.name}${periodLabel}累计趋势`} accent={row.metric.accent} loading={irOverview.loading} />
-          })}
-        </div>
+      <AnalyticsSection
+        title={`周期整体成效 · ${periodLabel}（截至${month}）`}
+        action={<span className="executive-kpi-coverage" role={scopeError ? 'alert' : 'status'} title={scopeError?.message}>{scopeLoading ? '需求活动指标加载中' : scopeError ? '需求活动指标加载失败' : activityEntries.map((entry) => activityCoverageLine(entry, 'period', activitySummaries)).join(' ｜ ')}</span>}
+      >
+        <div aria-label="统计周期全局 KPI">{kpiCards('period')}</div>
       </AnalyticsSection>
       <div className="executive-analysis-grid">
-        <ExecutiveOverallTrend rows={irKpiRows} dataByMetric={irDataByMetric} periodIds={monthlyTrendMonths} month={month} teamColors={teamColors} onNavigate={onNavigate} loading={irOverview.loading} error={irOverview.error} />
-        <ExecutiveLifecycle activities={overviewActivities} metricRows={metricRows} dataByMetric={metrics.data} errors={metrics.errors} month={month} periodIds={monthlyTrendMonths} teams={teams} teamColors={teamColors} onNavigate={onNavigate} />
+        <ExecutiveActivityTrendGrid entries={activityEntries} periodIds={monthlyTrendMonths} teamColors={teamColors} onNavigate={onNavigate} />
+        <ExecutiveLifecycle activities={overviewActivities} metricRows={metricRows} dataByMetric={metrics.data} errors={metrics.errors} roleEntries={roleEntries} month={month} periodIds={monthlyTrendMonths} teams={teams} teamColors={teamColors} onNavigate={onNavigate} />
       </div>
       <div className="executive-final-grid">
         <AnalyticsPanel
@@ -1804,9 +2018,9 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
             </section>
           </div>
         </AnalyticsPanel>
-        <AnalyticsPanel id="team-performance" className="executive-team-section" title="团队表现" titleExtra={<div className="executive-team-mode" role="group" aria-label="团队表现统计范围"><Button size="small" type={teamView === 'month' ? 'primary' : 'default'} aria-pressed={teamView === 'month'} onClick={() => setTeamView('month')}>本月</Button><Button size="small" type={teamView === 'cycle' ? 'primary' : 'default'} aria-pressed={teamView === 'cycle'} onClick={() => setTeamView('cycle')}>统计周期</Button></div>} description="临时 IR 口径；比例变化为 pp，按所选周期统计。">
+        <AnalyticsPanel id="team-performance" className="executive-team-section" title="团队表现" titleExtra={<div className="executive-team-mode" role="group" aria-label="团队表现统计范围"><Button size="small" type={teamView === 'month' ? 'primary' : 'default'} aria-pressed={teamView === 'month'} onClick={() => setTeamView('month')}>本月</Button><Button size="small" type={teamView === 'cycle' ? 'primary' : 'default'} aria-pressed={teamView === 'cycle'} onClick={() => setTeamView('cycle')}>统计周期</Button></div>} description="设计活动 4 项与开发活动 4 项分别展示；比例变化为 pp，按所选周期统计。">
           {teamMatrixColumns.length
-            ? <TeamMatrix label={`团队表现 · ${teamView === 'month' ? month : `${periodLabel}截至${month}`}`} columns={teamMatrixColumns} rows={teamMatrixRows} selectedId={selectedTeam?.id} onSelect={setSelectedTeamId} showChanges />
+            ? <TeamMatrix label={`团队表现 · ${teamView === 'month' ? month : `${periodLabel}截至${month}`}`} columns={teamMatrixColumns} columnGroups={teamMatrixModel.columnGroups} rows={teamMatrixRows} selectedId={selectedTeam?.id} onSelect={setSelectedTeamId} showChanges />
             : <div className="analytics-empty">当前目录没有可展示的数值指标。</div>}
           <div className="executive-team-preview">
             <header>
@@ -1814,12 +2028,12 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
               {selectedTeam && <Button type="link" onClick={() => onNavigate?.(`/analytics/teams/${selectedTeam.id}`, { state: { returnTo: '/', returnLabel: '研发总览' } })}>查看团队详情 →</Button>}
             </header>
             <div className="executive-team-preview__charts">
-              {selectedTeam ? previewRows.map((row) => {
-                const rawData = irDataByMetric[row.metric.code]
+              {selectedTeam ? previewEntries.map(({ entry, metric }) => {
+                const rawData = entry.dataByMetric[metric.code]
                 const data = rawData ? metricDataForPeriods(rawData, periodMonths) : null
                 const series = data?.series?.filter((item) => String(item.team_id) === String(selectedTeam.id)) ?? []
                 const selectedData = data ? { ...data, series } : null
-                const baseOption = selectedData && hasNumericValues(selectedData) ? buildTrendOption({ data: selectedData, metric: row.metric, teamColors, selectedPeriodId: 'all', averageLabel: '全公司均值', compact: true }) : null
+                const baseOption = selectedData && hasNumericValues(selectedData) ? buildTrendOption({ data: selectedData, metric, teamColors, selectedPeriodId: 'all', averageLabel: '全公司均值', compact: true }) : null
                 const option = baseOption ? {
                   ...baseOption,
                   grid: { ...baseOption.grid, left: 0, right: 0, top: 12, bottom: 4 },
@@ -1828,8 +2042,8 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
                   legend: { show: false },
                 } : null
                 const teamColor = teamColors[String(selectedTeam.id)] ?? DATAVIZ_COLORS.team[0]
-                return <ChartCard key={row.metric.code} title={row.metric.name} action={<div className="executive-team-preview__legend"><span><i style={{ '--team-matrix-color': teamColor }} />{selectedTeam.name}</span><BenchmarkLegend /></div>} option={option} height={150} reservePlotSpace ariaLabel={`${selectedTeam.name} ${row.metric.name}与全公司均值趋势`} empty={`当前 IR 统计周期暂无${row.metric.name}事实。`} onClick={() => onNavigate?.(`/analytics/teams/${selectedTeam.id}`, { state: { returnTo: '/', returnLabel: '研发总览' } })} />
-              }) : previewRows.map((row) => <ChartCard key={row.metric.code} title={row.metric.name} height={150} reservePlotSpace empty="暂无可展示的团队数据。" />)}
+                return <ChartCard key={`${entry.key}-${metric.code}`} title={`${entry.label} · ${metric.name}`} action={<div className="executive-team-preview__legend"><span><i style={{ '--team-matrix-color': teamColor }} />{selectedTeam.name}</span><BenchmarkLegend /></div>} option={option} height={150} reservePlotSpace ariaLabel={`${selectedTeam.name} ${entry.label}${metric.name}与全公司均值趋势`} empty={`当前${entry.label}统计周期暂无${metric.name}记录。`} onClick={() => onNavigate?.(`/analytics/teams/${selectedTeam.id}`, { state: { returnTo: '/', returnLabel: '研发总览' } })} />
+              }) : previewEntries.map(({ entry, metric }) => <ChartCard key={`${entry.key}-${metric.code}`} title={`${entry.label} · ${metric.name}`} height={150} reservePlotSpace empty="暂无可展示的团队数据。" />)}
             </div>
           </div>
         </AnalyticsPanel>
@@ -1838,6 +2052,7 @@ export function ExecutiveOverviewPage({ teams = [], catalog = [], filter = {}, m
     </div>
   )
 }
+
 
 export function ActivitiesPage(props) {
   return <AnalyticsDetailPage {...props} kind="key" title="研发活动" description="按活动查看月度与统计周期成效、团队趋势和团队差异；时间事实覆盖各版本，成熟度按独立自然月评估。" />

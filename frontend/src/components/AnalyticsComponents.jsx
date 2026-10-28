@@ -133,7 +133,8 @@ export function MaturityMatrix({ label = '团队成熟度矩阵', rowHeading = '
   )
 }
 
-export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = [], selectedId, onSelect, showChanges = false, visibleChangeHeaders = false, groupedChangeLayout = false, heatmap = false }) {
+export function TeamMatrix({ label = '团队指标矩阵', columns = [], columnGroups = [], rows = [], selectedId, onSelect, showChanges = false, visibleChangeHeaders = false, groupedChangeLayout = false, heatmap = false }) {
+  const hasColumnGroups = columnGroups.length > 0
   return (
     <div className={`team-matrix${heatmap ? ' team-matrix--heatmap' : ''}`}>
       <div className="team-matrix__scroll" role="region" aria-label={`${label}，可横向滚动`} tabIndex={0}>
@@ -141,10 +142,20 @@ export function TeamMatrix({ label = '团队指标矩阵', columns = [], rows = 
           {showChanges && groupedChangeLayout && <colgroup><col className="team-matrix__team-column" />{columns.flatMap((column) => [<col className="team-matrix__value-column" key={`${column.id}-value`} />, <col className="team-matrix__change-column" key={`${column.id}-change`} />])}</colgroup>}
           <thead>{showChanges
             ? <>
-              <tr><th scope="col" rowSpan={2}>团队</th>{columns.map((column) => <th scope="colgroup" colSpan={2} key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>
+              {hasColumnGroups
+                ? <>
+                  <tr><th scope="col" rowSpan={3}>团队</th>{columnGroups.map((group) => <th scope="colgroup" colSpan={group.count * 2} key={group.id}>{group.label}</th>)}</tr>
+                  <tr>{columns.map((column) => <th scope="colgroup" colSpan={2} key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>
+                </>
+                : <tr><th scope="col" rowSpan={2}>团队</th>{columns.map((column) => <th scope="colgroup" colSpan={2} key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>}
               <tr>{columns.map((column) => <Fragment key={column.id}><th scope="col"><span className={visibleChangeHeaders ? undefined : 'app-sr-only'}>指标值</span></th><th scope="col" title="与当前选择范围的前期相比"><span className={visibleChangeHeaders ? undefined : 'app-sr-only'}>变化</span></th></Fragment>)}</tr>
             </>
-            : <tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>}
+            : hasColumnGroups
+              ? <>
+                <tr><th scope="col" rowSpan={2}>团队</th>{columnGroups.map((group) => <th scope="colgroup" colSpan={group.count} key={group.id}>{group.label}</th>)}</tr>
+                <tr>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>
+              </>
+              : <tr><th scope="col">团队</th>{columns.map((column) => <th scope="col" key={column.id}><span>{column.label}</span>{column.context && <small>{column.context}</small>}</th>)}</tr>}
           </thead>
           <tbody>{rows.map((row) => (
             <tr className={`${row.kind === 'average' ? 'team-matrix__row--average' : ''}${String(row.id) === String(selectedId) ? ' team-matrix__row--selected' : ''}`} key={row.id}>

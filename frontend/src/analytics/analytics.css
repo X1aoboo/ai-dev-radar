@@ -743,3 +743,40 @@
   .executive-kpi-grid, .executive-lifecycle__list { grid-template-columns: 1fr; }
   .executive-lifecycle__item { border-right: 0; }
 }
+
+/* Dual requirement activity dashboard */
+.executive-kpi-activity + .executive-kpi-activity { margin-top: var(--space-4); }
+.executive-kpi-activity__title {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-label);
+  font-weight: 650;
+  letter-spacing: .02em;
+  margin: 0 0 var(--space-2);
+}
+.executive-activity-trend-grid {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.executive-activity-trend-grid > * { min-width: 0; }
+.executive-kpi-coverage { white-space: normal; }
+.executive-team-preview__charts { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.activity-lower-grid { align-items: start; grid-template-columns: minmax(0, 1fr); }
+.activity-lower-grid .analytics-panel { height: auto; min-height: 0; }
+.activity-dual-breakdown,
+.activity-dual-workload {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  min-width: 0;
+}
+.activity-dual-breakdown > section,
+.activity-dual-workload > section { min-width: 0; }
+.activity-dual-breakdown h4,
+.activity-workload-activity h4 {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-label);
+  font-weight: 650;
+  margin: 0 0 var(--space-1);
+}
+.activity-workload-activity { min-width: 0; }

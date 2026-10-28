@@ -49,6 +49,12 @@ See [ADR Index and Protocol](adr/README.md)。
 
 See [Change Design Protocol](changes/README.md) 和 [Active Changes](changes/active/README.md)；归档见 [Completed Changes](changes/completed/README.md)。
 
+## Prototypes
+
+| Change | Prototype | Description |
+|---|---|---|
+| 需求活动看板适配 | [HTML prototype](../prototypes/requirement-activity-dashboard/index.html) · [评审说明](../prototypes/requirement-activity-dashboard/README.md) | 复用现有 App shell 与 Analytics 组件视觉语言的设计/开发双活动看板原型 |
+
 ## Validation
 
 运行 `npm run check:docs` 和 `npm run test:docs`。它们校验结构、文件链接、ADR 基本格式与变更状态；语义一致性通过代码核对及相关测试确认，不由静态检查保证。

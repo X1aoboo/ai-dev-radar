@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .auth import get_current_user, require_roles
 from .data_management import (
-    build_ir_overview_series,
+    build_requirement_overview_series,
     derive_ai_assisted,
     effective_actual_workload,
     effective_ai_assisted,
@@ -1902,46 +1902,37 @@ def confirm_development_import(
     )
 
 
-def _ir_metric_records(
+OVERVIEW_ACTIVITIES = {
+    "design": (DESIGN_PROFILE, IRRequirement),
+    "development": (DEVELOPMENT_PROFILE, DevelopmentRequirement),
+}
+OVERVIEW_ROLES = {
+    "design": frozenset({"all", "sa", "se"}),
+    "development": frozenset({"all", "implementation", "development"}),
+}
+
+
+def _overview_metric_records(
     db: Session,
     current_user: User,
     *,
-    team_id: int | None,
-    product_id: int | None,
+    model: Any,
     version_id: int | None,
-    iteration_id: int | None,
-    responsible_employee_id: str | None,
-    business_module: str | None,
-    requirement_scenario: str | None,
-    completed_from: date | None,
-    completed_to: date | None,
-) -> list[IRRequirement]:
-    if team_id is not None and current_user.role == UserRole.MAINTAINER.value:
-        _check_ir_write_access(current_user, team_id)
-    stmt = _ir_record_query(db)
-    # The provisional overview KPIs only read IR-type design records; SR and
-    # development records are intentionally out of scope for this change.
-    stmt = stmt.where(IRRequirement.requirement_type == "IR")
+    completed_from: date,
+    completed_to: date,
+) -> list[Any]:
+    """Load overview records for one activity with the dashboard filters."""
+
+    stmt = (
+        _requirement_query(model)
+        .where(model.progress.in_(("完成", "已关闭")))
+        .where(model.completed_at >= completed_from)
+        .where(model.completed_at <= completed_to)
+    )
     if current_user.role == UserRole.MAINTAINER.value:
         stmt = stmt.where(Product.team_id == current_user.maintainer_team_id)
-    if team_id is not None:
-        stmt = stmt.where(Product.team_id == team_id)
-    if product_id is not None:
-        stmt = stmt.where(IRRequirement.product_id == product_id)
     if version_id is not None:
-        stmt = stmt.where(IRRequirement.version_id == version_id)
-    if iteration_id is not None:
-        stmt = stmt.where(IRRequirement.iteration_id == iteration_id)
-    if responsible_employee_id is not None:
-        stmt = stmt.where(IRRequirement.responsible_employee_id == responsible_employee_id)
-    if business_module is not None:
-        stmt = stmt.where(IRRequirement.business_module == business_module)
-    if requirement_scenario is not None:
-        stmt = stmt.where(IRRequirement.requirement_scenario == requirement_scenario)
-    if completed_from is not None:
-        stmt = stmt.where(IRRequirement.completed_at >= completed_from)
-    if completed_to is not None:
-        stmt = stmt.where(IRRequirement.completed_at <= completed_to)
+        stmt = stmt.where(model.version_id == version_id)
     return db.scalars(stmt).unique().all()
 
 
@@ -1950,16 +1941,25 @@ def ir_overview_metrics(
     from_month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
     to_month: str = Query(..., pattern=r"^[0-9]{4}-(0[1-9]|1[0-2])$"),
     version_id: str = Query(default="all", pattern=r"^(all|[1-9][0-9]*)$"),
+    activity: Literal["design", "development"] = Query(default="design"),
+    role: Literal["all", "sa", "se", "implementation", "development"] = Query(default="all"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    if role not in OVERVIEW_ROLES[activity]:
+        raise HTTPException(
+            status_code=422,
+            detail=f"role {role} is not supported by {activity} activity",
+        )
+    profile, model = OVERVIEW_ACTIVITIES[activity]
+
     start_year, start_month = map(int, from_month.split("-"))
     end_year, end_month = map(int, to_month.split("-"))
     start_index = start_year * 12 + start_month - 1
     end_index = end_year * 12 + end_month - 1
     month_count = end_index - start_index + 1
     if month_count < 1 or month_count > 12:
-        raise HTTPException(status_code=422, detail="IR overview window must contain 1 to 12 months")
+        raise HTTPException(status_code=422, detail="overview window must contain 1 to 12 months")
 
     period_ids = []
     for offset in range(month_count):
@@ -1972,16 +1972,11 @@ def ir_overview_metrics(
 
     start_date = date(start_year, start_month, 1)
     end_date = date(end_year, end_month, monthrange(end_year, end_month)[1])
-    records = _ir_metric_records(
+    records = _overview_metric_records(
         db,
         current_user,
-        team_id=None,
-        product_id=None,
+        model=model,
         version_id=resolved_version_id,
-        iteration_id=None,
-        responsible_employee_id=None,
-        business_module=None,
-        requirement_scenario=None,
         completed_from=start_date,
         completed_to=end_date,
     )
@@ -1992,4 +1987,10 @@ def ir_overview_metrics(
             raise HTTPException(status_code=403, detail="maintainer team is not configured")
         team_query = team_query.where(Team.id == current_user.maintainer_team_id)
     teams = db.scalars(team_query).all()
-    return build_ir_overview_series(records, teams, period_ids)
+    return build_requirement_overview_series(
+        records,
+        teams,
+        period_ids,
+        profile=profile,
+        role=role,
+    )

@@ -203,6 +203,29 @@ test('TeamMatrix can center visible value/change headings in fixed grouped colum
   assert.deepEqual(subheaders.map((header) => header.findByType('span').children.join('')), ['指标值', '变化', '指标值', '变化'])
 })
 
+test('TeamMatrix groups design and development activity columns without merging them', async () => {
+  await act(async () => {
+    renderer = create(<TeamMatrix label="双活动团队表现" showChanges visibleChangeHeaders columns={[
+      { id: 'design-penetration', label: 'AI需求渗透率', group: 'design' },
+      { id: 'design-efficiency', label: 'AI研发提效', group: 'design' },
+      { id: 'design-count', label: 'AI覆盖需求数', group: 'design' },
+      { id: 'design-workload', label: 'AI提效工作量', group: 'design' },
+      { id: 'development-penetration', label: 'AI需求渗透率', group: 'development' },
+      { id: 'development-efficiency', label: 'AI研发提效', group: 'development' },
+      { id: 'development-count', label: 'AI覆盖需求数', group: 'development' },
+      { id: 'development-workload', label: 'AI提效工作量', group: 'development' },
+    ]} columnGroups={[{ id: 'design', label: '设计活动', count: 4 }, { id: 'development', label: '开发活动', count: 4 }]} rows={[
+      { id: 'average', label: '全公司均值', kind: 'average', values: Array.from({ length: 8 }, () => ({ text: '50%', changeText: '0pp' })) },
+    ]} />)
+  })
+  const headerRows = renderer.root.findAllByType('thead')[0].findAllByType('tr')
+  expect(headerRows).toHaveLength(3)
+  expect(headerRows[0].findAllByType('th').map((header) => header.children.join(''))).toEqual(['团队', '设计活动', '开发活动'])
+  expect(headerRows[0].findAllByType('th')[1].props.colSpan).toBe(8)
+  expect(headerRows[1].findAllByType('th')).toHaveLength(8)
+  expect(renderer.root.findAllByType('col')).toHaveLength(0)
+})
+
 test('ChartCard and AnalyticsSection expose named, stable regions', async () => {
   await act(async () => {
     renderer = create(<><AnalyticsSection title="核心趋势" description="按单一指标比较。"><ChartCard title="AI需求渗透率" empty="当前月暂无事实。" /></AnalyticsSection></>)

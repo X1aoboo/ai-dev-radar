@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>需求活动看板适配 · 评审原型 v0.2</title>
+  <link rel="stylesheet" href="../../frontend/node_modules/antd/dist/reset.css">
+  <link rel="stylesheet" href="../../frontend/src/design/tokens.css">
+  <link rel="stylesheet" href="../../frontend/src/design/design-system.css">
+  <link rel="stylesheet" href="../../frontend/src/app.css">
+  <link rel="stylesheet" href="../../frontend/src/analytics/analytics.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell" id="app-shell">
+    <a class="app-skip-link" href="#main-content">跳过导航，进入主要内容</a>
+    <aside class="app-sidebar" aria-label="主导航">
+      <div class="app-sidebar__header">
+        <div class="app-brand">
+          <img class="app-brand__logo" src="../../frontend/public/favicon.svg" alt="" aria-hidden="true">
+          <span class="app-brand__copy"><span class="app-brand__name">ai-dev-radar</span><span class="app-brand__caption">AI 研发效能分析平台</span></span>
+        </div>
+        <button class="app-sidebar__toggle proto-icon-button" type="button" data-action="collapse" aria-label="折叠导航" aria-expanded="true" aria-controls="app-navigation">
+          <span class="proto-icon" data-icon="menu-fold" aria-hidden="true"></span>
+        </button>
+      </div>
+      <nav id="app-navigation" class="app-nav" aria-label="主导航"></nav>
+    </aside>
+
+    <div class="app-shell__body">
+      <header class="app-topbar">
+        <div class="app-topbar__heading">
+          <div class="app-topbar__context">
+            <span class="proto-breadcrumb"><span>分析</span><span class="proto-breadcrumb__slash">/</span><strong id="crumb-current">研发总览</strong></span>
+          </div>
+        </div>
+        <div class="app-topbar__actions">
+          <div class="app-topbar__tools">
+            <form class="app-topbar__search" role="search" aria-label="快速导航搜索" onsubmit="return false">
+              <span class="proto-icon proto-icon--16" data-icon="search" aria-hidden="true"></span>
+              <input aria-label="搜索页面或功能" placeholder="搜索页面或功能…" type="search">
+            </form>
+            <span class="app-topbar__notification-wrap"><button class="proto-icon-button" type="button" aria-label="通知功能暂未开放" disabled><span class="proto-icon" data-icon="bell" aria-hidden="true"></span></button></span>
+            <details class="app-topbar__help">
+              <summary aria-label="帮助与常用入口"><span class="proto-icon" data-icon="help" aria-hidden="true"></span></summary>
+              <nav class="app-topbar__help-menu" aria-label="常用入口"><strong>常用入口</strong><a href="#overview" data-view="overview">研发总览</a><a href="#activities" data-view="activities">研发活动</a><a href="#team" data-view="team">团队详情</a></nav>
+            </details>
+          </div>
+          <div class="app-topbar__account">
+            <div class="app-user"><span class="proto-user-avatar" aria-hidden="true"><span class="proto-icon proto-icon--16" data-icon="user"></span></span><span class="app-user__identity"><span class="app-user__name">admin</span><span class="app-user__role">管理员</span></span></div>
+            <button class="proto-logout" type="button">退出</button>
+          </div>
+        </div>
+      </header>
+
+      <main id="main-content" class="app-shell__content app-shell__content--analytics" role="main" tabindex="-1">
+        <section id="view-overview" class="view" aria-label="研发总览原型"></section>
+        <section id="view-activities" class="view is-hidden" aria-label="研发活动原型"></section>
+        <section id="view-team" class="view is-hidden" aria-label="团队下钻原型"></section>
+      </main>
+    </div>
+  </div>
+
+  <div class="prototype-tools" aria-label="原型评审工具">
+    <span class="prototype-tools__badge">原型 v0.2 · 待评审</span>
+    <button type="button" data-action="notes"><span class="proto-icon proto-icon--16" data-icon="edit" aria-hidden="true"></span>评审标注 <span class="prototype-tools__count">10</span></button>
+    <button type="button" data-action="spec"><span class="proto-icon proto-icon--16" data-icon="file" aria-hidden="true"></span>方案说明</button>
+  </div>
+
+  <aside class="review-drawer" id="review-drawer" aria-hidden="true" aria-label="评审标注">
+    <header class="review-drawer__head">
+      <div><span class="proto-eyebrow">REVIEW NOTES</span><h2>评审标注</h2></div>
+      <button class="proto-icon-button" type="button" data-action="close-notes" aria-label="关闭评审标注">×</button>
+    </header>
+    <p class="review-drawer__intro">点击页面中的编号可定位；请重点确认布局密度、口径文案和空态。</p>
+    <div id="review-notes" class="review-notes"></div>
+  </aside>
+
+  <div class="modal" id="spec-modal" aria-hidden="true" role="dialog" aria-modal="true" aria-label="方案说明">
+    <div class="modal__backdrop" data-action="close-spec"></div>
+    <div class="modal__panel">
+      <header class="modal__head">
+        <div><span class="proto-eyebrow">ALIGNED PLAN</span><h2>需求活动看板适配 · 方案说明</h2></div>
+        <button class="proto-icon-button" type="button" data-action="close-spec" aria-label="关闭方案说明">×</button>
+      </header>
+      <div id="spec-content" class="modal__content"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

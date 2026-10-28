@@ -1,8 +1,9 @@
 import React from 'react'
 import { act, create } from 'react-test-renderer'
+import { MemoryRouter } from 'react-router'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 
-const { metricLoadError, maturityLoadError, maturityCalls, emptyMetrics, irOverviewResponse } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null }, maturityCalls: { current: [] }, emptyMetrics: { current: false }, irOverviewResponse: { current: null } }))
+const { metricLoadError, maturityLoadError, maturityCalls, emptyMetrics, irOverviewResponse, requirementRoleError } = vi.hoisted(() => ({ metricLoadError: { current: null }, maturityLoadError: { current: null }, maturityCalls: { current: [] }, emptyMetrics: { current: false }, irOverviewResponse: { current: null }, requirementRoleError: { current: null } }))
 
 vi.mock('../components/EChart', () => ({
   default: ({ ariaLabel, onClick }) => onClick
@@ -81,6 +82,8 @@ function metricData(metric, granularity = 'month') {
 }
 
 vi.mock('../overview/maturityData', () => ({
+  maturityRecordsUrl: (teamId, month) => `/api/maturity/records?team_id=${teamId}&month=${month}`,
+  maturityOverviewUrl: (month, kind) => `/api/maturity/overview?month=${month}&kind=${kind}`,
   useMaturityOverview: (month, kind, onSessionExpired, enabled = true) => {
     maturityCalls.current.push({ kind, enabled })
     if (!enabled) return { loading: false, error: null, data: null, history: [] }
@@ -102,20 +105,39 @@ vi.mock('../overview/metricData', async () => ({
     errors: metricLoadError.current
       ? Object.fromEntries(activities.flatMap((activity) => activity.metrics.map((metric) => [metric.id, metricLoadError.current])))
       : {},
-    data: Object.fromEntries(activities.flatMap((activity) => activity.metrics.map((metric) => [metric.id, metricData(metric, filter.granularity)]))),
+    data: Object.fromEntries((activities ?? []).flatMap((activity) => activity.metrics.map((metric) => [metric.id, metricData(metric, filter.granularity)]))),
   }),
 }))
 
-vi.mock('../overview/irKpiData', async (importOriginal) => {
+vi.mock('../overview/requirementKpiData', async (importOriginal) => {
   const actual = await importOriginal()
   return {
     ...actual,
-    useIROverviewMetrics: () => ({ loading: false, error: null, data: irOverviewResponse.current }),
+    useRequirementOverviewMetrics: (fromMonth, toMonth, versionId, activity = 'design', role = 'all', onSessionExpired, options = {}) => {
+      const data = irOverviewResponse.current
+      return {
+        loading: false,
+        error: requirementRoleError.current && role !== 'all' ? requirementRoleError.current : null,
+        data,
+        benchmarkError: null,
+        benchmarkData: options.benchmark === false ? null : data,
+      }
+    },
   }
 })
 
+vi.mock('../api', () => ({
+  fetchJson: async (url) => {
+    if (String(url).includes('/api/facts')) return []
+    if (String(url).includes('/api/maturity/records')) return []
+    if (String(url).includes('/api/maturity/overview')) return { month: '2026-03', kind: 'key', team_count: 2, activities: [], teams: [] }
+    return {}
+  },
+}))
+
 import OverviewPage from './OverviewPage.jsx'
 import { ActivitiesPage, CapabilitiesPage } from '../analytics/AnalyticsPages.jsx'
+import TeamDrilldownPage from '../drilldown/TeamDrilldownPage.jsx'
 import MetricDetailPage from '../metricDetail/MetricDetailPage.jsx'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
@@ -139,8 +161,9 @@ const analyticsProps = {
   onSessionExpired: () => undefined,
 }
 
-function irOverviewData(empty = false) {
+function irOverviewData(empty = false, activity = 'design') {
   const periodIds = ['2025-10', '2025-11', '2025-12', '2026-01', '2026-02', '2026-03']
+  const baseCount = activity === 'development' ? 4 : 3
   const point = (period_id, values = {}) => ({
     period_id,
     fact_count: empty ? 0 : 2,
@@ -158,7 +181,7 @@ function irOverviewData(empty = false) {
       team_name: team.name,
       values: periodIds.map((periodId) => point(periodId, empty ? {} : index === 1 ? { ai_assisted_count: 0, ai_workload_count: 0, ai_estimated_workload: null, ai_actual_workload: null } : {})),
     })),
-    domain_summary: periodIds.map((periodId) => point(periodId, empty ? {} : { fact_count: 3, known_ai_count: 3, ai_assisted_count: 1, ai_workload_count: 1, ai_estimated_workload: 10, ai_actual_workload: 5 })),
+    domain_summary: periodIds.map((periodId) => point(periodId, empty ? {} : { fact_count: baseCount, known_ai_count: baseCount, ai_assisted_count: 1, ai_workload_count: 1, ai_estimated_workload: 10, ai_actual_workload: 5 })),
   }
 }
 
@@ -168,6 +191,7 @@ beforeEach(() => {
   maturityLoadError.current = null
   maturityCalls.current = []
   emptyMetrics.current = false
+  requirementRoleError.current = null
   irOverviewResponse.current = irOverviewData()
 })
 
@@ -177,6 +201,7 @@ afterEach(() => {
   maturityLoadError.current = null
   maturityCalls.current = []
   emptyMetrics.current = false
+  requirementRoleError.current = null
   irOverviewResponse.current = null
 })
 
@@ -189,7 +214,7 @@ test('root is an evidence-bounded management summary with no maturity maintenanc
   expect(text).toContain('领域整体成熟度画像')
   expect(text).toContain('本期领域平均')
   expect(text).toContain('上期领域平均')
-  expect(text).toContain('核心指标趋势')
+  expect(text).toContain('核心趋势')
   expect(text).toContain('研发关键环节')
   expect(text).toContain('编码开发')
   expect(text).not.toContain('交付')
@@ -203,20 +228,19 @@ test('root is an evidence-bounded management summary with no maturity maintenanc
   expect(text).toContain('0pp')
   expect(text).toContain('AI覆盖需求数')
   expect(text).toContain('AI提效工作量')
-  expect(text).toContain('IR需求临时数据')
   expect(text).toContain('AI需求渗透率')
   expect(text).toContain('AI研发提效')
   expect(text).not.toContain('团队单指标排名')
   expect(text).toContain('关键研发活动')
-  expect(text).toContain('核心指标趋势')
-  expect(renderer.root.findAllByProps({ className: 'metric-card__accessory-bars' })).toHaveLength(8)
+  expect(text).toContain('核心趋势')
+  expect(renderer.root.findAllByProps({ className: 'metric-card__accessory-bars' })).toHaveLength(16)
   expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '版本')).toHaveLength(0)
   expect(renderer.root.findByProps({ 'aria-label': '月份' }).type).toBe('button')
   expect(renderer.root.findByProps({ 'aria-label': '月份' }).props['aria-expanded']).toBe(false)
   expect(renderer.root.findAll((node) => node.type === 'select' && node.props['aria-label'] === '统计周期')).toHaveLength(1)
   expect(text).not.toContain('Target')
   expect(text).not.toContain('维护成熟度')
-  expect(text.indexOf('核心指标趋势')).toBeLessThan(text.indexOf('关键研发活动'))
+  expect(text.indexOf('核心趋势')).toBeLessThan(text.indexOf('关键研发活动'))
   expect(text.indexOf('关键研发活动')).toBeLessThan(text.indexOf('团队表现'))
   expect(text.indexOf('关键研发活动成熟度矩阵')).toBeLessThan(text.indexOf('团队表现'))
   const lifecycleItems = renderer.root.findAllByProps({ className: 'executive-lifecycle__item' })
@@ -249,9 +273,9 @@ test('activity and capability pages use distinct directories and metric semantic
   expect(text).toContain('核心趋势')
   expect(text).toContain('团队差异')
   expect(text).toContain('指标拆解与业务量')
-  expect(text).toContain('AI 渗透率')
-  expect(text).toContain('需求数量')
-  expect(renderer.root.findAllByType('button').filter((node) => node.props['aria-label']?.includes('趋势图')).length).toBeGreaterThanOrEqual(2)
+  expect(text).toContain('AI需求渗透率')
+  expect(text).toContain('AI研发提效')
+  expect(renderer.root.findAll((node) => node.props?.['aria-label']?.includes('趋势图')).length).toBeGreaterThanOrEqual(2)
   const nextActivity = renderer.root.findByProps({ 'aria-label': '选择活动：测试用例执行' })
   expect(nextActivity.props['aria-pressed']).toBe(false)
   await act(async () => nextActivity.props.onClick())
@@ -301,8 +325,8 @@ test('overview KPIs explain the selected month when all metric values are missin
   let renderer
   await act(async () => { renderer = create(<OverviewPage {...analyticsProps} catalog={rootCatalog} />) })
   const text = renderText(renderer.toJSON())
-  expect(text).toContain('当月 IR 需求 0 条')
-  expect(text).toContain('本月暂无 IR')
+  expect(text).toContain('当月 设计活动记录 0 条')
+  expect(text).toContain('本月暂无设计活动记录')
   expect(text).toContain('AI需求渗透率')
   renderer.unmount()
 })
@@ -345,20 +369,21 @@ test('activity workspace keeps time-based URL filters and hides version/iteratio
   expect(onFilterChange).toHaveBeenLastCalledWith(expect.objectContaining({ dimension: 'time', granularity: 'week', versionId: 'all', periodId: null }), { history: 'push' })
 
   await act(async () => renderer.update(<ActivitiesPage {...props} filter={{ ...props.filter, metricId: '11' }} />))
-  const metricHeadings = renderer.root.findAllByType('h3').map((node) => renderText(node.props.children))
-  expect(metricHeadings).toContain('编码开发 · AI需求渗透率趋势')
-  expect(metricHeadings).toContain('编码开发 · AI研发提效趋势')
+  const updatedText = renderText(renderer.toJSON())
+  expect(updatedText).toContain('编码开发 · AI需求渗透率趋势')
+  expect(updatedText).toContain('编码开发 · AI研发提效趋势')
   expect(renderer.root.findByProps({ 'aria-label': '周期' }).props.value).toBe('2026-03')
 
   await act(async () => renderer.update(<ActivitiesPage {...props} filter={{ ...props.filter, metricId: '11', periodId: 'all' }} />))
   const allPeriodsText = renderText(renderer.toJSON())
-  expect(allPeriodsText).toContain('页面整体 IR 指标，有数据团队等权比较；不随活动选择变化。')
-  expect(allPeriodsText).toContain('AI覆盖IR需求数')
-  expect(allPeriodsText).toContain('AI覆盖AR需求数')
-  expect(allPeriodsText).toContain('SE设计文档生成数')
-  expect(allPeriodsText).toContain('开发详细设计生成数')
+  expect(allPeriodsText).toContain('设计活动与开发活动分别统计')
+  expect(allPeriodsText).toContain('不随活动选择变化')
+  expect(allPeriodsText).toContain('设计活动AI覆盖数')
+  expect(allPeriodsText).toContain('开发活动AI覆盖数')
   expect(allPeriodsText).toContain('测试用例生成数')
   expect(allPeriodsText).toContain('测试用例执行数')
+  expect(allPeriodsText).not.toContain('AI覆盖IR需求数')
+  expect(allPeriodsText).not.toContain('AI覆盖AR需求数')
   expect(allPeriodsText).not.toContain('最佳团队A · 40%')
   const reset = renderer.root.findByProps({ className: 'analytics-filter-reset' })
   await act(async () => reset.props.onClick())
@@ -440,5 +465,111 @@ test('capability team difference rows open the matching Team Drill-down', async 
   const teamButton = renderer.root.findByProps({ 'aria-label': '选择团队：团队A' })
   await act(async () => teamButton.props.onClick())
   expect(onNavigate).toHaveBeenCalledWith('/analytics/teams/1', { state: { returnTo: '/analytics/capabilities', returnLabel: '研发能力' } })
+  renderer.unmount()
+})
+
+test('overview renders separate activity KPI rows, dual trends, lifecycle sources and an eight-column team matrix', async () => {
+  let renderer
+  await act(async () => { renderer = create(<OverviewPage {...analyticsProps} catalog={rootCatalog} />) })
+  const text = renderText(renderer.toJSON())
+  expect(renderer.root.findAllByProps({ className: 'executive-kpi-activity__title' }).map((node) => renderText(node.props.children))).toEqual([
+    '设计活动', '开发活动', '设计活动', '开发活动',
+  ])
+  expect(text).toContain('当月 设计活动记录')
+  expect(text).toContain('当月 开发活动记录')
+  expect(text).toContain('设计活动 · AI需求渗透率')
+  expect(text).toContain('开发活动 · AI研发提效')
+  expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '设计活动AI需求渗透率团队与全公司均值趋势图')).toHaveLength(1)
+  expect(renderer.root.findAll((node) => node.props?.['aria-label'] === '开发活动AI研发提效团队与全公司均值趋势图')).toHaveLength(1)
+
+  expect(text).toContain('需求角色聚合')
+  expect(text).toContain('FactRecord')
+  expect(text).not.toContain('临时 IR')
+  expect(text).not.toContain('IR需求临时数据')
+  expect(text).not.toContain('AI覆盖IR')
+
+  const teamTable = renderer.root.findAllByType('table').find((table) => String(table.props['aria-label'] ?? '').includes('团队表现'))
+  expect(teamTable).toBeDefined()
+  const groupHeaders = teamTable.findAllByType('thead')[0].findAllByType('tr')[0].findAllByType('th')
+  expect(groupHeaders.map((header) => renderText(header))).toEqual(['团队', '设计活动', '开发活动'])
+  expect(groupHeaders[1].props.colSpan).toBe(8)
+  expect(teamTable.findAllByType('thead')[0].findAllByType('tr')[1].findAllByType('th')).toHaveLength(8)
+  renderer.unmount()
+})
+
+test('activity page keeps dual-activity summaries independent of the selected activity', async () => {
+  let renderer
+  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} catalog={rootCatalog} />) })
+  let text = renderText(renderer.toJSON())
+  expect(text).toContain('设计活动AI覆盖数')
+  expect(text).toContain('开发活动AI覆盖数')
+  expect(text).toContain('测试用例生成数')
+  expect(text).toContain('测试用例执行数')
+  expect(text).not.toContain('AI覆盖IR需求数')
+  expect(text).not.toContain('AI覆盖AR需求数')
+  const rawTable = renderer.root.findAllByType('table').find((table) => String(table.props['aria-label'] ?? '').startsWith('原始指标月度摘要'))
+  expect(rawTable.findAllByType('tbody')[0].findAllByType('tr')).toHaveLength(4)
+  expect(text).toContain('设计活动与开发活动分别统计')
+  expect(text).toContain('设计活动记录')
+  expect(text).toContain('开发活动记录')
+
+  await act(async () => { renderer.root.findByProps({ 'aria-label': '选择活动：SA设计' }).props.onClick() })
+  await act(async () => { renderer.root.findByProps({ 'aria-label': '选择活动：测试用例生成' }).props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  text = renderText(renderer.toJSON())
+  expect(text).toContain('按所选活动匹配的 FactRecord 原始量口径计算')
+  expect(text).toContain('设计活动AI覆盖数')
+  expect(text).toContain('开发活动AI覆盖数')
+  renderer.unmount()
+})
+
+test('activity role activities show the role aggregate source while tests keep FactRecord', async () => {
+  let renderer
+  await act(async () => { renderer = create(<ActivitiesPage {...analyticsProps} catalog={rootCatalog} />) })
+  await act(async () => { renderer.root.findByProps({ 'aria-label': '选择活动：SA设计' }).props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  let text = renderText(renderer.toJSON())
+  expect(text).toContain('按需求角色聚合口径计算')
+  expect(text).toContain('需求角色聚合趋势')
+  expect(text).toContain('设计活动 · SA 角色聚合（完成/已关闭）')
+
+  await act(async () => { renderer.root.findByProps({ 'aria-label': '选择活动：测试用例生成' }).props.onClick() })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  text = renderText(renderer.toJSON())
+  expect(text).toContain('按所选活动匹配的 FactRecord 原始量口径计算')
+  expect(text).toContain('来源：SR需求渗透率')
+  renderer.unmount()
+})
+
+test('team drilldown shows two activity KPI groups, dual trends and four role lifecycle cards', async () => {
+  const versions = [{ id: 2, name: '版本A', product_id: 10, team_id: 1, iterations: [] }]
+  const team = { id: 1, name: '团队A' }
+  let renderer
+  await act(async () => {
+    renderer = create(<MemoryRouter initialEntries={['/analytics/teams/1']}><TeamDrilldownPage
+      team={team}
+      teams={teams}
+      catalog={rootCatalog}
+      versions={versions}
+      maturityState={{ month: '2026-03', category: 'key' }}
+      filter={{ dimension: 'time', granularity: 'month', versionId: '2', periodId: '2026-03', metricId: 'all', cycle: '6m' }}
+      onFilterChange={() => undefined}
+      onMaturityChange={() => undefined}
+      onNavigate={() => undefined}
+      onSessionExpired={() => undefined}
+    /></MemoryRouter>)
+  })
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+  const text = renderText(renderer.toJSON())
+  expect(text).toContain('设计活动')
+  expect(text).toContain('开发活动')
+  expect(renderer.root.findAllByProps({ className: 'drilldown-kpi-activity' })).toHaveLength(4)
+  expect(renderer.root.findAllByProps({ className: 'drilldown-lifecycle-card' })).toHaveLength(6)
+  expect(renderer.root.findAllByProps({ className: 'drilldown-lifecycle-card__source' })).toHaveLength(6)
+  expect(text).toContain('需求角色聚合')
+  expect(text).toContain('FactRecord')
+  expect(text).toContain('团队A · 设计活动 · AI需求渗透率')
+  expect(text).toContain('团队A · 开发活动 · AI研发提效')
+  expect(text).not.toContain('临时 IR')
   renderer.unmount()
 })

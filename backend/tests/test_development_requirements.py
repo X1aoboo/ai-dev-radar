@@ -620,3 +620,149 @@ def test_development_file_preview_requires_template_headers(client):
     assert legacy_json.json()["valid_rows"] == 0
     errors = legacy_json.json()["rows"][0]["errors"]
     assert any("缺少类型" in error for error in errors)
+
+
+def test_overview_development_activity_progress_and_roles(client):
+    login(client)
+    product, version, iteration, _member = create_context(client)
+    other_product, other_version, other_iteration, _ = create_context(client, team_id=2)
+
+    def create_development(**overrides):
+        response = client.post(
+            "/api/data/development",
+            json=development_payload(product, version, iteration, **overrides),
+        )
+        assert response.status_code == 201, response.text
+        return response.json()
+
+    first = create_development(
+        requirement_no="IR-OVERVIEW-DEV-A",
+        progress="完成",
+        implementation_ai_assisted=True,
+        development_ai_assisted=False,
+        implementation_estimated_workload=3,
+        implementation_actual_workload=2,
+        development_estimated_workload=5,
+        development_actual_workload=4,
+        ai_applicability=None,
+    )
+    assert first["valid"] is True
+    create_development(
+        requirement_no="IR-OVERVIEW-DEV-B",
+        progress="已关闭",
+        implementation_ai_assisted=False,
+        development_ai_assisted=True,
+        implementation_estimated_workload=None,
+        implementation_actual_workload=None,
+        development_estimated_workload=2,
+        development_actual_workload=1,
+        ai_applicability=None,
+    )
+    create_development(
+        requirement_no="IR-OVERVIEW-DEV-C",
+        progress="进行中",
+        implementation_ai_assisted=True,
+        development_ai_assisted=True,
+    )
+    create_development(
+        requirement_no="SR-OVERVIEW-DEV-D",
+        requirement_type="SR",
+        progress="完成",
+        implementation_ai_assisted=True,
+        development_ai_assisted=None,
+        implementation_estimated_workload=4,
+        implementation_actual_workload=4,
+        development_estimated_workload=None,
+        development_actual_workload=2,
+        ai_applicability=None,
+    )
+    create_development(
+        requirement_no="AR-OVERVIEW-DEV-E",
+        requirement_type="AR",
+        progress="完成",
+        implementation_ai_assisted=None,
+        development_ai_assisted=None,
+        ai_applicability=None,
+        implementation_estimated_workload=None,
+        implementation_actual_workload=None,
+        development_estimated_workload=None,
+        development_actual_workload=None,
+    )
+    team2 = client.post(
+        "/api/data/development",
+        json=development_payload(
+            other_product, other_version, other_iteration,
+            requirement_no="AR-OVERVIEW-DEV-TEAM2",
+            progress="完成",
+        ),
+    )
+    assert team2.status_code == 201, team2.text
+
+    base_params = {
+        "from_month": "2026-08",
+        "to_month": "2026-08",
+        "version_id": str(version["id"]),
+        "activity": "development",
+    }
+    overview = client.get("/api/data-metrics/overview", params=base_params)
+    assert overview.status_code == 200, overview.text
+    development_all = overview.json()["domain_summary"][0]
+    # A + B + D + E complete/closed records; C is in progress and excluded.
+    assert development_all["fact_count"] == 4
+    assert development_all["known_ai_count"] == 3
+    assert development_all["ai_assisted_count"] == 3
+    assert development_all["ai_workload_count"] == 3
+    assert development_all["ai_estimated_workload"] == 14
+    assert development_all["ai_actual_workload"] == 13
+
+    implementation_overview = client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "role": "implementation"},
+    )
+    assert implementation_overview.status_code == 200, implementation_overview.text
+    implementation_point = implementation_overview.json()["domain_summary"][0]
+    assert implementation_point["fact_count"] == 4
+    assert implementation_point["known_ai_count"] == 3
+    assert implementation_point["ai_assisted_count"] == 2
+    assert implementation_point["ai_workload_count"] == 2
+    assert implementation_point["ai_estimated_workload"] == 7
+    assert implementation_point["ai_actual_workload"] == 6
+
+    development_overview = client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "role": "development"},
+    )
+    assert development_overview.status_code == 200, development_overview.text
+    development_point = development_overview.json()["domain_summary"][0]
+    assert development_point["known_ai_count"] == 2
+    assert development_point["ai_assisted_count"] == 1
+    assert development_point["ai_workload_count"] == 1
+    assert development_point["ai_estimated_workload"] == 2
+    assert development_point["ai_actual_workload"] == 1
+
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "activity": "design", "role": "implementation"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "role": "se"},
+    ).status_code == 422
+    assert client.get(
+        "/api/data-metrics/overview",
+        params={**base_params, "version_id": "999999"},
+    ).status_code == 404
+
+    client.post("/api/auth/logout")
+    login(client, "maintainer.团队A")
+    maintainer_overview = client.get(
+        "/api/data-metrics/overview",
+        params={
+            "from_month": "2026-08",
+            "to_month": "2026-08",
+            "activity": "development",
+        },
+    )
+    assert maintainer_overview.status_code == 200
+    assert {series["team_id"] for series in maintainer_overview.json()["series"]} == {1}
+    assert maintainer_overview.json()["domain_summary"][0]["fact_count"] >= 4

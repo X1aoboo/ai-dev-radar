@@ -12,7 +12,9 @@ IR 列表已有分页响应，其他目录列表常为数组；新增列表先�
 
 需求开发活动使用同形镜像接口：`GET /api/data/development`、`GET /api/data/development/schema`、`GET /api/data/development/import-template`、`POST /api/data/development`、`PATCH /api/data/development/bulk`、`PATCH /api/data/development/{record_id}`、`GET /api/data/development/{record_id}/audit-logs`、`POST /api/data/development/imports/preview`、`GET /api/data/development/imports`、`GET /api/data/development/imports/{batch_id}` 和 `POST /api/data/development/imports/{batch_id}/confirm`。开发文件导入只允许 `source_kind=import`，批次与审计 domain 为 `development`，没有采集入口。
 
-设计活动 `/api/data/ir` 的行为变化：类型允许 IR/SR；列表与摘要支持 `requirement_type` 类型筛选；新建和文件导入要求类型、进展、SA、SE 等模板必填，所属功能可空；设计模板列顺序按设计活动模板返回。`/api/data-metrics/overview` 响应不变，但只读取设计记录中 `requirement_type=IR` 的类型，SR 类型和开发记录不进入。旧 pending 文件批次确认时按当前活动模板重新校验，不符合时要求重新预览；采集批次保留 legacy 规则。
+设计活动 `/api/data/ir` 的行为变化：类型允许 IR/SR；列表与摘要支持 `requirement_type` 类型筛选；新建和文件导入要求类型、进展、SA、SE 等模板必填，所属功能可空；设计模板列顺序按设计活动模板返回。旧 pending 文件批次确认时按当前活动模板重新校验，不符合时要求重新预览；采集批次保留 legacy 规则。
+
+看板需求 KPI 使用 `GET /api/data-metrics/overview`，新增 `activity=design|development`（默认 `design`）和 `role=all|sa|se|implementation|development`（默认 `all`）参数；设计活动只接受 `all`/`sa`/`se`，开发活动只接受 `all`/`implementation`/`development`，非法 `activity`/`role` 组合返回 422。接口按活动读取对应记录，只纳入 `progress` 为完成或已关闭的记录，月份按 `completed_at`（设计时间/开发时间）归集；响应结构不变，仍为 `period_ids`/`series`/`domain_summary` 及原点位字段。maintainer 仍限定绑定团队，`version_id` 过滤同时应用于设计/开发记录，版本不存在返回 404。该接口仍是看板专用只读聚合，不改变 `/api/compute` 的 FactRecord 合同。
 
 完整方法、参数和 DTO 由 `api.py`、`data_api.py`、`schemas.py` 及运行时 `/openapi.json` 核对，文档不另复制全量字段清单。
 

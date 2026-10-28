@@ -19,7 +19,8 @@
 | [0013](0013-readonly-metric-dictionary.md) | 指标字典只读，指标口径由代码与种子定义 | Accepted，2026-10-20 |
 | [0014](0014-team-personnel-and-source-mapping-boundary.md) | 团队人员聚合与产品版本、数据源映射解耦 | Accepted，2026-10-20 |
 | [0015](0015-collection-scope-and-admin-context-boundaries.md) | 采集范围从产品/PI 派生，管理页按上下文投影解耦 | Accepted，2026-10-20 |
-| [0016](0016-requirement-design-and-development-activity-records.md) | 需求数据按设计与开发活动独立记录，类型降为字段 | Accepted，2026-10-27 |
+| [0016](0016-requirement-design-and-development-activity-records.md) | 需求数据按设计与开发活动独立记录，类型降为字段 | Accepted，2026-10-27；第 6 条由 0017 取代 |
+| [0017](0017-dashboard-activity-scoped-requirement-kpis.md) | 看板需求 KPI 按设计/开发活动独立统计 | Accepted，2026-10-28 |
 
 历史简版正文保留，0006 的中文标题视为模板等价章节。缺失状态和历史原因保持未知，不补造接受记录。校验器只为既有简版文件保留兼容，新文件使用以下格式。
 

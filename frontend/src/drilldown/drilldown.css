@@ -556,3 +556,23 @@
   .drilldown-maturity .maturity-radar__data summary,
   .drilldown-maturity .maturity-radar__note { text-align: center; }
 }
+
+/* Dual requirement activity team drilldown */
+.drilldown-kpi-activity + .drilldown-kpi-activity { margin-top: var(--space-3); }
+.drilldown-kpi-activity > h4 {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-label);
+  font-weight: 650;
+  margin: 0 0 var(--space-1);
+}
+.drilldown-lifecycle-card__source {
+  color: var(--color-text-tertiary);
+  font-size: 10px;
+  line-height: 1.1;
+}
+.drilldown-lifecycle-fact-heading {
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-label);
+  font-weight: 650;
+  margin: var(--space-4) 0 var(--space-2);
+}
