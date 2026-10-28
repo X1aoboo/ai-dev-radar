@@ -1,6 +1,6 @@
 # Design Knowledge Inventory
 
-盘点日期：2026-09-16。以下基线来自当前仓库文件的静态核对，不代表生产环境验收。
+盘点日期：2026-09-16；能力与实体清单已于 2026-10-27 同步需求活动工作台变更。以下基线来自当前仓库文件的静态核对，不代表生产环境验收。
 
 ## Existing Documentation
 
@@ -13,7 +13,7 @@
 
 ## Business Domains
 
-核心能力为团队级 AI 研发效能分析、月度成熟度评估、IR 源数据维护与导入、组织及权限配置。个人度量、AR/SR/DTS/MR 完整源数据管理和真实平台接入尚未实现。
+核心能力为团队级 AI 研发效能分析、月度成熟度评估、按设计与开发活动维护的需求源数据及导入、组织及权限配置。设计活动沿用 IR 源数据（类型 IR/SR）并支持采集；开发活动使用独立记录（类型 IR/SR/AR）并只支持页面维护和文件导入。个人度量、问题单/MR/代码检视完整源数据管理和真实平台接入尚未实现。
 
 ## Architecture Modules
 
@@ -21,9 +21,10 @@
 |---|---|---|
 | 页面与导航 | `frontend/src/App.jsx`、`routing/` | 登录、角色导航、总览、下钻、工作台、系统管理 |
 | 事实 API | `backend/app/api.py` | 认证、只读指标目录、事实、成熟度及旧看板计算 |
-| 源数据 API | `backend/app/data_api.py` | 组织层级、IR、导入批次、总览 IR 聚合 |
-| 计算 | `compute.py`、`maturity.py`、`data_management.py` | 事实聚合、Decimal 评估、源数据校验与合并 |
-| 存储与启动 | `models.py`、`db.py`、`migrations.py`、`main.py` | ORM、session、增量 schema、空目录播种、调度及 SPA 托管 |
+| 源数据 API | `backend/app/data_api.py` | 组织层级、设计/开发活动需求记录、导入批次、总览 IR 聚合 |
+| 需求活动 profile | `requirement_fields.py`、`requirement_template.py`、`requirement_imports.py` | 活动字段注册表、21/19 列模板生成、共享导入校验与批次 |
+| 计算 | `compute.py`、`maturity.py`、`data_management.py` | 事实聚合、Decimal 评估、活动需求记录校验与合并 |
+| 存储与启动 | `models.py`、`db.py`、`migrations.py`、`main.py` | ORM、session、增量 schema（含独立开发记录）、空目录播种、调度及 SPA 托管 |
 | 采集 | `collectors.py`、`scheduler.py` | 预留两类接口；定时任务仍走事实采集注册表 |
 
 ## External Integrations
@@ -32,7 +33,7 @@
 
 ## Data Stores
 
-SQLite 为默认数据库；容器通过 `/data` 卷持久化。主要实体包括团队、人员、产品、版本、迭代、活动、指标、事实记录、用户、IR、导入批次与行、审计日志和成熟度记录。源数据指标规则表已从模型移除。成熟度独立存储；看板事实和 IR 指标尚未统一数据链路。
+SQLite 为默认数据库；容器通过 `/data` 卷持久化。主要实体包括团队、人员、产品、版本、迭代、活动、指标、事实记录、用户、设计需求记录（`ir_requirements`）、独立开发需求记录（`development_requirements`）、导入批次与行、审计日志和成熟度记录。源数据指标规则表已从模型移除。成熟度独立存储；看板事实和需求活动指标尚未统一数据链路。
 
 ## Engineering Rules
 

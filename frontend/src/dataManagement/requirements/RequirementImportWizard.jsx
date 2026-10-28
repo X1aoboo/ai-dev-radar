@@ -4,7 +4,6 @@ import { DownloadOutlined, InboxOutlined, ReloadOutlined } from '@ant-design/ico
 
 import { downloadFile, fetchJson } from '../../api'
 import FocusRestoringDrawer from '../../components/FocusRestoringDrawer'
-import { IR_FIELD_LABELS } from './irFields'
 
 const { Text } = Typography
 const { Dragger } = Upload
@@ -27,20 +26,7 @@ function operationTag(operation) {
   return <Tag className={`ir-tag ir-tag--${OPERATION_TONES[operation] ?? 'neutral'}`}>{OPERATION_LABELS[operation] ?? operation}</Tag>
 }
 
-function diffText(diff = {}) {
-  return Object.entries(diff)
-    .filter(([, value]) => value.action !== 'unchanged')
-    .slice(0, 4)
-    .map(([field, value]) => {
-      const label = IR_FIELD_LABELS[field] ?? field
-      if (value.action === 'add') return `${label} → ${value.to ?? '空'}`
-      if (value.action === 'fill') return `${label} 补为 ${value.to ?? '空'}`
-      if (value.action === 'overwrite') return `${label} ${value.from ?? '空'} → ${value.to ?? '空'}`
-      return `${label} 保留正式值`
-    })
-}
-
-export default function IRImportWizard({ open, onClose, onConfirmed, onSessionExpired }) {
+export default function RequirementImportWizard({ profile, open, onClose, onConfirmed, onSessionExpired }) {
   const [step, setStep] = useState(0)
   const [file, setFile] = useState(null)
   const [mode, setMode] = useState('upsert')
@@ -50,6 +36,7 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
   const [error, setError] = useState(null)
   const [statusFilter, setStatusFilter] = useState('all')
 
+  const fieldLabels = useMemo(() => ({ ...profile.ownerLabels, ...profile.fieldLabels }), [profile])
   const rows = batch?.rows ?? []
   const counts = useMemo(() => {
     const result = { insert: 0, update: 0, fill: 0, unchanged: 0, invalid: 0, warnings: 0 }
@@ -67,6 +54,19 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
     if (statusFilter === 'warning') return rows.filter((row) => row.warnings?.length)
     return rows.filter((row) => row.operation === statusFilter)
   }, [rows, statusFilter])
+
+  function diffText(diff = {}) {
+    return Object.entries(diff)
+      .filter(([, value]) => value.action !== 'unchanged')
+      .slice(0, 4)
+      .map(([field, value]) => {
+        const label = fieldLabels[field] ?? field
+        if (value.action === 'add') return `${label} → ${value.to ?? '空'}`
+        if (value.action === 'fill') return `${label} 补为 ${value.to ?? '空'}`
+        if (value.action === 'overwrite') return `${label} ${value.from ?? '空'} → ${value.to ?? '空'}`
+        return `${label} 保留正式值`
+      })
+  }
 
   function reset() {
     setStep(0)
@@ -88,7 +88,7 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
     setError(null)
     setBatch(null)
     try {
-      const nextBatch = await fetchJson(`/api/data/ir/imports/preview?mode=${nextMode}`, {
+      const nextBatch = await fetchJson(`${profile.apiBase}/imports/preview?mode=${nextMode}`, {
         method: 'POST',
         headers: {
           'Content-Type': nextFile.type || 'application/octet-stream',
@@ -116,7 +116,7 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
     setConfirming(true)
     setError(null)
     try {
-      const result = await fetchJson(`/api/data/ir/imports/${batch.id}/confirm`, { method: 'POST' })
+      const result = await fetchJson(`${profile.apiBase}/imports/${batch.id}/confirm`, { method: 'POST' })
       onConfirmed(result)
       close()
     } catch (nextError) {
@@ -157,7 +157,17 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
   ]
 
   const footer = step === 0
-    ? <Space><Button onClick={close}>取消</Button><Button icon={<DownloadOutlined />} onClick={() => downloadFile('/api/data/ir/import-template', 'IR需求导入模板.xlsx').catch((nextError) => setError(nextError.message))}>下载模板</Button></Space>
+    ? (
+      <Space>
+        <Button onClick={close}>取消</Button>
+        <Button
+          icon={<DownloadOutlined />}
+          onClick={() => Promise.resolve(downloadFile(profile.templateUrl, profile.templateName)).catch((nextError) => setError(nextError.message))}
+        >
+          下载模板
+        </Button>
+      </Space>
+    )
     : (
       <Space>
         <Button onClick={() => { setStep(0); setBatch(null); setError(null) }}>重新选择</Button>
@@ -176,7 +186,7 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
   return (
     <FocusRestoringDrawer
       rootClassName="ir-import-drawer"
-      title="导入 IR Excel"
+      title={profile.importTitle}
       open={open}
       size={1100}
       onClose={close}
@@ -189,7 +199,7 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
       {step === 0 && (
         <div className="ir-import-upload">
           <Dragger
-            accept=".xlsx,.csv"
+            accept={profile.importAccept}
             maxCount={1}
             showUploadList={false}
             beforeUpload={(nextFile) => {
@@ -200,12 +210,12 @@ export default function IRImportWizard({ open, onClose, onConfirmed, onSessionEx
             disabled={loading}
           >
             <p className="ant-upload-drag-icon"><InboxOutlined /></p>
-            <p className="ant-upload-text">拖拽或点击选择 IR Excel 文件</p>
+            <p className="ant-upload-text">拖拽或点击选择{profile.tabLabel} Excel 文件</p>
             <p className="ant-upload-hint">支持 .xlsx 与 .csv；第一行必须是模板列名。上传后先预览，整批确认后才写入正式数据。</p>
           </Dragger>
           <div className="ir-import-hint">
             <Text strong>模板规则</Text>
-            <Text type="secondary">21 列模板；SA 可选、SE 必填；归属组、PI、迭代必须已存在；设计时间必填。</Text>
+            {profile.importHints.map((hint) => <Text key={hint} type="secondary">{hint}</Text>)}
           </div>
           {loading && <Text type="secondary">正在解析文件并生成预览…</Text>}
         </div>

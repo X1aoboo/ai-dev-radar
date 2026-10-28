@@ -2,18 +2,7 @@ import React, { useMemo, useState } from 'react'
 import { Button, Empty, Input, InputNumber, Pagination, Select, Spin, Tag } from 'antd'
 import { EditOutlined } from '@ant-design/icons'
 
-import {
-  IR_FIELDS,
-  IR_GROUPS,
-  irOwnerValue,
-  irProgressTone,
-  irQualityTone,
-} from './irFields'
-
-function formatNumber(value) {
-  if (value === null || value === undefined) return '—'
-  return new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)
-}
+import { formatRequirementNumber, progressTone } from './requirementProfiles'
 
 function initials(name) {
   const text = String(name ?? '').trim()
@@ -21,7 +10,7 @@ function initials(name) {
 }
 
 function StatusValue({ value }) {
-  const tone = irProgressTone(value)
+  const tone = progressTone(value)
   return (
     <span className={`ir-status ir-status--${tone}`}>
       <i aria-hidden="true" />
@@ -35,9 +24,9 @@ function BoolValue({ value }) {
   return <span className={`ir-bool ir-bool--${tone}`}>{value === true ? '是' : value === false ? '否' : '—'}</span>
 }
 
-function TagValue({ value }) {
+function TagValue({ value, field }) {
   if (!value) return <span className="ir-cell-empty">—</span>
-  const tone = irQualityTone(value)
+  const tone = (field.options ?? []).find((option) => option?.value === value)?.tone ?? 'neutral'
   return <Tag className={`ir-tag ir-tag--${tone}`}>{value}</Tag>
 }
 
@@ -133,17 +122,17 @@ function renderDisplay(field, value, ownerValue) {
   if (field.render === 'title') return <span className="ir-cell-title" title={value || ''}>{value || '—'}</span>
   if (field.render === 'status') return <StatusValue value={value} />
   if (field.render === 'bool') return <BoolValue value={value} />
-  if (field.render === 'tag') return field.key === 'ai_dev_mode'
-    ? (value ? <Tag className="ir-tag ir-tag--neutral">{value}</Tag> : <span className="ir-cell-empty">—</span>)
-    : <TagValue value={value} />
+  if (field.render === 'tag') return <TagValue value={value} field={field} />
+  if (field.render === 'type') return <TagValue value={value} field={field} />
   if (field.render === 'owner') return <OwnerValue value={ownerValue} />
-  if (field.render === 'number') return <span className="ir-number">{formatNumber(value)}</span>
+  if (field.render === 'number') return <span className="ir-number">{formatRequirementNumber(value)}</span>
   if (field.render === 'date') return <span className="ir-date">{value || '—'}</span>
   if (field.render === 'muted') return <span className="ir-cell-muted" title={value || ''}>{value || '—'}</span>
   return <span className="ir-cell-text" title={value || ''}>{value || '—'}</span>
 }
 
-export default function IRDataGrid({
+export default function RequirementDataGrid({
+  profile,
   items,
   loading,
   total,
@@ -172,7 +161,7 @@ export default function IRDataGrid({
       : (field.type === 'bool'
         ? (value === '' || value === null || value === undefined ? null : Boolean(value))
         : (value === null || value === undefined ? '' : String(value).trim()))
-    if (['requirement_name', 'business_module', 'completed_at'].includes(field.key) && !normalized) {
+    if (field.required && (normalized === '' || normalized === null || normalized === undefined)) {
       setEditing(null)
       return
     }
@@ -189,7 +178,7 @@ export default function IRDataGrid({
     const rowDraft = draft[record.id] || {}
     const dirty = Object.prototype.hasOwnProperty.call(rowDraft, field.key)
     const value = dirty ? rowDraft[field.key] : record[field.key]
-    const ownerValue = field.key === 'sa_owner' ? irOwnerValue(record, 'sa') : field.key === 'se_owner' ? irOwnerValue(record, 'se') : null
+    const ownerValue = field.type === 'owner' ? profile.ownerValue(record, field.key) : null
     const editable = canEdit && field.editable
     if (editing?.rowId === record.id && editing?.key === field.key) {
       return (
@@ -225,11 +214,6 @@ export default function IRDataGrid({
   }
 
   const columns = useMemo(() => {
-    const sortable = new Set([
-      'requirement_no', 'requirement_name', 'progress', 'completed_at',
-      'sa_estimated_workload', 'sa_actual_workload', 'se_estimated_workload',
-      'se_actual_workload', 'ai_quality_level',
-    ])
     const fieldColumn = (field) => ({
       title: field.label,
       dataIndex: field.key,
@@ -237,25 +221,25 @@ export default function IRDataGrid({
       width: field.width,
       align: field.type === 'number' ? 'right' : undefined,
       fixed: field.key === 'requirement_no' || field.key === 'requirement_name' ? 'left' : undefined,
-      sorter: sortable.has(field.key),
+      sorter: profile.sortableKeys.has(field.key),
       sortOrder: filters.sort_by === field.key
         ? (filters.sort_order === 'asc' ? 'ascend' : 'descend')
         : null,
       render: (_, record) => cellContent(field, record),
     })
-    const groups = IR_GROUPS.map((group) => {
-      const fields = IR_FIELDS.filter((field) => field.group === group.key && visible.has(field.key))
+    const groups = profile.groups.map((group) => {
+      const fields = profile.fields.filter((field) => field.group === group.key && visible.has(field.key))
       const children = fields.map(fieldColumn)
       if (group.key === 'workload' && visible.has('total_workload')) {
         children.push({
           title: '合计（预估 / 实际）',
           key: 'total_workload',
-          width: 100,
+          width: 108,
           align: 'right',
           render: (_, record) => (
             <span className="ir-total">
-              <strong>{formatNumber(record.total_estimated_workload)}</strong>
-              <span>/ {formatNumber(record.total_actual_workload)}</span>
+              <strong>{formatRequirementNumber(record.total_estimated_workload)}</strong>
+              <span>/ {formatRequirementNumber(record.total_actual_workload)}</span>
             </span>
           ),
         })
@@ -274,7 +258,7 @@ export default function IRDataGrid({
           type="text"
           size="small"
           icon={<EditOutlined />}
-          aria-label={`查看或编辑 ${record.requirement_no}`}
+          aria-label={`${canEdit ? '查看或编辑' : '查看'} ${record.requirement_no}`}
           onClick={() => onOpenDetail(record)}
         >
           详情
@@ -282,14 +266,14 @@ export default function IRDataGrid({
       ),
     })
     return groups
-  }, [draft, editing, filters.sort_by, filters.sort_order, canEdit, visible, onOpenDetail])
+  }, [draft, editing, filters.sort_by, filters.sort_order, canEdit, visible, onOpenDetail, profile])
 
   const width = useMemo(() => {
-    const fieldWidth = IR_FIELDS
+    const fieldWidth = profile.fields
       .filter((field) => visible.has(field.key))
       .reduce((sum, field) => sum + field.width, 0)
-    return Math.max(1500, fieldWidth + (visible.has('total_workload') ? 100 : 0) + 60)
-  }, [visible])
+    return Math.max(1500, fieldWidth + (visible.has('total_workload') ? 108 : 0) + 60)
+  }, [visible, profile])
 
   const toggleSort = (column) => {
     if (!column.sorter) return
@@ -315,7 +299,7 @@ export default function IRDataGrid({
       style={{ '--ir-grid-width': `${width}px` }}
     >
       <div className="ir-grid-scroll">
-        <table className="ir-table" aria-label="IR 正式数据">
+        <table className="ir-table" aria-label={profile.tableLabel}>
           <colgroup>
             {columns.flatMap((column) => (column.children ? column.children : [column])).map((column) => (
               <col key={column.key} style={{ width: `${column.width}px` }} />
@@ -364,14 +348,14 @@ export default function IRDataGrid({
         )}
         {!items.length && !loading && (
           <div className="ir-grid-empty">
-            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前筛选条件下没有 IR 数据。" />
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={profile.emptyText} />
           </div>
         )}
       </div>
 
       {loading && (
         <div className="ir-grid-loading" role="status" aria-live="polite">
-          <Spin size="small" /><span>加载 IR 数据…</span>
+          <Spin size="small" /><span>加载{profile.tabLabel}数据…</span>
         </div>
       )}
 

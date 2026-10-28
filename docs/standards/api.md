@@ -8,7 +8,11 @@ HTTP 接口统一位于 `/api`，按资源使用 GET/POST/PATCH/PUT/DELETE。新
 
 IR 列表已有分页响应，其他目录列表常为数组；新增列表先复用该领域现有形态。没有已采用的通用分页包、RPC 或 API 版本策略。修改公共接口需在 Change Design 中说明调用者、兼容和回归，保留既有契约除非需求明确改变。
 
-IR 工作台新增的接口沿用现有 DTO/HTTP 约定：`GET /api/data/ir` 返回分页 `items` 与筛选范围 `summary`，支持 `sort_by`/`sort_order`；`PATCH /api/data/ir/bulk` 接收 `items[{id, changes}]`，整批事务、全有或全无，失败返回行级校验错误；`GET /api/data/ir/schema` 返回字段元数据；`GET /api/data/ir/import-template` 返回 `.xlsx` 二进制；`POST /api/data/ir/imports/preview` 通过 `mode` 查询参数选择 `upsert`/`fill_empty`，文件上传用 `X-Filename` 传递文件名。批量保存和导入确认的权限仍由后端逐行校验，前端筛选/隐藏不构成授权。
+需求活动工作台沿用现有 DTO/HTTP 约定：设计活动使用 `GET /api/data/ir` 返回分页 `items` 与筛选范围 `summary`，支持 `sort_by`/`sort_order`；`PATCH /api/data/ir/bulk` 接收 `items[{id, changes}]`，整批事务、全有或全无，失败返回行级校验错误；`GET /api/data/ir/schema` 返回字段元数据；`GET /api/data/ir/import-template` 返回 `.xlsx` 二进制；`POST /api/data/ir/imports/preview` 通过 `mode` 查询参数选择 `upsert`/`fill_empty`，文件上传用 `X-Filename` 传递文件名。批量保存和导入确认的权限仍由后端逐行校验，前端筛选/隐藏不构成授权。
+
+需求开发活动使用同形镜像接口：`GET /api/data/development`、`GET /api/data/development/schema`、`GET /api/data/development/import-template`、`POST /api/data/development`、`PATCH /api/data/development/bulk`、`PATCH /api/data/development/{record_id}`、`GET /api/data/development/{record_id}/audit-logs`、`POST /api/data/development/imports/preview`、`GET /api/data/development/imports`、`GET /api/data/development/imports/{batch_id}` 和 `POST /api/data/development/imports/{batch_id}/confirm`。开发文件导入只允许 `source_kind=import`，批次与审计 domain 为 `development`，没有采集入口。
+
+设计活动 `/api/data/ir` 的行为变化：类型允许 IR/SR；列表与摘要支持 `requirement_type` 类型筛选；新建和文件导入要求类型、进展、SA、SE 等模板必填，所属功能可空；设计模板列顺序按设计活动模板返回。`/api/data-metrics/overview` 响应不变，但只读取设计记录中 `requirement_type=IR` 的类型，SR 类型和开发记录不进入。旧 pending 文件批次确认时按当前活动模板重新校验，不符合时要求重新预览；采集批次保留 legacy 规则。
 
 完整方法、参数和 DTO 由 `api.py`、`data_api.py`、`schemas.py` 及运行时 `/openapi.json` 核对，文档不另复制全量字段清单。
 

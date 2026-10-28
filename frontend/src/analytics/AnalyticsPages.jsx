@@ -1544,7 +1544,7 @@ function ExecutiveOverallTrend({ rows, dataByMetric, periodIds, month, teamColor
         : error ? <div className="analytics-empty analytics-empty--error" role="alert">IR指标趋势加载失败：{error.message}</div>
           : loading && !rawData ? <div className="analytics-empty" role="status">正在加载IR指标趋势…</div>
             : !hasTrend ? <div className="analytics-empty analytics-empty--current" role="status">当前 IR 时间窗口没有可展示的团队事实。</div>
-              : <EChart option={option} height={360} ariaLabel={`${row.metric.name}IR需求团队与全公司均值趋势图${row.metric.unit ? `，单位 ${row.metric.unit}` : ''}`} onClick={() => onNavigate?.('/data/requirements/ir')} />}
+              : <EChart option={option} height={360} ariaLabel={`${row.metric.name}IR需求团队与全公司均值趋势图${row.metric.unit ? `，单位 ${row.metric.unit}` : ''}`} onClick={() => onNavigate?.('/data/requirements/design')} />}
     </div>
   </AnalyticsPanel>
 }

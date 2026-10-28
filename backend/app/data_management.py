@@ -1,7 +1,8 @@
 """数据管理工作台的领域计算与导入规则。
 
 这个模块是数据管理的深 seam：HTTP 路由只负责认证、查询和事务，字段规范化、
-临时批次差异和指标计算都在这里保持确定性，后续数据域可以复用同样的接口。
+临时批次差异和指标计算都在这里保持确定性。字段清单和活动差异由
+:mod:`app.requirement_fields` 的 profile 驱动，设计活动保留历史 wrapper。
 """
 
 from __future__ import annotations
@@ -16,28 +17,15 @@ from pathlib import PurePath
 from typing import Any
 from xml.etree import ElementTree
 
-
-from .ir_fields import (
-    IR_BOOL_FIELDS,
-    IR_DATE_FIELDS,
-    IR_DB_FIELDS,
-    IR_ENUM_ALIASES,
-    IR_ENUM_FIELDS,
-    IR_FIELD_BY_KEY,
-    IR_FIELD_LABELS,
-    IR_FIELDS,
-    IR_HEADER_ALIASES,
-    IR_IMPORT_REQUIRED_FIELDS,
-    IR_INT_FIELDS,
-    IR_LEGACY_REQUIRED_FIELDS,
-    IR_NUMERIC_FIELDS,
-    IR_OWNER_FIELDS,
-    IR_REQUIRED_FIELDS,
+from .requirement_fields import (
+    DESIGN_PROFILE,
+    RequirementProfile,
+    missing_required_values,
 )
 
 
-IR_FLOAT_FIELDS = IR_NUMERIC_FIELDS
-IR_FIELD_KEYS = frozenset(IR_FIELDS)
+IR_FLOAT_FIELDS = DESIGN_PROFILE.numeric_fields
+IR_FIELD_KEYS = frozenset(DESIGN_PROFILE.db_fields)
 
 
 def _clean(value: Any) -> Any:
@@ -103,14 +91,14 @@ def _parse_bool(value: Any) -> bool | None:
     raise ValueError("must be a boolean")
 
 
-def _normalize_enum(field: str, value: Any) -> Any:
+def _normalize_enum(profile: RequirementProfile, field: str, value: Any) -> Any:
     value = _clean(value)
     if value is None:
         return None
-    aliases = IR_ENUM_ALIASES.get(field, {})
+    aliases = profile.enum_aliases.get(field, {})
     normalized = aliases.get(str(value))
     if normalized is None:
-        options = " / ".join(IR_FIELD_BY_KEY[field].options)
+        options = " / ".join(profile.field_by_key[field].options)
         raise ValueError(f"must be one of {options}")
     return normalized
 
@@ -119,50 +107,55 @@ def _has_any(normalized: Mapping[str, Any], keys: Sequence[str]) -> bool:
     return any(_clean(normalized.get(key)) is not None for key in keys)
 
 
-def normalize_ir_row(
+def normalize_row(
     row: Mapping[str, Any],
     *,
+    profile: RequirementProfile = DESIGN_PROFILE,
     strict_template: bool = False,
 ) -> tuple[dict[str, Any], list[str]]:
     """Normalize API/CSV/Excel row values and return field-level errors.
 
-    ``strict_template`` is used for the user-facing Excel template; it requires
-    progress and SE, which legacy collector rows do not provide.
+    ``strict_template`` is used for the user-facing activity templates; legacy
+    collector rows keep the historical, more permissive rule set.
     """
 
     normalized: dict[str, Any] = {}
     errors: list[str] = []
     for raw_key, raw_value in row.items():
-        key = IR_HEADER_ALIASES.get(str(raw_key).strip())
+        key = profile.header_aliases.get(str(raw_key).strip())
         if key is None:
             continue
         value = _clean(raw_value)
         try:
-            if key in IR_OWNER_FIELDS:
+            if key in profile.owner_fields:
                 value = value
-            elif key in IR_FLOAT_FIELDS and value is not None:
+            elif key in profile.numeric_fields and value is not None:
                 value = float(value)
                 if not math.isfinite(value) or value < 0:
                     raise ValueError("must be a finite non-negative number")
-            elif key in IR_INT_FIELDS and value is not None:
+            elif key in profile.int_fields and value is not None:
                 value = int(value)
                 if value < 1:
                     raise ValueError("must be positive")
-            elif key in IR_DATE_FIELDS and value is not None:
+            elif key in profile.date_fields and value is not None:
                 value = _parse_date(value)
-            elif key in IR_BOOL_FIELDS:
+            elif key in profile.bool_fields:
                 value = _parse_bool(value)
-            elif key in IR_ENUM_FIELDS:
-                value = _normalize_enum(key, value)
+            elif key in profile.enum_fields:
+                value = _normalize_enum(profile, key, value)
             elif isinstance(value, str):
                 value = value.strip() or None
         except (TypeError, ValueError) as exc:
-            errors.append(f"{IR_FIELD_LABELS.get(key, key)}：{exc}")
+            errors.append(f"{profile.field_labels.get(key, key)}：{exc}")
             continue
         normalized[key] = value
 
-    if _clean(normalized.get("requirement_type")) is None:
-        normalized["requirement_type"] = "IR"
+    if (
+        _clean(normalized.get("requirement_type")) is None
+        and not strict_template
+        and profile.default_requirement_type is not None
+    ):
+        normalized["requirement_type"] = profile.default_requirement_type
 
     if not _has_any(normalized, ("team_name", "product_id")):
         errors.append("缺少归属组或产品")
@@ -171,16 +164,20 @@ def normalize_ir_row(
     if not _has_any(normalized, ("iteration_name", "iteration_id")):
         errors.append("缺少迭代")
 
-    required = IR_IMPORT_REQUIRED_FIELDS if strict_template else IR_LEGACY_REQUIRED_FIELDS
-    for field in required:
-        if field in {"team_name", "version_name", "iteration_name"}:
-            # Name-based references are validated by the resolver; the
-            # corresponding id is an acceptable legacy alternative.
-            continue
-        if _clean(normalized.get(field)) is None:
-            errors.append(f"缺少{IR_FIELD_LABELS.get(field, field)}")
-
+    errors.extend(
+        missing_required_values(profile, normalized, strict=strict_template)
+    )
     return normalized, errors
+
+
+def normalize_ir_row(
+    row: Mapping[str, Any],
+    *,
+    strict_template: bool = False,
+) -> tuple[dict[str, Any], list[str]]:
+    """Design compatibility wrapper for :func:`normalize_row`."""
+
+    return normalize_row(row, profile=DESIGN_PROFILE, strict_template=strict_template)
 
 
 def serialize_value(value: Any) -> Any:
@@ -193,10 +190,21 @@ def serializable_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
     return {key: serialize_value(value) for key, value in payload.items()}
 
 
-def record_is_valid(record: Any) -> bool:
+def record_is_valid(record: Any, *, profile: RequirementProfile = DESIGN_PROFILE) -> bool:
     """仅判断记录自身的核心字段是否完整；责任人工号不参与有效性判断。"""
 
-    return all(_clean(getattr(record, field, None)) is not None for field in IR_REQUIRED_FIELDS)
+    if not all(
+        _clean(getattr(record, field, None)) is not None
+        for field in profile.record_required_fields
+    ):
+        return False
+    for name_field, employee_field in profile.validity_owner_pairs:
+        if (
+            _clean(getattr(record, name_field, None)) is None
+            and _clean(getattr(record, employee_field, None)) is None
+        ):
+            return False
+    return True
 
 
 def field_diff(
@@ -204,11 +212,12 @@ def field_diff(
     payload: Mapping[str, Any],
     *,
     mode: str = "fill_empty",
+    profile: RequirementProfile = DESIGN_PROFILE,
 ) -> dict[str, dict[str, Any]]:
     """Return the field actions the batch would take without writing data."""
 
     diff: dict[str, dict[str, Any]] = {}
-    for field in IR_FIELDS:
+    for field in profile.db_fields:
         incoming = payload.get(field)
         if existing is None:
             if incoming is not None:
@@ -233,11 +242,16 @@ def field_diff(
     return diff
 
 
-def merge_empty_fields(existing: Any, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+def merge_empty_fields(
+    existing: Any,
+    payload: Mapping[str, Any],
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> list[dict[str, Any]]:
     """只把 incoming 非空值写入正式记录的空字段，返回实际变化。"""
 
     changes: list[dict[str, Any]] = []
-    for field in IR_FIELDS:
+    for field in profile.db_fields:
         incoming = payload.get(field)
         current = getattr(existing, field, None)
         if current is not None or incoming is None:
@@ -247,11 +261,16 @@ def merge_empty_fields(existing: Any, payload: Mapping[str, Any]) -> list[dict[s
     return changes
 
 
-def overwrite_non_empty_fields(existing: Any, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+def overwrite_non_empty_fields(
+    existing: Any,
+    payload: Mapping[str, Any],
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> list[dict[str, Any]]:
     """Use non-empty incoming values to update an existing record."""
 
     changes: list[dict[str, Any]] = []
-    for field in IR_FIELDS:
+    for field in profile.db_fields:
         incoming = payload.get(field)
         current = getattr(existing, field, None)
         if incoming is None or serialize_value(current) == serialize_value(incoming):
@@ -265,59 +284,131 @@ def overwrite_non_empty_fields(existing: Any, payload: Mapping[str, Any]) -> lis
     return changes
 
 
-def effective_estimated_workload(record: Any) -> float | None:
+def effective_estimated_workload(
+    record: Any,
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> float | None:
     stored = getattr(record, "estimated_workload", None)
     if stored is not None:
         return float(stored)
     parts = [
-        getattr(record, "sa_estimated_workload", None),
-        getattr(record, "se_estimated_workload", None),
+        getattr(record, estimated_field, None)
+        for estimated_field, _actual_field in profile.workload_components
     ]
     if all(part is None for part in parts):
         return None
     return float(sum(part or 0 for part in parts))
 
 
-def effective_actual_workload(record: Any) -> float | None:
+def effective_actual_workload(
+    record: Any,
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> float | None:
     stored = getattr(record, "actual_workload", None)
     if stored is not None:
         return float(stored)
     parts = [
-        getattr(record, "sa_actual_workload", None),
-        getattr(record, "se_actual_workload", None),
+        getattr(record, actual_field, None)
+        for _estimated_field, actual_field in profile.workload_components
     ]
     if all(part is None for part in parts):
         return None
     return float(sum(part or 0 for part in parts))
 
 
-def derive_ai_assisted(values: Mapping[str, Any]) -> bool | None:
-    """Derive the aggregate AI flag from SA/SE flags, preserving legacy values."""
+def derive_ai_assisted(
+    values: Mapping[str, Any],
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> bool | None:
+    """Derive the aggregate AI flag from activity-specific flags."""
 
-    sa = values.get("sa_ai_assisted")
-    se = values.get("se_ai_assisted")
-    if sa is None and se is None:
+    flags = [values.get(field) for field in profile.ai_flag_fields]
+    if all(flag is None for flag in flags):
         return values.get("ai_assisted")
-    if sa is True or se is True:
+    if any(flag is True for flag in flags):
         return True
-    if sa is False and se is False:
+    if all(flag is False for flag in flags):
         return False
     return None
 
 
-def effective_ai_assisted(record: Any) -> bool | None:
-    sa = getattr(record, "sa_ai_assisted", None)
-    se = getattr(record, "se_ai_assisted", None)
-    if sa is None and se is None:
+def effective_ai_assisted(
+    record: Any,
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> bool | None:
+    flags = [getattr(record, field, None) for field in profile.ai_flag_fields]
+    if all(flag is None for flag in flags):
         return getattr(record, "ai_assisted", None)
-    if sa is True or se is True:
+    if any(flag is True for flag in flags):
         return True
-    if sa is False and se is False:
+    if all(flag is False for flag in flags):
         return False
     return None
 
 
-def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], period_ids: Sequence[str]) -> dict[str, Any]:
+def _sum_optional(values: list[float | None]) -> float | None:
+    present = [float(value) for value in values if value is not None]
+    return sum(present) if present else None
+
+
+def summarize_records(
+    rows: Iterable[Any],
+    *,
+    profile: RequirementProfile = DESIGN_PROFILE,
+) -> dict[str, Any]:
+    """Build the activity summary shared by the design and development lists."""
+
+    rows = list(rows)
+    by_progress: dict[str, int] = {}
+    ai_used = 0
+    ai_known = 0
+    workload_values: dict[str, list[float | None]] = {
+        field: [] for field in profile.summary_workload_fields
+    }
+
+    for row in rows:
+        progress = getattr(row, "progress", None) or "待维护"
+        by_progress[progress] = by_progress.get(progress, 0) + 1
+
+        effective_ai = effective_ai_assisted(row, profile=profile)
+        if effective_ai is not None:
+            ai_known += 1
+            if effective_ai:
+                ai_used += 1
+
+        for field in profile.summary_workload_fields:
+            if field == "total_estimated_workload":
+                workload_values[field].append(
+                    effective_estimated_workload(row, profile=profile)
+                )
+            elif field == "total_actual_workload":
+                workload_values[field].append(
+                    effective_actual_workload(row, profile=profile)
+                )
+            else:
+                workload_values[field].append(getattr(row, field, None))
+
+    summary: dict[str, Any] = {
+        "total": len(rows),
+        "by_progress": by_progress,
+        "ai_used_count": ai_used,
+        "ai_known_count": ai_known,
+        "ai_usage_rate": (ai_used / ai_known) if ai_known else None,
+    }
+    for field in profile.summary_workload_fields:
+        summary[field] = _sum_optional(workload_values[field])
+    return summary
+
+
+def build_ir_overview_series(
+    records: Iterable[Any],
+    teams: Sequence[Any],
+    period_ids: Sequence[str],
+) -> dict[str, Any]:
     records_by_team_period: dict[tuple[int, str], list[Any]] = {}
     records_by_period: dict[str, list[Any]] = {}
     team_ids = {team.id for team in teams}
@@ -332,19 +423,19 @@ def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], perio
     def point(period_id: str, period_records: Sequence[Any]) -> dict[str, Any]:
         known_ai_records = [
             record for record in period_records
-            if effective_ai_assisted(record) is not None
+            if effective_ai_assisted(record, profile=DESIGN_PROFILE) is not None
         ]
         ai_records = [
             record for record in known_ai_records
-            if effective_ai_assisted(record) is True
+            if effective_ai_assisted(record, profile=DESIGN_PROFILE) is True
         ]
         workload_records = [
             record for record in ai_records
             if all(
                 isinstance(value, (int, float)) and math.isfinite(value)
                 for value in (
-                    effective_estimated_workload(record),
-                    effective_actual_workload(record),
+                    effective_estimated_workload(record, profile=DESIGN_PROFILE),
+                    effective_actual_workload(record, profile=DESIGN_PROFILE),
                 )
             )
         ]
@@ -354,8 +445,14 @@ def build_ir_overview_series(records: Iterable[Any], teams: Sequence[Any], perio
             "known_ai_count": len(known_ai_records),
             "ai_assisted_count": len(ai_records) if known_ai_records else None,
             "ai_workload_count": len(workload_records),
-            "ai_estimated_workload": sum(effective_estimated_workload(record) for record in workload_records) if workload_records else None,
-            "ai_actual_workload": sum(effective_actual_workload(record) for record in workload_records) if workload_records else None,
+            "ai_estimated_workload": sum(
+                effective_estimated_workload(record, profile=DESIGN_PROFILE)
+                for record in workload_records
+            ) if workload_records else None,
+            "ai_actual_workload": sum(
+                effective_actual_workload(record, profile=DESIGN_PROFILE)
+                for record in workload_records
+            ) if workload_records else None,
         }
 
     return {

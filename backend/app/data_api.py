@@ -10,6 +10,7 @@ from calendar import monthrange
 from copy import deepcopy
 from datetime import date, datetime, timezone
 from typing import Any, Literal
+from urllib.parse import quote
 import zipfile
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response
@@ -20,37 +21,26 @@ from sqlalchemy.orm import Session, joinedload, selectinload
 
 from .auth import get_current_user, require_roles
 from .data_management import (
-    IR_FIELDS,
     build_ir_overview_series,
     derive_ai_assisted,
     effective_actual_workload,
     effective_ai_assisted,
     effective_estimated_workload,
-    field_diff,
     json_changes,
     merge_empty_fields,
     overwrite_non_empty_fields,
     parse_import_file,
     record_is_valid,
     serializable_payload,
+    summarize_records,
 )
 from .db import get_db
-from .ir_fields import IR_FIELD_LABELS, ir_field_schema
-from .ir_imports import (
-    IRImportRowInput,
-    check_ir_write_access as _check_ir_write_access,
-    create_ir_import_batch,
-    detect_strict_template,
-    employee_for_team as _employee_for_team,
-    validate_ir_record_refs as _validate_ir_record_refs,
-)
-from .ir_template import build_ir_import_template
 from .models import (
     AuditLog,
     AIReviewOpinion,
+    DevelopmentRequirement,
     IRRequirement,
     ImportBatch,
-    ImportRow,
     Iteration,
     Product,
     ProductVersion,
@@ -59,12 +49,34 @@ from .models import (
     User,
     UserRole,
 )
+from .requirement_fields import (
+    DESIGN_PROFILE,
+    DEVELOPMENT_PROFILE,
+    RequirementProfile,
+    field_schema,
+)
+from .requirement_imports import (
+    RequirementImportRowInput,
+    check_write_access as _check_ir_write_access,
+    create_import_batch,
+    employee_for_team as _employee_for_team,
+    payload_for_record,
+    revalidate_import_payload,
+    validate_record_refs,
+)
+from .requirement_template import build_import_template
 from .team_excel import build_team_export, build_team_import_template
 from .team_imports import TeamImportError, analyze_team_rows, apply_team_rows
 from .schemas import (
     AIReviewOpinionIn,
     AIReviewOpinionListOut,
     AIReviewOpinionOut,
+    DevelopmentBulkUpdateIn,
+    DevelopmentListOut,
+    DevelopmentRequirementIn,
+    DevelopmentRequirementOut,
+    DevelopmentRequirementUpdateIn,
+    DevelopmentSummaryOut,
     IRBulkUpdateIn,
     IRListOut,
     IRRequirementIn,
@@ -213,6 +225,251 @@ def _iteration_out(iteration: Iteration) -> IterationOut:
         start_date=iteration.start_date,
         end_date=iteration.end_date,
     )
+
+
+def _requirement_query(model: Any):
+    return (
+        select(model)
+        .options(
+            joinedload(model.product).joinedload(Product.team),
+            joinedload(model.version),
+            joinedload(model.iteration),
+        )
+        .join(Product, model.product_id == Product.id)
+        .join(ProductVersion, model.version_id == ProductVersion.id)
+        .join(Iteration, model.iteration_id == Iteration.id)
+        .order_by(model.completed_at.desc(), model.id.desc())
+    )
+
+
+def _ai_attribute_fields(profile: RequirementProfile) -> tuple[str, ...]:
+    base = ("ai_assisted", "ai_quality_level", "ai_applicability", "ai_dev_mode")
+    return tuple(
+        field
+        for field in (*base, *profile.ai_flag_fields)
+        if field in profile.field_by_key
+    )
+
+
+def _audit_values(values: dict[str, Any]) -> dict[str, Any]:
+    return {
+        field: {"from": None, "to": value}
+        for field, value in serializable_payload(values).items()
+    }
+
+
+def _create_requirement(
+    db: Session,
+    profile: RequirementProfile,
+    model: Any,
+    payload: Any,
+    current_user: User,
+):
+    values = payload.model_dump()
+    for field, default in profile.non_nullable_text_defaults:
+        values[field] = values.get(field) or default
+    values["requirement_type"] = values.get("requirement_type") or profile.default_requirement_type
+    values["ai_assisted"] = derive_ai_assisted(values, profile=profile)
+    product = validate_record_refs(db, values)
+    _check_ir_write_access(current_user, product.team_id)
+    now = _now()
+    metadata = _ai_metadata(
+        {},
+        current_user.username,
+        "manual",
+        [field for field in _ai_attribute_fields(profile) if values.get(field) is not None],
+    )
+    record = model(
+        **values,
+        ai_attribute_metadata=metadata,
+        record_source="manual",
+        created_at=now,
+        updated_at=now,
+        updated_by=current_user.username,
+    )
+    db.add(record)
+    db.flush()
+    db.add(AuditLog(
+        domain=profile.domain,
+        record_id=record.id,
+        action="create",
+        actor=current_user.username,
+        source="manual",
+        changes=_audit_values(values),
+    ))
+    _commit(db, record)
+    return record
+
+
+def _effective_changes(record: Any, changes: dict[str, Any]) -> dict[str, Any]:
+    effective: dict[str, Any] = {}
+    for field, value in changes.items():
+        current = getattr(record, field, None)
+        current_value = serializable_payload({"value": current})["value"]
+        next_value = serializable_payload({"value": value})["value"]
+        if current_value != next_value:
+            effective[field] = value
+    return effective
+
+
+def _apply_record_changes(
+    db: Session,
+    profile: RequirementProfile,
+    record: Any,
+    changes: dict[str, Any],
+    current_user: User,
+    *,
+    source: str = "manual",
+) -> dict[str, Any]:
+    """Validate and apply one record's changes without committing."""
+
+    model = type(record)
+    changes = _effective_changes(record, changes)
+    if not changes:
+        return {}
+    next_values = {
+        field: changes.get(field, getattr(record, field, None))
+        for field in profile.db_fields
+    }
+    for field, default in profile.non_nullable_text_defaults:
+        if next_values.get(field) is None:
+            next_values[field] = default
+    product = validate_record_refs(db, next_values)
+    _check_ir_write_access(current_user, product.team_id)
+
+    if any(field in changes for field in profile.ai_flag_fields):
+        derived = derive_ai_assisted(next_values, profile=profile)
+        if "ai_assisted" not in changes or changes["ai_assisted"] != derived:
+            changes["ai_assisted"] = derived
+    for field, default in profile.non_nullable_text_defaults:
+        if field in changes and changes[field] is None:
+            changes[field] = default
+    if "requirement_no" in changes:
+        duplicate = db.scalar(
+            select(model).where(
+                model.requirement_no == changes["requirement_no"],
+                model.id != record.id,
+            )
+        )
+        if duplicate is not None:
+            raise HTTPException(status_code=409, detail="requirement_no already exists")
+
+    before = {field: getattr(record, field, None) for field in changes}
+    for field, value in changes.items():
+        setattr(record, field, value)
+
+    metadata_fields = [
+        field for field in changes if field in _ai_attribute_fields(profile)
+    ]
+    if metadata_fields:
+        record.ai_attribute_metadata = _ai_metadata(
+            record.ai_attribute_metadata,
+            current_user.username,
+            source,
+            metadata_fields,
+        )
+    record.record_source = source
+    record.updated_at = _now()
+    record.updated_by = current_user.username
+    return {
+        field: {
+            "from": serializable_payload({"value": before[field]})["value"],
+            "to": serializable_payload({"value": changes[field]})["value"],
+        }
+        for field in changes
+    }
+
+
+def _record_or_404(db: Session, profile: RequirementProfile, model: Any, record_id: int):
+    record = db.scalar(
+        _requirement_query(model).where(model.id == record_id)
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"{profile.record_label} not found")
+    return record
+
+
+def _update_requirement(
+    db: Session,
+    profile: RequirementProfile,
+    model: Any,
+    record_id: int,
+    payload: Any,
+    current_user: User,
+):
+    record = _record_or_404(db, profile, model, record_id)
+    _check_ir_write_access(current_user, record.product.team_id)
+    changes = payload.model_dump(exclude_unset=True)
+    if not changes:
+        return record
+    audit_changes = _apply_record_changes(db, profile, record, changes, current_user)
+    if not audit_changes:
+        return record
+    db.add(AuditLog(
+        domain=profile.domain,
+        record_id=record.id,
+        action="update",
+        actor=current_user.username,
+        source="manual",
+        changes=audit_changes,
+    ))
+    _commit(db, record)
+    return record
+
+
+def _bulk_update_requirements(
+    db: Session,
+    profile: RequirementProfile,
+    model: Any,
+    payload: Any,
+    current_user: User,
+):
+    ids = [item.id for item in payload.items]
+    records = db.scalars(
+        _requirement_query(model).where(model.id.in_(ids))
+    ).unique().all()
+    by_id = {record.id: record for record in records}
+    if len(by_id) != len(set(ids)):
+        raise HTTPException(status_code=404, detail=f"{profile.record_label} not found")
+
+    try:
+        for item in payload.items:
+            record = by_id[item.id]
+            changes = item.changes.model_dump(exclude_unset=True)
+            if not changes:
+                continue
+            audit_changes = _apply_record_changes(db, profile, record, changes, current_user)
+            if not audit_changes:
+                continue
+            db.add(AuditLog(
+                domain=profile.domain,
+                record_id=record.id,
+                action="bulk_update",
+                actor=current_user.username,
+                source="manual",
+                changes=audit_changes,
+            ))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return [by_id[item.id] for item in payload.items]
+
+
+def _list_audit_logs(db: Session, profile: RequirementProfile, model: Any, record_id: int, current_user: User):
+    record = db.scalar(
+        select(model)
+        .options(joinedload(model.product).joinedload(Product.team))
+        .where(model.id == record_id)
+    )
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"{profile.record_label} not found")
+    _check_ir_write_access(current_user, record.product.team_id)
+    return db.scalars(
+        select(AuditLog)
+        .where(AuditLog.domain == profile.domain, AuditLog.record_id == record_id)
+        .order_by(AuditLog.id.desc())
+    ).all()
 
 
 @router.get("/products", response_model=list[ProductOut])
@@ -577,6 +834,7 @@ def confirm_team_import(
 
 
 def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
+    profile = DESIGN_PROFILE
     product = record.product
     version = record.version
     iteration = record.iteration
@@ -615,8 +873,8 @@ def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
         se_employee_pending=bool(record.se_employee_id and se_member is None),
         estimated_workload=record.estimated_workload,
         actual_workload=record.actual_workload,
-        total_estimated_workload=effective_estimated_workload(record),
-        total_actual_workload=effective_actual_workload(record),
+        total_estimated_workload=effective_estimated_workload(record, profile=profile),
+        total_actual_workload=effective_actual_workload(record, profile=profile),
         sa_estimated_workload=record.sa_estimated_workload,
         sa_actual_workload=record.sa_actual_workload,
         se_estimated_workload=record.se_estimated_workload,
@@ -626,30 +884,81 @@ def _ir_out(db: Session, record: IRRequirement) -> IRRequirementOut:
         sa_ai_assisted=record.sa_ai_assisted,
         se_ai_assisted=record.se_ai_assisted,
         ai_dev_mode=record.ai_dev_mode,
-        ai_assisted=effective_ai_assisted(record),
+        ai_assisted=effective_ai_assisted(record, profile=profile),
         ai_attribute_metadata=record.ai_attribute_metadata or {},
         remark=record.remark,
         record_source=record.record_source,
         created_at=record.created_at,
         updated_at=record.updated_at,
         updated_by=record.updated_by,
-        valid=record_is_valid(record),
+        valid=record_is_valid(record, profile=profile),
+    )
+
+
+def _development_out(db: Session, record: DevelopmentRequirement) -> DevelopmentRequirementOut:
+    profile = DEVELOPMENT_PROFILE
+    product = record.product
+    version = record.version
+    iteration = record.iteration
+    team = product.team
+    implementation_member = _employee_for_team(
+        db, team.id, record.implementation_employee_id
+    )
+    development_member = _employee_for_team(
+        db, team.id, record.development_employee_id
+    )
+    return DevelopmentRequirementOut(
+        id=record.id,
+        requirement_type=record.requirement_type or "IR",
+        requirement_no=record.requirement_no,
+        requirement_name=record.requirement_name,
+        product_id=product.id,
+        product_name=product.name,
+        team_id=team.id,
+        team_name=team.name,
+        version_id=version.id,
+        version_name=version.name,
+        iteration_id=iteration.id,
+        iteration_name=iteration.name,
+        completed_at=record.completed_at,
+        progress=record.progress,
+        implementation_owner_name=record.implementation_owner_name
+        or (implementation_member.name if implementation_member else None),
+        implementation_employee_id=record.implementation_employee_id,
+        implementation_employee_name=implementation_member.name if implementation_member else None,
+        implementation_employee_pending=bool(
+            record.implementation_employee_id and implementation_member is None
+        ),
+        development_owner_name=record.development_owner_name
+        or (development_member.name if development_member else None),
+        development_employee_id=record.development_employee_id,
+        development_employee_name=development_member.name if development_member else None,
+        development_employee_pending=bool(
+            record.development_employee_id and development_member is None
+        ),
+        implementation_estimated_workload=record.implementation_estimated_workload,
+        implementation_actual_workload=record.implementation_actual_workload,
+        development_estimated_workload=record.development_estimated_workload,
+        development_actual_workload=record.development_actual_workload,
+        total_estimated_workload=effective_estimated_workload(record, profile=profile),
+        total_actual_workload=effective_actual_workload(record, profile=profile),
+        ai_applicability=record.ai_applicability,
+        implementation_ai_assisted=record.implementation_ai_assisted,
+        development_ai_assisted=record.development_ai_assisted,
+        ai_dev_mode=record.ai_dev_mode,
+        ai_assisted=effective_ai_assisted(record, profile=profile),
+        ai_attribute_metadata=record.ai_attribute_metadata or {},
+        remark=record.remark,
+        record_source=record.record_source,
+        created_at=record.created_at,
+        updated_at=record.updated_at,
+        updated_by=record.updated_by,
+        valid=record_is_valid(record, profile=profile),
     )
 
 
 def _ir_record_query(db: Session):
-    return (
-        select(IRRequirement)
-        .options(
-            joinedload(IRRequirement.product).joinedload(Product.team),
-            joinedload(IRRequirement.version),
-            joinedload(IRRequirement.iteration),
-        )
-        .join(Product, IRRequirement.product_id == Product.id)
-        .join(ProductVersion, IRRequirement.version_id == ProductVersion.id)
-        .join(Iteration, IRRequirement.iteration_id == Iteration.id)
-        .order_by(IRRequirement.completed_at.desc(), IRRequirement.id.desc())
-    )
+    return _requirement_query(IRRequirement)
 
 
 AI_ATTRIBUTE_FIELDS = (
@@ -658,6 +967,8 @@ AI_ATTRIBUTE_FIELDS = (
     "ai_applicability",
     "sa_ai_assisted",
     "se_ai_assisted",
+    "implementation_ai_assisted",
+    "development_ai_assisted",
     "ai_dev_mode",
 )
 
@@ -764,69 +1075,9 @@ def upsert_ai_review_opinion(
     return _commit(db, record)
 
 
-def _sum_optional(values: list[float | None]) -> float | None:
-    present = [float(value) for value in values if value is not None]
-    return sum(present) if present else None
-
-
 def _ir_summary(rows: list[Any]) -> IRSummaryOut:
-    by_progress: dict[str, int] = {}
-    ai_used = 0
-    ai_known = 0
-    sa_estimated: list[float | None] = []
-    sa_actual: list[float | None] = []
-    se_estimated: list[float | None] = []
-    se_actual: list[float | None] = []
-    total_estimated: list[float | None] = []
-    total_actual: list[float | None] = []
-
-    for row in rows:
-        progress = row.progress or "待维护"
-        by_progress[progress] = by_progress.get(progress, 0) + 1
-
-        sa_flag = row.sa_ai_assisted
-        se_flag = row.se_ai_assisted
-        if sa_flag is None and se_flag is None:
-            effective_ai = row.ai_assisted
-        elif sa_flag is True or se_flag is True:
-            effective_ai = True
-        elif sa_flag is False and se_flag is False:
-            effective_ai = False
-        else:
-            effective_ai = None
-        if effective_ai is not None:
-            ai_known += 1
-            if effective_ai:
-                ai_used += 1
-
-        estimated = row.estimated_workload
-        if estimated is None:
-            parts = [row.sa_estimated_workload, row.se_estimated_workload]
-            estimated = sum(part or 0 for part in parts) if any(part is not None for part in parts) else None
-        actual = row.actual_workload
-        if actual is None:
-            parts = [row.sa_actual_workload, row.se_actual_workload]
-            actual = sum(part or 0 for part in parts) if any(part is not None for part in parts) else None
-
-        sa_estimated.append(row.sa_estimated_workload)
-        sa_actual.append(row.sa_actual_workload)
-        se_estimated.append(row.se_estimated_workload)
-        se_actual.append(row.se_actual_workload)
-        total_estimated.append(estimated)
-        total_actual.append(actual)
-
     return IRSummaryOut(
-        total=len(rows),
-        by_progress=by_progress,
-        ai_used_count=ai_used,
-        ai_known_count=ai_known,
-        ai_usage_rate=(ai_used / ai_known) if ai_known else None,
-        sa_estimated_workload=_sum_optional(sa_estimated),
-        sa_actual_workload=_sum_optional(sa_actual),
-        se_estimated_workload=_sum_optional(se_estimated),
-        se_actual_workload=_sum_optional(se_actual),
-        total_estimated_workload=_sum_optional(total_estimated),
-        total_actual_workload=_sum_optional(total_actual),
+        **summarize_records(rows, profile=DESIGN_PROFILE)
     )
 
 
@@ -834,21 +1085,22 @@ def _ir_summary(rows: list[Any]) -> IRSummaryOut:
 def get_ir_schema(
     _current_user: User = Depends(get_current_user),
 ):
-    return ir_field_schema()
+    return field_schema(DESIGN_PROFILE)
 
 
 @router.get("/data/ir/import-template")
 def download_ir_import_template(
     _current_user: User = Depends(DATA_EDITOR),
 ):
-    content = build_ir_import_template()
+    content = build_import_template(DESIGN_PROFILE)
+    filename = DESIGN_PROFILE.template_filename
     return Response(
         content=content,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={
             "Content-Disposition": (
-                "attachment; filename=IR-requirements-template.xlsx; "
-                "filename*=UTF-8''IR%E9%9C%80%E6%B1%82%E5%AF%BC%E5%85%A5%E6%A8%A1%E6%9D%BF.xlsx"
+                f"attachment; filename=design-requirements-template.xlsx; "
+                f"filename*=UTF-8''{quote(filename)}"
             )
         },
     )
@@ -865,6 +1117,7 @@ def list_ir_requirements(
     responsible_employee_id: str | None = None,
     business_module: str | None = None,
     requirement_scenario: str | None = None,
+    requirement_type: Literal["IR", "SR"] | None = None,
     progress: str | None = None,
     ai_quality_level: str | None = None,
     ai_applicability: bool | None = None,
@@ -911,6 +1164,8 @@ def list_ir_requirements(
         conditions.append(IRRequirement.business_module == business_module)
     if requirement_scenario is not None:
         conditions.append(IRRequirement.requirement_scenario == requirement_scenario)
+    if requirement_type is not None:
+        conditions.append(IRRequirement.requirement_type == requirement_type)
     if progress is not None:
         conditions.append(IRRequirement.progress == progress)
     if ai_quality_level is not None:
@@ -995,112 +1250,8 @@ def create_ir_requirement(
     current_user: User = Depends(DATA_EDITOR),
     db: Session = Depends(get_db),
 ):
-    values = payload.model_dump()
-    values["requirement_type"] = "IR"
-    values["requirement_scenario"] = values.get("requirement_scenario") or ""
-    values["ai_assisted"] = derive_ai_assisted(values)
-    product = _validate_ir_record_refs(db, values)
-    _check_ir_write_access(current_user, product.team_id)
-    now = _now()
-    metadata = _ai_metadata(
-        {},
-        current_user.username,
-        "manual",
-        [field for field in AI_ATTRIBUTE_FIELDS if values.get(field) is not None],
-    )
-    record = IRRequirement(
-        **values,
-        ai_attribute_metadata=metadata,
-        record_source="manual",
-        created_at=now,
-        updated_at=now,
-        updated_by=current_user.username,
-    )
-    db.add(record)
-    db.flush()
-    db.add(AuditLog(
-        domain="ir",
-        record_id=record.id,
-        action="create",
-        actor=current_user.username,
-        source="manual",
-        changes={field: {"from": None, "to": value} for field, value in serializable_payload(values).items()},
-    ))
-    _commit(db, record)
+    record = _create_requirement(db, DESIGN_PROFILE, IRRequirement, payload, current_user)
     return _ir_out(db, record)
-
-
-def _effective_changes(record: IRRequirement, changes: dict[str, Any]) -> dict[str, Any]:
-    effective: dict[str, Any] = {}
-    for field, value in changes.items():
-        current = getattr(record, field, None)
-        current_value = serializable_payload({"value": current})["value"]
-        next_value = serializable_payload({"value": value})["value"]
-        if current_value != next_value:
-            effective[field] = value
-    return effective
-
-
-def _apply_ir_changes(
-    db: Session,
-    record: IRRequirement,
-    changes: dict[str, Any],
-    current_user: User,
-    *,
-    source: str = "manual",
-) -> dict[str, Any]:
-    """Validate and apply one record's changes without committing."""
-
-    changes = _effective_changes(record, changes)
-    if not changes:
-        return {}
-    next_values = {
-        field: changes.get(field, getattr(record, field, None))
-        for field in IR_FIELDS
-    }
-    if next_values.get("requirement_scenario") is None:
-        next_values["requirement_scenario"] = ""
-    product = _validate_ir_record_refs(db, next_values)
-    _check_ir_write_access(current_user, product.team_id)
-
-    if "sa_ai_assisted" in changes or "se_ai_assisted" in changes:
-        derived = derive_ai_assisted(next_values)
-        if "ai_assisted" not in changes or changes["ai_assisted"] != derived:
-            changes["ai_assisted"] = derived
-    if changes.get("requirement_scenario") is None:
-        changes["requirement_scenario"] = ""
-    if "requirement_no" in changes:
-        duplicate = db.scalar(
-            select(IRRequirement).where(
-                IRRequirement.requirement_no == changes["requirement_no"],
-                IRRequirement.id != record.id,
-            )
-        )
-        if duplicate is not None:
-            raise HTTPException(status_code=409, detail="requirement_no already exists")
-
-    before = {field: getattr(record, field, None) for field in changes}
-    for field, value in changes.items():
-        setattr(record, field, value)
-
-    metadata_fields = [field for field in changes if field in AI_ATTRIBUTE_FIELDS]
-    if metadata_fields:
-        record.ai_attribute_metadata = _ai_metadata(
-            record.ai_attribute_metadata,
-            current_user.username,
-            source,
-            metadata_fields,
-        )
-    record.record_source = source
-    record.updated_at = _now()
-    record.updated_by = current_user.username
-    return {
-        field: {
-            "from": serializable_payload({"value": before[field]})["value"],
-            "to": serializable_payload({"value": changes[field]})["value"],
-        }
-        for field in changes
-    }
 
 
 @router.patch("/data/ir/bulk", response_model=list[IRRequirementOut])
@@ -1109,42 +1260,10 @@ def bulk_update_ir_requirements(
     current_user: User = Depends(DATA_EDITOR),
     db: Session = Depends(get_db),
 ):
-    ids = [item.id for item in payload.items]
-    records = db.scalars(
-        select(IRRequirement)
-        .options(
-            joinedload(IRRequirement.product).joinedload(Product.team),
-            joinedload(IRRequirement.version),
-            joinedload(IRRequirement.iteration),
-        )
-        .where(IRRequirement.id.in_(ids))
-    ).unique().all()
-    by_id = {record.id: record for record in records}
-    if len(by_id) != len(set(ids)):
-        raise HTTPException(status_code=404, detail="IR record not found")
-
-    try:
-        for item in payload.items:
-            record = by_id[item.id]
-            changes = item.changes.model_dump(exclude_unset=True)
-            if not changes:
-                continue
-            audit_changes = _apply_ir_changes(db, record, changes, current_user)
-            if not audit_changes:
-                continue
-            db.add(AuditLog(
-                domain="ir",
-                record_id=record.id,
-                action="bulk_update",
-                actor=current_user.username,
-                source="manual",
-                changes=audit_changes,
-            ))
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    return [_ir_out(db, by_id[item.id]) for item in payload.items]
+    records = _bulk_update_requirements(
+        db, DESIGN_PROFILE, IRRequirement, payload, current_user
+    )
+    return [_ir_out(db, record) for record in records]
 
 
 @router.patch("/data/ir/{record_id}", response_model=IRRequirementOut)
@@ -1154,33 +1273,9 @@ def update_ir_requirement(
     current_user: User = Depends(DATA_EDITOR),
     db: Session = Depends(get_db),
 ):
-    record = db.scalar(
-        select(IRRequirement)
-        .options(
-            joinedload(IRRequirement.product).joinedload(Product.team),
-            joinedload(IRRequirement.version),
-            joinedload(IRRequirement.iteration),
-        )
-        .where(IRRequirement.id == record_id)
+    record = _update_requirement(
+        db, DESIGN_PROFILE, IRRequirement, record_id, payload, current_user
     )
-    if record is None:
-        raise HTTPException(status_code=404, detail="IR record not found")
-    _check_ir_write_access(current_user, record.product.team_id)
-    changes = payload.model_dump(exclude_unset=True)
-    if not changes:
-        return _ir_out(db, record)
-    audit_changes = _apply_ir_changes(db, record, changes, current_user)
-    if not audit_changes:
-        return _ir_out(db, record)
-    db.add(AuditLog(
-        domain="ir",
-        record_id=record.id,
-        action="update",
-        actor=current_user.username,
-        source="manual",
-        changes=audit_changes,
-    ))
-    _commit(db, record)
     return _ir_out(db, record)
 
 
@@ -1190,19 +1285,7 @@ def list_ir_audit_logs(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    record = db.scalar(
-        select(IRRequirement)
-        .options(joinedload(IRRequirement.product).joinedload(Product.team))
-        .where(IRRequirement.id == record_id)
-    )
-    if record is None:
-        raise HTTPException(status_code=404, detail="IR record not found")
-    _check_ir_write_access(current_user, record.product.team_id)
-    return db.scalars(
-        select(AuditLog)
-        .where(AuditLog.domain == "ir", AuditLog.record_id == record_id)
-        .order_by(AuditLog.id.desc())
-    ).all()
+    return _list_audit_logs(db, DESIGN_PROFILE, IRRequirement, record_id, current_user)
 
 
 def _batch_out(batch: ImportBatch) -> ImportBatchOut:
@@ -1291,40 +1374,16 @@ async def _import_preview_payload(request: Request) -> ImportPreviewIn:
     return ImportPreviewIn(filename=filename, rows=rows)
 
 
-@router.post("/data/ir/imports/preview", response_model=ImportBatchOut, status_code=201)
-async def preview_ir_import(
-    request: Request,
-    mode: Literal["upsert", "fill_empty"] = Query(default="fill_empty"),
-    current_user: User = Depends(DATA_EDITOR),
-    db: Session = Depends(get_db),
-):
-    payload = await _import_preview_payload(request)
-    if not payload.rows:
-        raise HTTPException(status_code=422, detail="文件没有数据行")
-    batch = create_ir_import_batch(
-        db,
-        [IRImportRowInput(raw=row) for row in payload.rows],
-        source_kind="import",
-        filename=payload.filename,
-        created_by=current_user.username,
-        current_user=current_user,
-        update_mode=mode,
-        strict_template=detect_strict_template(payload.rows),
-    )
-    db.commit()
-    db.refresh(batch)
-    return _batch_out(batch)
-
-
-@router.get("/data/ir/imports", response_model=list[ImportBatchSummaryOut])
-def list_ir_imports(
-    source_kind: Literal["import", "collector"] | None = Query(default=None),
-    status: Literal["pending", "confirmed"] | None = Query(default=None),
-    team_id: int | None = Query(default=None, ge=1),
-    current_user: User = Depends(DATA_EDITOR),
-    db: Session = Depends(get_db),
-):
-    conditions = [ImportBatch.domain == "ir"]
+def _list_import_batches(
+    db: Session,
+    profile: RequirementProfile,
+    *,
+    source_kind: str | None,
+    status: str | None,
+    team_id: int | None,
+    current_user: User,
+) -> list[ImportBatchSummaryOut]:
+    conditions = [ImportBatch.domain == profile.domain]
     if source_kind is not None:
         conditions.append(ImportBatch.source_kind == source_kind)
     if status is not None:
@@ -1358,16 +1417,16 @@ def list_ir_imports(
     return [_batch_summary(batch) for batch in batches]
 
 
-@router.get("/data/ir/imports/{batch_id}", response_model=ImportBatchOut)
-def get_ir_import(
+def _get_import_batch(
+    db: Session,
+    profile: RequirementProfile,
     batch_id: int,
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
-):
+    current_user: User,
+) -> ImportBatchOut:
     batch = db.scalar(
         select(ImportBatch)
         .options(selectinload(ImportBatch.rows))
-        .where(ImportBatch.id == batch_id, ImportBatch.domain == "ir")
+        .where(ImportBatch.id == batch_id, ImportBatch.domain == profile.domain)
     )
     if batch is None:
         raise HTTPException(status_code=404, detail="import batch not found")
@@ -1375,24 +1434,17 @@ def get_ir_import(
     return _batch_out(batch)
 
 
-def _import_audit_changes(payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        field: {"from": None, "to": value}
-        for field, value in serializable_payload(payload).items()
-        if value is not None
-    }
-
-
-@router.post("/data/ir/imports/{batch_id}/confirm", response_model=ImportConfirmOut)
-def confirm_ir_import(
+def _confirm_import_batch(
+    db: Session,
+    profile: RequirementProfile,
+    model: Any,
     batch_id: int,
-    current_user: User = Depends(DATA_EDITOR),
-    db: Session = Depends(get_db),
-):
+    current_user: User,
+) -> ImportConfirmOut:
     batch = db.scalar(
         select(ImportBatch)
         .options(selectinload(ImportBatch.rows))
-        .where(ImportBatch.id == batch_id, ImportBatch.domain == "ir")
+        .where(ImportBatch.id == batch_id, ImportBatch.domain == profile.domain)
     )
     if batch is None:
         raise HTTPException(status_code=404, detail="import batch not found")
@@ -1406,28 +1458,56 @@ def confirm_ir_import(
             detail={"message": "import batch contains invalid rows", "rows": invalid_rows},
         )
 
+    # Pending file batches must satisfy the current activity template contract;
+    # collector batches keep the design legacy rules.
+    strict = batch.source_kind == "import"
+    stale_rows = []
+    for row in batch.rows:
+        row_errors = revalidate_import_payload(profile, row.payload, strict=strict)
+        if row_errors:
+            stale_rows.append({"row_number": row.row_number, "errors": row_errors})
+    if stale_rows:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "import batch rows no longer match the template, preview again",
+                "rows": stale_rows,
+            },
+        )
+
+    ai_fields = _ai_attribute_fields(profile)
     created = updated = unchanged = 0
     try:
         for row in batch.rows:
-            payload = IRRequirementIn.model_validate(row.payload).model_dump()
-            payload["requirement_type"] = "IR"
-            payload["ai_assisted"] = derive_ai_assisted(payload)
-            product = _validate_ir_record_refs(db, payload)
+            values = payload_for_record(
+                profile,
+                dict(row.payload or {}),
+                source_kind=batch.source_kind,
+                actor=current_user.username,
+            )
+            product = validate_record_refs(db, values)
             _check_ir_write_access(current_user, product.team_id)
             existing = db.scalar(
-                select(IRRequirement).where(IRRequirement.requirement_no == payload["requirement_no"])
+                select(model).where(model.requirement_no == values["requirement_no"])
             )
+            if (
+                existing is not None
+                and existing.product.team_id != product.team_id
+            ):
+                raise HTTPException(
+                    status_code=422,
+                    detail="requirement_no already belongs to another team",
+                )
             if existing is None:
                 now = _now()
-                payload["requirement_scenario"] = payload.get("requirement_scenario") or ""
                 metadata = _ai_metadata(
                     {},
                     current_user.username,
                     batch.source_kind,
-                    [field for field in AI_ATTRIBUTE_FIELDS if payload.get(field) is not None],
+                    [field for field in ai_fields if values.get(field) is not None],
                 )
-                existing = IRRequirement(
-                    **payload,
+                existing = model(
+                    **values,
                     ai_attribute_metadata=metadata,
                     record_source=batch.source_kind,
                     created_at=now,
@@ -1437,34 +1517,34 @@ def confirm_ir_import(
                 db.add(existing)
                 db.flush()
                 db.add(AuditLog(
-                    domain="ir",
+                    domain=profile.domain,
                     record_id=existing.id,
                     action="collector_confirm" if batch.source_kind == "collector" else "import_confirm",
                     actor=current_user.username,
                     source=batch.source_kind,
-                    changes=_import_audit_changes(payload),
+                    changes=_import_audit_changes(values),
                 ))
                 created += 1
             else:
                 changes = (
-                    overwrite_non_empty_fields(existing, payload)
+                    overwrite_non_empty_fields(existing, values, profile=profile)
                     if batch.update_mode == "upsert"
-                    else merge_empty_fields(existing, payload)
+                    else merge_empty_fields(existing, values, profile=profile)
                 )
                 changed_fields = {change["field"] for change in changes}
-                ai_fields = [field for field in changed_fields if field in AI_ATTRIBUTE_FIELDS]
-                if ai_fields:
+                metadata_fields = [field for field in changed_fields if field in ai_fields]
+                if metadata_fields:
                     existing.ai_attribute_metadata = _ai_metadata(
                         existing.ai_attribute_metadata,
                         current_user.username,
                         batch.source_kind,
-                        ai_fields,
+                        metadata_fields,
                     )
                 if changes:
                     existing.updated_at = _now()
                     existing.updated_by = current_user.username
                     db.add(AuditLog(
-                        domain="ir",
+                        domain=profile.domain,
                         record_id=existing.id,
                         action="collector_confirm" if batch.source_kind == "collector" else "import_confirm",
                         actor=current_user.username,
@@ -1491,6 +1571,337 @@ def confirm_ir_import(
     )
 
 
+@router.post("/data/ir/imports/preview", response_model=ImportBatchOut, status_code=201)
+async def preview_ir_import(
+    request: Request,
+    mode: Literal["upsert", "fill_empty"] = Query(default="fill_empty"),
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    payload = await _import_preview_payload(request)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="文件没有数据行")
+    batch = create_import_batch(
+        db,
+        IRRequirement,
+        [RequirementImportRowInput(raw=row) for row in payload.rows],
+        profile=DESIGN_PROFILE,
+        source_kind="import",
+        filename=payload.filename,
+        created_by=current_user.username,
+        current_user=current_user,
+        update_mode=mode,
+    )
+    db.commit()
+    db.refresh(batch)
+    return _batch_out(batch)
+
+
+@router.get("/data/ir/imports", response_model=list[ImportBatchSummaryOut])
+def list_ir_imports(
+    source_kind: Literal["import", "collector"] | None = Query(default=None),
+    status: Literal["pending", "confirmed"] | None = Query(default=None),
+    team_id: int | None = Query(default=None, ge=1),
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    return _list_import_batches(
+        db,
+        DESIGN_PROFILE,
+        source_kind=source_kind,
+        status=status,
+        team_id=team_id,
+        current_user=current_user,
+    )
+
+
+@router.get("/data/ir/imports/{batch_id}", response_model=ImportBatchOut)
+def get_ir_import(
+    batch_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _get_import_batch(db, DESIGN_PROFILE, batch_id, current_user)
+
+
+def _import_audit_changes(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        field: {"from": None, "to": value}
+        for field, value in serializable_payload(payload).items()
+        if value is not None
+    }
+
+
+@router.post("/data/ir/imports/{batch_id}/confirm", response_model=ImportConfirmOut)
+def confirm_ir_import(
+    batch_id: int,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    return _confirm_import_batch(
+        db, DESIGN_PROFILE, IRRequirement, batch_id, current_user
+    )
+
+
+@router.get("/data/development/schema")
+def get_development_schema(
+    _current_user: User = Depends(get_current_user),
+):
+    return field_schema(DEVELOPMENT_PROFILE)
+
+
+@router.get("/data/development/import-template")
+def download_development_import_template(
+    _current_user: User = Depends(DATA_EDITOR),
+):
+    content = build_import_template(DEVELOPMENT_PROFILE)
+    filename = DEVELOPMENT_PROFILE.template_filename
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=development-requirements-template.xlsx; "
+                f"filename*=UTF-8''{quote(filename)}"
+            )
+        },
+    )
+
+
+@router.get("/data/development", response_model=DevelopmentListOut)
+def list_development_requirements(
+    team_id: int | None = None,
+    product_id: int | None = None,
+    version_id: int | None = None,
+    iteration_id: int | None = None,
+    keyword: str | None = None,
+    requirement_no: str | None = None,
+    requirement_type: Literal["IR", "SR", "AR"] | None = None,
+    progress: str | None = None,
+    ai_applicability: bool | None = None,
+    implementation_ai_assisted: bool | None = None,
+    development_ai_assisted: bool | None = None,
+    ai_dev_mode: str | None = None,
+    ai_assisted: bool | None = None,
+    completed_from: date | None = None,
+    completed_to: date | None = None,
+    sort_by: str = "completed_at",
+    sort_order: Literal["asc", "desc"] = "desc",
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    if team_id is not None and current_user.role == UserRole.MAINTAINER.value:
+        _check_ir_write_access(current_user, team_id)
+    conditions = []
+    if current_user.role == UserRole.MAINTAINER.value:
+        conditions.append(Product.team_id == current_user.maintainer_team_id)
+    if team_id is not None:
+        conditions.append(Product.team_id == team_id)
+    if product_id is not None:
+        conditions.append(DevelopmentRequirement.product_id == product_id)
+    if version_id is not None:
+        conditions.append(DevelopmentRequirement.version_id == version_id)
+    if iteration_id is not None:
+        conditions.append(DevelopmentRequirement.iteration_id == iteration_id)
+    if keyword:
+        pattern = f"%{keyword.strip()}%"
+        conditions.append(or_(
+            DevelopmentRequirement.requirement_no.ilike(pattern),
+            DevelopmentRequirement.requirement_name.ilike(pattern),
+        ))
+    if requirement_no is not None:
+        conditions.append(DevelopmentRequirement.requirement_no == requirement_no)
+    if requirement_type is not None:
+        conditions.append(DevelopmentRequirement.requirement_type == requirement_type)
+    if progress is not None:
+        conditions.append(DevelopmentRequirement.progress == progress)
+    if ai_applicability is not None:
+        conditions.append(DevelopmentRequirement.ai_applicability == ai_applicability)
+    if implementation_ai_assisted is not None:
+        conditions.append(
+            DevelopmentRequirement.implementation_ai_assisted == implementation_ai_assisted
+        )
+    if development_ai_assisted is not None:
+        conditions.append(
+            DevelopmentRequirement.development_ai_assisted == development_ai_assisted
+        )
+    if ai_dev_mode is not None:
+        conditions.append(DevelopmentRequirement.ai_dev_mode == ai_dev_mode)
+    if ai_assisted is not None:
+        conditions.append(DevelopmentRequirement.ai_assisted == ai_assisted)
+    if completed_from is not None:
+        conditions.append(DevelopmentRequirement.completed_at >= completed_from)
+    if completed_to is not None:
+        conditions.append(DevelopmentRequirement.completed_at <= completed_to)
+
+    sort_fields = {
+        "requirement_no": DevelopmentRequirement.requirement_no,
+        "requirement_name": DevelopmentRequirement.requirement_name,
+        "progress": DevelopmentRequirement.progress,
+        "completed_at": DevelopmentRequirement.completed_at,
+        "implementation_estimated_workload": DevelopmentRequirement.implementation_estimated_workload,
+        "implementation_actual_workload": DevelopmentRequirement.implementation_actual_workload,
+        "development_estimated_workload": DevelopmentRequirement.development_estimated_workload,
+        "development_actual_workload": DevelopmentRequirement.development_actual_workload,
+        "ai_dev_mode": DevelopmentRequirement.ai_dev_mode,
+        "updated_at": DevelopmentRequirement.updated_at,
+        "id": DevelopmentRequirement.id,
+    }
+    sort_column = sort_fields.get(sort_by)
+    if sort_column is None:
+        raise HTTPException(status_code=422, detail="unsupported sort field")
+    direction = sort_column.asc() if sort_order == "asc" else sort_column.desc()
+
+    summary_stmt = (
+        select(
+            DevelopmentRequirement.progress,
+            DevelopmentRequirement.implementation_ai_assisted,
+            DevelopmentRequirement.development_ai_assisted,
+            DevelopmentRequirement.ai_assisted,
+            DevelopmentRequirement.implementation_estimated_workload,
+            DevelopmentRequirement.implementation_actual_workload,
+            DevelopmentRequirement.development_estimated_workload,
+            DevelopmentRequirement.development_actual_workload,
+        )
+        .select_from(DevelopmentRequirement)
+        .join(Product, DevelopmentRequirement.product_id == Product.id)
+        .where(*conditions)
+    )
+    summary_rows = db.execute(summary_stmt).all()
+
+    stmt = (
+        _requirement_query(DevelopmentRequirement)
+        .where(*conditions)
+        .order_by(None)
+        .order_by(direction, DevelopmentRequirement.id.desc())
+    )
+    total = len(summary_rows)
+    records = db.scalars(stmt.offset((page - 1) * page_size).limit(page_size)).unique().all()
+    return DevelopmentListOut(
+        items=[_development_out(db, record) for record in records],
+        total=total,
+        page=page,
+        page_size=page_size,
+        summary=DevelopmentSummaryOut(
+            **summarize_records(summary_rows, profile=DEVELOPMENT_PROFILE)
+        ),
+    )
+
+
+@router.post("/data/development", response_model=DevelopmentRequirementOut, status_code=201)
+def create_development_requirement(
+    payload: DevelopmentRequirementIn,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    record = _create_requirement(
+        db, DEVELOPMENT_PROFILE, DevelopmentRequirement, payload, current_user
+    )
+    return _development_out(db, record)
+
+
+@router.patch("/data/development/bulk", response_model=list[DevelopmentRequirementOut])
+def bulk_update_development_requirements(
+    payload: DevelopmentBulkUpdateIn,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    records = _bulk_update_requirements(
+        db, DEVELOPMENT_PROFILE, DevelopmentRequirement, payload, current_user
+    )
+    return [_development_out(db, record) for record in records]
+
+
+@router.patch("/data/development/{record_id}", response_model=DevelopmentRequirementOut)
+def update_development_requirement(
+    record_id: int,
+    payload: DevelopmentRequirementUpdateIn,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    record = _update_requirement(
+        db, DEVELOPMENT_PROFILE, DevelopmentRequirement, record_id, payload, current_user
+    )
+    return _development_out(db, record)
+
+
+@router.get("/data/development/{record_id}/audit-logs")
+def list_development_audit_logs(
+    record_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _list_audit_logs(
+        db, DEVELOPMENT_PROFILE, DevelopmentRequirement, record_id, current_user
+    )
+
+
+@router.post("/data/development/imports/preview", response_model=ImportBatchOut, status_code=201)
+async def preview_development_import(
+    request: Request,
+    mode: Literal["upsert", "fill_empty"] = Query(default="fill_empty"),
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    payload = await _import_preview_payload(request)
+    if not payload.rows:
+        raise HTTPException(status_code=422, detail="文件没有数据行")
+    batch = create_import_batch(
+        db,
+        DevelopmentRequirement,
+        [RequirementImportRowInput(raw=row) for row in payload.rows],
+        profile=DEVELOPMENT_PROFILE,
+        source_kind="import",
+        filename=payload.filename,
+        created_by=current_user.username,
+        current_user=current_user,
+        update_mode=mode,
+    )
+    db.commit()
+    db.refresh(batch)
+    return _batch_out(batch)
+
+
+@router.get("/data/development/imports", response_model=list[ImportBatchSummaryOut])
+def list_development_imports(
+    source_kind: Literal["import", "collector"] | None = Query(default=None),
+    status: Literal["pending", "confirmed"] | None = Query(default=None),
+    team_id: int | None = Query(default=None, ge=1),
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    return _list_import_batches(
+        db,
+        DEVELOPMENT_PROFILE,
+        source_kind=source_kind,
+        status=status,
+        team_id=team_id,
+        current_user=current_user,
+    )
+
+
+@router.get("/data/development/imports/{batch_id}", response_model=ImportBatchOut)
+def get_development_import(
+    batch_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return _get_import_batch(db, DEVELOPMENT_PROFILE, batch_id, current_user)
+
+
+@router.post("/data/development/imports/{batch_id}/confirm", response_model=ImportConfirmOut)
+def confirm_development_import(
+    batch_id: int,
+    current_user: User = Depends(DATA_EDITOR),
+    db: Session = Depends(get_db),
+):
+    return _confirm_import_batch(
+        db, DEVELOPMENT_PROFILE, DevelopmentRequirement, batch_id, current_user
+    )
+
+
 def _ir_metric_records(
     db: Session,
     current_user: User,
@@ -1508,6 +1919,9 @@ def _ir_metric_records(
     if team_id is not None and current_user.role == UserRole.MAINTAINER.value:
         _check_ir_write_access(current_user, team_id)
     stmt = _ir_record_query(db)
+    # The provisional overview KPIs only read IR-type design records; SR and
+    # development records are intentionally out of scope for this change.
+    stmt = stmt.where(IRRequirement.requirement_type == "IR")
     if current_user.role == UserRole.MAINTAINER.value:
         stmt = stmt.where(Product.team_id == current_user.maintainer_team_id)
     if team_id is not None:

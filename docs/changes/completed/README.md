@@ -1,5 +1,6 @@
 # Completed Changes
 
+- [需求活动工作台](requirement-activity-workbench.md)：需求数据管理改为设计/开发活动页签，按两份新模板维护、导入和统计；设计沿用 IR 数据，开发独立记录；后端/前端/构建/Gateway E2E/文档检查通过，完整 gate 的既有 Overview 视觉边界另行记录。
 - [管理页 UI 与上下文边界重构](admin-management-pages.md)：重构数据网关、数据采集、用户与权限三页，新增 Gateway status/Team options 投影，采集范围改为产品/PI 派生；Gateway E2E 通过，全量 gate 的既有 Overview 视觉边界另行记录。
 - [产品、PI 与迭代层级重构](product-pi-hierarchy.md)：产品版本页改为全宽团队 → 产品 → PI → 迭代层级工作台，PI 对应 IR PI 列，迭代可选；前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。
 - [团队人员 Excel 导入导出](team-personnel-excel-io.md)：团队人员页增加模板下载、带预览确认的批量导入和按可见范围导出；后端/前端/构建/文档检查通过，全量 gate 的既有 Overview 视觉边界另行记录。

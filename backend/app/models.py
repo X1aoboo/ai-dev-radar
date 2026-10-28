@@ -284,6 +284,55 @@ class IRRequirement(Base):
     iteration: Mapped[Iteration] = relationship()
 
 
+class DevelopmentRequirement(Base):
+    """开发活动源数据记录；实现设计/编码开发责任人与工作量独立保存。
+
+    ``completed_at`` 的页面语义是“开发时间”。开发记录与设计记录（IR）使用
+    独立表，同一需求编号可以同时出现在两个活动中，互不自动同步。
+    """
+
+    __tablename__ = "development_requirements"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    requirement_type: Mapped[str] = mapped_column(String(10), default="IR", server_default="IR")
+    requirement_no: Mapped[str] = mapped_column(String(100), unique=True)
+    requirement_name: Mapped[str] = mapped_column(String(200))
+    product_id: Mapped[int] = mapped_column(ForeignKey("products.id"))
+    version_id: Mapped[int] = mapped_column(ForeignKey("product_versions.id"))
+    iteration_id: Mapped[int] = mapped_column(ForeignKey("iterations.id"))
+    completed_at: Mapped[date] = mapped_column(Date)
+    progress: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    implementation_owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    implementation_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    development_owner_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    development_employee_id: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    implementation_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    implementation_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    development_estimated_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    development_actual_workload: Mapped[float | None] = mapped_column(Float, nullable=True)
+    ai_applicability: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    implementation_ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    development_ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ai_dev_mode: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    ai_assisted: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    ai_attribute_metadata: Mapped[dict] = mapped_column(JSON, default=dict)
+    remark: Mapped[str | None] = mapped_column(Text, nullable=True)
+    record_source: Mapped[str] = mapped_column(String(20), default="manual")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        default=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+        onupdate=lambda: datetime.now(timezone.utc).replace(tzinfo=None),
+    )
+    updated_by: Mapped[str] = mapped_column(String(100))
+
+    product: Mapped[Product] = relationship()
+    version: Mapped[ProductVersion] = relationship()
+    iteration: Mapped[Iteration] = relationship()
+
+
 class AIReviewOpinion(Base):
     """一条 AI 生成的 MR 检视意见；不保存意见正文。"""
 

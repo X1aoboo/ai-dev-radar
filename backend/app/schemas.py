@@ -242,7 +242,7 @@ class IterationUpdateIn(BaseModel):
 class IRRequirementIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    requirement_type: Literal["IR"] = "IR"
+    requirement_type: Literal["IR", "SR"]
     requirement_no: str = Field(min_length=1, max_length=100)
     requirement_name: str = Field(min_length=1, max_length=200)
     responsible_employee_id: str | None = Field(default=None, max_length=50)
@@ -251,9 +251,9 @@ class IRRequirementIn(BaseModel):
     version_id: int = Field(ge=1)
     iteration_id: int = Field(ge=1)
     completed_at: date
-    business_module: str = Field(min_length=1, max_length=100)
+    business_module: str = Field(default="", max_length=100)
     requirement_scenario: str | None = Field(default=None, max_length=200)
-    progress: str | None = Field(default=None, max_length=20)
+    progress: str = Field(min_length=1, max_length=20)
     sa_owner_name: str | None = Field(default=None, max_length=100)
     sa_employee_id: str | None = Field(default=None, max_length=50)
     se_owner_name: str | None = Field(default=None, max_length=100)
@@ -272,11 +272,21 @@ class IRRequirementIn(BaseModel):
     ai_assisted: bool | None = None
     remark: str | None = Field(default=None, max_length=2000)
 
+    @model_validator(mode="after")
+    def validate_owners(self):
+        for label, name, employee_id in (
+            ("SA", self.sa_owner_name, self.sa_employee_id),
+            ("SE", self.se_owner_name, self.se_employee_id),
+        ):
+            if not name and not employee_id:
+                raise ValueError(f"{label} 不能为空")
+        return self
+
 
 class IRRequirementUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    requirement_type: Literal["IR"] | None = None
+    requirement_type: Literal["IR", "SR"] | None = None
     requirement_no: str | None = Field(default=None, min_length=1, max_length=100)
     requirement_name: str | None = Field(default=None, min_length=1, max_length=200)
     responsible_employee_id: str | None = Field(default=None, max_length=50)
@@ -285,12 +295,12 @@ class IRRequirementUpdateIn(BaseModel):
     version_id: int | None = Field(default=None, ge=1)
     iteration_id: int | None = Field(default=None, ge=1)
     completed_at: date | None = None
-    business_module: str | None = Field(default=None, min_length=1, max_length=100)
+    business_module: str | None = Field(default=None, max_length=100)
     requirement_scenario: str | None = Field(default=None, max_length=200)
-    progress: str | None = Field(default=None, max_length=20)
-    sa_owner_name: str | None = Field(default=None, max_length=100)
+    progress: str | None = Field(default=None, min_length=1, max_length=20)
+    sa_owner_name: str | None = Field(default=None, min_length=1, max_length=100)
     sa_employee_id: str | None = Field(default=None, max_length=50)
-    se_owner_name: str | None = Field(default=None, max_length=100)
+    se_owner_name: str | None = Field(default=None, min_length=1, max_length=100)
     se_employee_id: str | None = Field(default=None, max_length=50)
     estimated_workload: float | None = Field(default=None, ge=0)
     actual_workload: float | None = Field(default=None, ge=0)
@@ -420,6 +430,148 @@ class IRListOut(BaseModel):
     page: int
     page_size: int
     summary: IRSummaryOut
+
+
+class DevelopmentRequirementIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_type: Literal["IR", "SR", "AR"]
+    requirement_no: str = Field(min_length=1, max_length=100)
+    requirement_name: str = Field(min_length=1, max_length=200)
+    product_id: int = Field(ge=1)
+    version_id: int = Field(ge=1)
+    iteration_id: int = Field(ge=1)
+    completed_at: date
+    progress: str = Field(min_length=1, max_length=20)
+    implementation_owner_name: str | None = Field(default=None, max_length=100)
+    implementation_employee_id: str | None = Field(default=None, max_length=50)
+    development_owner_name: str | None = Field(default=None, max_length=100)
+    development_employee_id: str | None = Field(default=None, max_length=50)
+    implementation_estimated_workload: float | None = Field(default=None, ge=0)
+    implementation_actual_workload: float | None = Field(default=None, ge=0)
+    development_estimated_workload: float | None = Field(default=None, ge=0)
+    development_actual_workload: float | None = Field(default=None, ge=0)
+    ai_applicability: bool | None = None
+    implementation_ai_assisted: bool | None = None
+    development_ai_assisted: bool | None = None
+    ai_dev_mode: str | None = Field(default=None, max_length=60)
+    ai_assisted: bool | None = None
+    remark: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_owners(self):
+        for label, name, employee_id in (
+            ("实现设计责任人", self.implementation_owner_name, self.implementation_employee_id),
+            ("开发责任人", self.development_owner_name, self.development_employee_id),
+        ):
+            if not name and not employee_id:
+                raise ValueError(f"{label} 不能为空")
+        return self
+
+
+class DevelopmentRequirementUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    requirement_type: Literal["IR", "SR", "AR"] | None = None
+    requirement_no: str | None = Field(default=None, min_length=1, max_length=100)
+    requirement_name: str | None = Field(default=None, min_length=1, max_length=200)
+    product_id: int | None = Field(default=None, ge=1)
+    version_id: int | None = Field(default=None, ge=1)
+    iteration_id: int | None = Field(default=None, ge=1)
+    completed_at: date | None = None
+    progress: str | None = Field(default=None, min_length=1, max_length=20)
+    implementation_owner_name: str | None = Field(default=None, min_length=1, max_length=100)
+    implementation_employee_id: str | None = Field(default=None, max_length=50)
+    development_owner_name: str | None = Field(default=None, min_length=1, max_length=100)
+    development_employee_id: str | None = Field(default=None, max_length=50)
+    implementation_estimated_workload: float | None = Field(default=None, ge=0)
+    implementation_actual_workload: float | None = Field(default=None, ge=0)
+    development_estimated_workload: float | None = Field(default=None, ge=0)
+    development_actual_workload: float | None = Field(default=None, ge=0)
+    ai_applicability: bool | None = None
+    implementation_ai_assisted: bool | None = None
+    development_ai_assisted: bool | None = None
+    ai_dev_mode: str | None = Field(default=None, max_length=60)
+    ai_assisted: bool | None = None
+    remark: str | None = Field(default=None, max_length=2000)
+
+
+class DevelopmentBulkUpdateItem(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int = Field(ge=1)
+    changes: DevelopmentRequirementUpdateIn
+
+
+class DevelopmentBulkUpdateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    items: list[DevelopmentBulkUpdateItem] = Field(min_length=1, max_length=100)
+
+
+class DevelopmentSummaryOut(BaseModel):
+    total: int
+    by_progress: dict[str, int]
+    ai_used_count: int
+    ai_known_count: int
+    ai_usage_rate: float | None
+    implementation_estimated_workload: float | None
+    implementation_actual_workload: float | None
+    development_estimated_workload: float | None
+    development_actual_workload: float | None
+    total_estimated_workload: float | None
+    total_actual_workload: float | None
+
+
+class DevelopmentRequirementOut(BaseModel):
+    id: int
+    requirement_type: str
+    requirement_no: str
+    requirement_name: str
+    product_id: int
+    product_name: str
+    team_id: int
+    team_name: str
+    version_id: int
+    version_name: str
+    iteration_id: int
+    iteration_name: str
+    completed_at: date
+    progress: str | None
+    implementation_owner_name: str | None
+    implementation_employee_id: str | None
+    implementation_employee_name: str | None
+    implementation_employee_pending: bool
+    development_owner_name: str | None
+    development_employee_id: str | None
+    development_employee_name: str | None
+    development_employee_pending: bool
+    implementation_estimated_workload: float | None
+    implementation_actual_workload: float | None
+    development_estimated_workload: float | None
+    development_actual_workload: float | None
+    total_estimated_workload: float | None
+    total_actual_workload: float | None
+    ai_applicability: bool | None
+    implementation_ai_assisted: bool | None
+    development_ai_assisted: bool | None
+    ai_dev_mode: str | None
+    ai_assisted: bool | None
+    ai_attribute_metadata: dict[str, Any]
+    remark: str | None
+    record_source: str
+    created_at: datetime
+    updated_at: datetime
+    updated_by: str
+    valid: bool
+
+
+class DevelopmentListOut(BaseModel):
+    items: list[DevelopmentRequirementOut]
+    total: int
+    page: int
+    page_size: int
+    summary: DevelopmentSummaryOut
 
 
 class ImportPreviewIn(BaseModel):

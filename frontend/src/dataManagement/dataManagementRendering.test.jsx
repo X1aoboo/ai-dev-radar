@@ -34,7 +34,7 @@ function MockForm({ children, onFinish }) {
 }
 function mockUseForm() { return [{ setFieldsValue: vi.fn(), submit: vi.fn() }] }
 function mockUseWatch() { return undefined }
-function MockFormItem({ children, label }) { return typeof children === 'function' ? children({ getFieldValue: () => 'viewer' }) : <label>{label}{children}</label> }
+function MockFormItem({ children, label, rules = [] }) { return typeof children === 'function' ? children({ getFieldValue: () => 'viewer' }) : <label data-required={rules.some((rule) => rule.required) ? 'true' : undefined}>{label}{children}</label> }
 
 function MockInput(props) { return <input {...props} /> }
 function MockInputTextArea(props) { return <textarea {...props} className={`resize-none ${props.className ?? ''}`.trim()} style={{ resize: 'none', ...props.style }} /> }
@@ -78,7 +78,22 @@ function MockSegmented({ options = [], value, onChange }) {
 }
 function MockTag({ children }) { return <span>{children}</span> }
 function MockPopconfirm({ children, onConfirm, title, description }) { return <span data-popconfirm data-on-confirm={onConfirm} data-title={title} data-description={description}>{children}</span> }
-function MockTabs({ items = [], activeKey, onChange }) { return <div data-tabs data-active-key={activeKey}>{items.map((item) => <section key={item.key}><h3>{item.label}</h3><button type="button" aria-label={`切换到 ${item.label}`} onClick={() => onChange?.(item.key)}>切换</button>{item.children}</section>)}</div> }
+function MockTabs({ items = [], activeKey, onChange }) {
+  const mounted = React.useRef(new Set())
+  const activeItem = items.find((item) => item.key === activeKey) ?? items[0]
+  if (activeItem) mounted.current.add(activeItem.key)
+  return (
+    <div data-tabs data-active-key={activeItem?.key}>
+      {items.map((item) => (
+        <section key={item.key}>
+          <h3>{item.label}</h3>
+          <button type="button" aria-label={`切换到 ${item.label}`} onClick={() => onChange?.(item.key)}>切换</button>
+          {mounted.current.has(item.key) ? item.children : null}
+        </section>
+      ))}
+    </div>
+  )
+}
 function MockDescriptions({ items = [] }) { return <dl>{items.map((item) => <div key={item.key}><dt>{item.label}</dt><dd>{item.children}</dd></div>)}</dl> }
 function MockDivider({ children }) { return <hr data-divider aria-label={children} /> }
 function MockSteps({ items = [] }) { return <ol>{items.map((item) => <li key={item.title}>{item.title}</li>)}</ol> }
@@ -135,6 +150,7 @@ vi.mock('@ant-design/icons', () => {
 })
 
 import DataManagementPage from './DataManagementPage.jsx'
+import { DESIGN_TEMPLATE_HEADERS, DEVELOPMENT_TEMPLATE_HEADERS } from './requirements/requirementProfiles.js'
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -146,7 +162,7 @@ const version = { id: 20, name: '版本A', product_id: 10, product_name: '产品
 const versionB = { id: 21, name: '版本B', product_id: 11, product_name: '产品B', team_id: 2, team_name: '团队B', iterations: [] }
 const member = { id: 40, team_id: 1, employee_id: 'A001', name: '成员一', role: 'SA' }
 const memberB = { id: 41, team_id: 2, employee_id: 'B001', name: '成员二', role: '测试' }
-const irRecord = {
+const designRecord = {
   id: 50,
   requirement_type: 'IR',
   requirement_no: 'IR-001',
@@ -161,7 +177,6 @@ const irRecord = {
   iteration_name: '迭代一',
   completed_at: '2026-08-20',
   business_module: 'CNAE',
-  requirement_scenario: '场景一',
   progress: '进行中',
   sa_owner_name: '成员一',
   sa_employee_id: 'A001',
@@ -177,23 +192,18 @@ const irRecord = {
   se_ai_assisted: false,
   ai_dev_mode: '设计开发一体化',
   ai_assisted: true,
-  ai_attribute_metadata: {},
   remark: '备注一',
-  estimated_workload: 2,
-  actual_workload: 1,
-  total_estimated_workload: 2,
-  total_actual_workload: 1,
   sa_estimated_workload: 1,
   sa_actual_workload: 1,
   se_estimated_workload: 1,
   se_actual_workload: 0,
-  responsible_employee_id: 'A001',
-  responsible_employee_pending: false,
+  total_estimated_workload: 2,
+  total_actual_workload: 1,
   record_source: 'manual',
   updated_by: 'admin',
   valid: true,
 }
-const irSummary = {
+const designSummary = {
   total: 101,
   by_progress: { 进行中: 1, 完成: 0 },
   ai_used_count: 1,
@@ -205,6 +215,58 @@ const irSummary = {
   se_actual_workload: 0,
   total_estimated_workload: 2,
   total_actual_workload: 1,
+}
+const developmentRecord = {
+  id: 60,
+  requirement_type: 'AR',
+  requirement_no: 'AR-001',
+  requirement_name: '开发需求',
+  team_id: 1,
+  team_name: '团队A',
+  product_id: 10,
+  product_name: '产品A',
+  version_id: 20,
+  version_name: '版本A',
+  iteration_id: 30,
+  iteration_name: '迭代一',
+  completed_at: '2026-08-21',
+  progress: '完成',
+  implementation_owner_name: '成员一',
+  implementation_employee_id: 'A001',
+  implementation_employee_name: '成员一',
+  implementation_employee_pending: false,
+  development_owner_name: '成员二',
+  development_employee_id: 'B001',
+  development_employee_name: '成员二',
+  development_employee_pending: true,
+  ai_applicability: true,
+  implementation_ai_assisted: true,
+  development_ai_assisted: false,
+  ai_dev_mode: '超级单兵',
+  ai_assisted: true,
+  implementation_estimated_workload: 2,
+  implementation_actual_workload: 1,
+  development_estimated_workload: 3,
+  development_actual_workload: 2,
+  total_estimated_workload: 5,
+  total_actual_workload: 3,
+  remark: '开发备注',
+  record_source: 'manual',
+  updated_by: 'admin',
+  valid: true,
+}
+const developmentSummary = {
+  total: 19,
+  by_progress: { 进行中: 1, 完成: 3 },
+  ai_used_count: 2,
+  ai_known_count: 2,
+  ai_usage_rate: 1,
+  implementation_estimated_workload: 2,
+  implementation_actual_workload: 1,
+  development_estimated_workload: 3,
+  development_actual_workload: 2,
+  total_estimated_workload: 5,
+  total_actual_workload: 3,
 }
 const catalog = [{ id: 1, code: 'sa', name: 'SA设计', kind: 'key', metrics: [{ id: 100, activity_id: 1, code: 'sa-pen', name: 'IR需求渗透率', type: 'penetration', numerator_semantic: 'AI数', denominator_semantic: '总数', collect_method: 'manual_only' }] }]
 const teamImportPreview = { filename: 'team.csv', total_rows: 2, valid_rows: 2, invalid_rows: 0, rows: [{ row_number: 2, team_name: '导入团队', employee_id: 'IMP001', name: '导入成员', role: 'SA', action: 'create', team_action: 'create', changes: {}, errors: [], warnings: [], target_member_id: null }, { row_number: 3, team_name: '团队A', employee_id: 'A001', name: '成员一', role: 'SE', action: 'update', team_action: 'existing', changes: { role: 'SE' }, errors: [], warnings: [], target_member_id: 40 }], summary: { total_rows: 2, valid_rows: 2, invalid_rows: 0, create: 1, update: 1, unchanged: 0, teams_create: 1 } }
@@ -225,36 +287,72 @@ function responseFor(url) {
   if (url.startsWith('/api/maturity/records?') && url.includes('month=2026-07')) return [{ ...maturityRecord, month: '2026-07', score_raw: '3', note: '上月评估' }]
   if (url.startsWith('/api/maturity/records?')) return []
   if (url.startsWith('/api/maturity/overview?')) return { kind: url.includes('kind=general') ? 'general' : 'key', team_count: 2, activities: [{ activity_id: 1, activity_name: 'SA设计', score_display: '3.00', level: 'L3', assessed_team_count: 1 }] }
-  if (url.startsWith('/api/data/ir?')) return { items: [irRecord], total: 101, page: 1, page_size: 20, summary: irSummary }
-  if (url.includes('/imports/preview')) return { id: 300, domain: 'ir', source_kind: 'import', status: 'pending', team_id: null, filename: 'ir.csv', total_rows: 1, valid_rows: 1, invalid_rows: 0, rows: [{ row_number: 2, source_id: 'IR-NEW', operation: 'insert', diff: {}, errors: [], warnings: [] }] }
+  if (url.startsWith('/api/data/ir?')) return { items: [designRecord], total: 101, page: 1, page_size: 20, summary: designSummary }
+  if (url.startsWith('/api/data/development?')) return { items: [developmentRecord], total: 19, page: 1, page_size: 20, summary: developmentSummary }
+  if (url.startsWith('/api/data/ir/imports/preview')) return { id: 300, domain: 'ir', source_kind: 'import', status: 'pending', team_id: null, filename: 'design.csv', total_rows: 1, valid_rows: 1, invalid_rows: 0, rows: [{ row_number: 2, source_id: 'IR-NEW', operation: 'insert', diff: {}, errors: [], warnings: [] }] }
+  if (url.startsWith('/api/data/development/imports/preview')) return { id: 400, domain: 'development', source_kind: 'import', status: 'pending', team_id: null, filename: 'development.csv', total_rows: 1, valid_rows: 1, invalid_rows: 0, rows: [{ row_number: 2, source_id: 'AR-NEW', operation: 'insert', diff: {}, errors: [], warnings: [] }] }
   if (url === '/api/data/ir/imports?source_kind=collector&status=pending') return [collectorBatchSummary]
   if (url === '/api/data/ir/imports/301') return collectorBatchDetails
   if (url === '/api/data/ir/imports/301/confirm') return { created: 1, updated: 0, unchanged: 0 }
-  if (url.includes('/imports/300/confirm')) return { created: 1, updated: 0, unchanged: 0 }
+  if (url.includes('/api/data/ir/imports/300/confirm')) return { created: 1, updated: 0, unchanged: 0 }
+  if (url.includes('/api/data/development/imports/400/confirm')) return { created: 1, updated: 0, unchanged: 0 }
   return {}
 }
 
-async function render(section, user = { id: 1, username: 'admin', role: 'admin' }, initialMonth, respond = responseFor) {
+async function render(section, user = { id: 1, username: 'admin', role: 'admin' }, initialMonth, respond = responseFor, activity = 'design') {
   fetchJson.mockImplementation(async (url) => respond(String(url)))
   let renderer
-  await act(async () => { renderer = create(<DataManagementPage section={section} user={user} initialMonth={initialMonth} onSessionExpired={() => undefined} />) })
+  await act(async () => {
+    renderer = create(
+      <DataManagementPage
+        section={section}
+        activity={activity}
+        user={user}
+        initialMonth={initialMonth}
+        onActivityChange={() => undefined}
+        onSessionExpired={() => undefined}
+      />,
+    )
+  })
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
   return renderer
+}
+
+async function renderRequirements(activity = 'design', user = { id: 1, username: 'admin', role: 'admin' }, respond = responseFor) {
+  return render('requirements', user, undefined, respond, activity)
+}
+
+function tableHeaderLabels(renderer, label) {
+  const table = renderer.root.findAllByProps({ className: 'ir-table' }).find((node) => node.props['aria-label'] === label)
+  return table.findAllByType('th').map((node) => renderText(node).replace(/[↑↓]/g, ''))
 }
 
 afterEach(() => { fetchJson.mockReset(); downloadFile.mockReset() })
 
 describe('data management workbench rendering', () => {
-  test('requirements group IR, AR, and SR as page tabs', async () => {
-    const onRequirementTypeChange = vi.fn()
+  test('requirements page exposes design and development activity tabs only', async () => {
+    const onActivityChange = vi.fn()
     fetchJson.mockImplementation(async (url) => responseFor(String(url)))
     let renderer
-    await act(async () => { renderer = create(<DataManagementPage section="requirements" requirementType="ar" onRequirementTypeChange={onRequirementTypeChange} user={{ id: 1, username: 'admin', role: 'admin' }} onSessionExpired={() => undefined} />) })
+    await act(async () => {
+      renderer = create(
+        <DataManagementPage
+          section="requirements"
+          activity="design"
+          onActivityChange={onActivityChange}
+          user={{ id: 1, username: 'admin', role: 'admin' }}
+          onSessionExpired={() => undefined}
+        />,
+      )
+    })
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    expect(renderer.root.findByProps({ 'data-active-key': 'ar' })).toBeDefined()
-    expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toEqual(expect.arrayContaining(['IR', 'AR', 'SR']))
-    await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 SR' }).props.onClick() })
-    expect(onRequirementTypeChange).toHaveBeenCalledWith('sr')
+    expect(renderer.root.findByProps({ 'data-active-key': 'design' })).toBeDefined()
+    expect(renderer.root.findAllByType('h3').map((heading) => heading.children[0])).toEqual(['设计活动', '开发活动'])
+    const text = renderText(renderer.toJSON())
+    expect(text).not.toContain('规格待定义')
+    expect(text).not.toContain('AR 需求')
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 开发活动' }).props.onClick() })
+    expect(onActivityChange).toHaveBeenCalledWith('development')
     renderer.unmount()
   })
 
@@ -523,22 +621,87 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
-  test('IR workbench renders summary, grouped headers, full-template view, and server pagination', async () => {
-    const renderer = await render('ir')
-    expect(renderer.root.findAllByType('h1').map((heading) => heading.children[0])).toContain('IR 需求数据')
-    expect(renderer.root.findAllByProps({ className: 'ir-summary' })).toHaveLength(1)
-    expect(renderer.root.findAllByProps({ className: 'ir-table' })).toHaveLength(1)
-    expect(renderer.root.findAllByProps({ 'data-page-next': true })).toHaveLength(1)
+  test('design workbench renders 21 template columns, activity summary and grouped headers', async () => {
+    const renderer = await renderRequirements('design')
+    expect(renderer.root.findAllByType('h1').map((heading) => heading.children[0])).toContain('设计活动需求数据')
     const text = renderText(renderer.toJSON())
-    for (const label of ['需求信息', '归属', '责任人', '工作量（人天）', 'AI 属性', '设计时间', '全部模板字段']) {
-      expect(text).toContain(label)
-    }
-    expect(text).toContain('SA 或 SE 使用 AI')
+    expect(text).toContain('设计活动 · SA设计 / SE设计')
+    expect(text).toContain('AI 使用率')
+    expect(text).toContain('SA / SE 工作量')
+    expect(text).toContain('全部模板字段')
+
+    const header = tableHeaderLabels(renderer, '设计活动正式数据')
+    expect(header.slice(0, 7)).toEqual(['需求信息', '归属', '责任人', 'AI 属性', '工作量', '时间', '备注'])
+    expect(header.slice(8, 8 + DESIGN_TEMPLATE_HEADERS.length)).toEqual([...DESIGN_TEMPLATE_HEADERS])
+    expect(header[8 + DESIGN_TEMPLATE_HEADERS.length]).toBe('操作')
+
+    expect(renderer.root.findAllByProps({ className: 'ir-summary' })).toHaveLength(1)
+    expect(renderer.root.findAllByProps({ className: 'ir-collector-strip' })).toHaveLength(1)
     renderer.unmount()
   })
 
-  test('IR inline edit stages one cell and saves a bulk change', async () => {
-    const renderer = await render('ir')
+  test('development workbench renders 19 template columns, activity summary and no collector strip', async () => {
+    const renderer = await renderRequirements('development')
+    expect(renderer.root.findAllByType('h1').map((heading) => heading.children[0])).toContain('开发活动需求数据')
+    const text = renderText(renderer.toJSON())
+    expect(text).toContain('开发活动 · 实现设计 / 编码开发')
+    expect(text).toContain('实现设计 / 开发工作量')
+    expect(renderer.root.findAllByProps({ className: 'ir-collector-strip' })).toHaveLength(0)
+
+    const header = tableHeaderLabels(renderer, '开发活动正式数据')
+    expect(header.slice(0, 7)).toEqual(['需求信息', '归属', '责任人', 'AI 属性', '工作量', '时间', '备注'])
+    expect(header.slice(8, 8 + DEVELOPMENT_TEMPLATE_HEADERS.length)).toEqual([...DEVELOPMENT_TEMPLATE_HEADERS])
+    expect(header[8 + DEVELOPMENT_TEMPLATE_HEADERS.length]).toBe('操作')
+    renderer.unmount()
+  })
+
+  test('design type and AI filters query the server, show chips and reset', async () => {
+    const renderer = await renderRequirements('design')
+    const typeSelect = renderer.root.findAllByType('select').find((select) => select.props['aria-label'] === '类型')
+    await act(async () => typeSelect.props.onChange({ target: { value: 'SR' } }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    let latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/ir?')).at(-1)
+    expect(latest).toContain('requirement_type=SR')
+
+    const advancedButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('高级筛选'))
+    await act(async () => advancedButton.props.onClick())
+    const aiSelect = renderer.root.findAllByType('select').find((select) => select.props['aria-label'] === 'SA是否使用AI')
+    await act(async () => aiSelect.props.onChange({ target: { value: 'true' } }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/ir?')).at(-1)
+    expect(latest).toContain('sa_ai_assisted=true')
+    expect(renderText(renderer.root.findByProps({ className: 'ir-filter-count' }))).toBe('2')
+
+    const resetButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('重置'))
+    await act(async () => resetButton.props.onClick())
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/ir?')).at(-1)
+    expect(latest).not.toContain('requirement_type=')
+    expect(latest).not.toContain('sa_ai_assisted=')
+    expect(renderer.root.findAllByProps({ className: 'ir-filter-count' })).toHaveLength(0)
+    renderer.unmount()
+  })
+
+  test('development type and AI filters use the development query keys', async () => {
+    const renderer = await renderRequirements('development')
+    const typeSelect = renderer.root.findAllByType('select').find((select) => select.props['aria-label'] === '类型')
+    await act(async () => typeSelect.props.onChange({ target: { value: 'AR' } }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    let latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/development?')).at(-1)
+    expect(latest).toContain('requirement_type=AR')
+
+    const advancedButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('高级筛选'))
+    await act(async () => advancedButton.props.onClick())
+    const aiSelect = renderer.root.findAllByType('select').find((select) => select.props['aria-label'] === '实现设计是否使用AI')
+    await act(async () => aiSelect.props.onChange({ target: { value: 'true' } }))
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/development?')).at(-1)
+    expect(latest).toContain('implementation_ai_assisted=true')
+    renderer.unmount()
+  })
+
+  test('design inline edit stages one cell and saves a bulk change', async () => {
+    const renderer = await renderRequirements('design')
     const progressCell = renderer.root.findAll((node) => String(node.props.className ?? '').includes('ir-cell') && String(node.props['aria-label'] ?? '').includes('编辑进展'))[0]
     expect(progressCell).toBeDefined()
     await act(async () => progressCell.props.onClick({ stopPropagation: () => undefined }))
@@ -554,52 +717,172 @@ describe('data management workbench rendering', () => {
     renderer.unmount()
   })
 
-  test('IR common and advanced filters query the server and reset', async () => {
-    const renderer = await render('ir')
-    const teamSelect = renderer.root.findAllByType('select').find((select) => select.props['aria-label'] === '归属组')
-    await act(async () => teamSelect.props.onChange({ target: { value: '1' } }))
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('team_id=1'))).toBe(true)
-
-    const advancedButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('高级筛选'))
-    await act(async () => advancedButton.props.onClick())
-    const moduleInput = renderer.root.findByProps({ 'aria-label': '所属功能' })
-    await act(async () => moduleInput.props.onChange({ target: { value: 'CNAE' } }))
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('business_module=CNAE'))).toBe(true)
-    expect(renderText(renderer.root.findByProps({ className: 'ir-filter-count' }))).toBe('2')
-
-    const resetButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('重置'))
-    await act(async () => resetButton.props.onClick())
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    const latest = fetchJson.mock.calls.map(([url]) => String(url)).filter((url) => url.startsWith('/api/data/ir?')).at(-1)
-    expect(latest).not.toContain('team_id=')
-    expect(latest).not.toContain('business_module=')
-    expect(renderer.root.findAllByProps({ className: 'ir-filter-count' })).toHaveLength(0)
+  test('development inline edit saves through the development bulk endpoint', async () => {
+    const renderer = await renderRequirements('development')
+    const progressCell = renderer.root.findAll((node) => String(node.props.className ?? '').includes('ir-cell') && String(node.props['aria-label'] ?? '').includes('编辑进展'))[0]
+    await act(async () => progressCell.props.onClick({ stopPropagation: () => undefined }))
+    const editorSelect = renderer.root.findAllByType('select').find((select) => select.props.autoFocus)
+    await act(async () => editorSelect.props.onChange({ target: { value: '已关闭' } }))
+    const saveButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('保存修改'))
+    await act(async () => saveButton.props.onClick())
+    const bulkCall = fetchJson.mock.calls.find(([url, options]) => url === '/api/data/development/bulk' && options?.method === 'PATCH')
+    expect(bulkCall).toBeDefined()
+    expect(JSON.parse(bulkCall[1].body)).toEqual({ items: [{ id: 60, changes: { progress: '已关闭' } }] })
     renderer.unmount()
   })
 
-  test('IR import wizard previews a batch and confirms it explicitly', async () => {
-    const renderer = await render('ir')
+  test('design drawer exposes required fields and posts the activity payload', async () => {
+    const renderer = await renderRequirements('design')
+    const createButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('新增设计记录'))
+    await act(async () => createButton.props.onClick())
+    const drawer = renderer.root.findByProps({ 'data-drawer': true })
+    expect(drawer.props['aria-label']).toBe('新增设计记录')
+    const requiredLabels = drawer.findAll((node) => node.props['data-required'] === 'true').map((node) => node.props.children[0])
+    expect(requiredLabels).toEqual(['需求类型', '需求编号', '需求标题', '进展', '归属组', 'PI', '迭代', 'SA', 'SE', '设计时间'])
+
+    const form = drawer.findAll((node) => Boolean(node.props['data-form-submit'])).at(-1)
+    await act(async () => {
+      form.props['data-form-submit']({
+        requirement_type: 'SR',
+        requirement_no: 'SR-NEW',
+        requirement_name: '新设计需求',
+        business_module: '',
+        progress: '进行中',
+        team_id: '1',
+        version_id: '20',
+        iteration_id: '30',
+        sa_owner_text: '张三 A001',
+        se_owner_text: '李四 A002',
+        ai_quality_level: '优秀',
+        ai_applicability: 'true',
+        sa_ai_assisted: 'true',
+        se_ai_assisted: '',
+        ai_dev_mode: '超级单兵',
+        sa_estimated_workload: 1,
+        sa_actual_workload: null,
+        se_estimated_workload: 2,
+        se_actual_workload: null,
+        completed_at: '2026-08-20',
+        remark: '',
+      })
+    })
+    const createCall = fetchJson.mock.calls.find(([url, options]) => url === '/api/data/ir' && options?.method === 'POST')
+    expect(createCall).toBeDefined()
+    expect(JSON.parse(createCall[1].body)).toMatchObject({
+      requirement_type: 'SR',
+      requirement_no: 'SR-NEW',
+      requirement_name: '新设计需求',
+      business_module: '',
+      product_id: 10,
+      version_id: 20,
+      iteration_id: 30,
+      completed_at: '2026-08-20',
+      sa_owner_name: '张三',
+      sa_employee_id: 'A001',
+      se_owner_name: '李四',
+      se_employee_id: 'A002',
+      ai_quality_level: '优秀',
+    })
+    renderer.unmount()
+  })
+
+  test('development drawer requires both owners and posts the development payload', async () => {
+    const renderer = await renderRequirements('development')
+    const createButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('新增开发记录'))
+    await act(async () => createButton.props.onClick())
+    const drawer = renderer.root.findByProps({ 'data-drawer': true })
+    const requiredLabels = drawer.findAll((node) => node.props['data-required'] === 'true').map((node) => node.props.children[0])
+    expect(requiredLabels).toEqual(['类型', '需求编号', '标题', '进展', '归属组', 'PI', '迭代', '实现设计责任人', '开发责任人', '开发时间'])
+
+    const form = drawer.findAll((node) => Boolean(node.props['data-form-submit'])).at(-1)
+    await act(async () => {
+      form.props['data-form-submit']({
+        requirement_type: 'AR',
+        requirement_no: 'AR-NEW',
+        requirement_name: '新开发需求',
+        progress: '未开始',
+        team_id: '1',
+        version_id: '20',
+        iteration_id: '30',
+        implementation_owner_text: '王五 B001',
+        development_owner_text: '赵六 B002',
+        ai_applicability: 'false',
+        implementation_ai_assisted: 'true',
+        development_ai_assisted: 'false',
+        ai_dev_mode: '',
+        implementation_estimated_workload: 2,
+        implementation_actual_workload: 1,
+        development_estimated_workload: 3,
+        development_actual_workload: 2,
+        completed_at: '2026-08-21',
+        remark: '开发备注',
+      })
+    })
+    const createCall = fetchJson.mock.calls.find(([url, options]) => url === '/api/data/development' && options?.method === 'POST')
+    expect(createCall).toBeDefined()
+    expect(JSON.parse(createCall[1].body)).toMatchObject({
+      requirement_type: 'AR',
+      requirement_no: 'AR-NEW',
+      requirement_name: '新开发需求',
+      product_id: 10,
+      implementation_owner_name: '王五',
+      implementation_employee_id: 'B001',
+      development_owner_name: '赵六',
+      development_employee_id: 'B002',
+      implementation_estimated_workload: 2,
+      development_actual_workload: 2,
+    })
+    renderer.unmount()
+  })
+
+  test('design import wizard previews, downloads the template and confirms the batch', async () => {
+    const renderer = await renderRequirements('design')
+    const templateButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('下载模板'))
+    await act(async () => templateButton.props.onClick())
+    expect(downloadFile.mock.calls.some(([url, name]) => url === '/api/data/ir/import-template' && name === '需求设计度量模板.xlsx')).toBe(true)
+
     const importButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('导入 Excel'))
     await act(async () => importButton.props.onClick())
     const upload = renderer.root.findByProps({ 'data-upload': true })
     await act(async () => {
-      upload.props['data-before-upload']({ name: 'ir.csv', type: 'text/csv', arrayBuffer: async () => new ArrayBuffer(0) })
+      upload.props['data-before-upload']({ name: 'design.csv', type: 'text/csv', arrayBuffer: async () => new ArrayBuffer(0) })
       await new Promise((resolve) => setTimeout(resolve, 0))
     })
     const drawer = renderer.root.findByProps({ 'data-drawer': true })
+    expect(drawer.props['aria-label']).toBe('导入设计活动 Excel')
     expect(renderText(drawer)).toContain('总行数 1')
     expect(renderText(drawer)).toContain('新增 1')
     const confirmButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('确认写入正式数据'))
     await act(async () => confirmButton.props.onClick())
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/imports/300/confirm'))).toBe(true)
+    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/api/data/ir/imports/300/confirm'))).toBe(true)
     renderer.unmount()
   })
 
-  test('collector batches render compactly and confirm through the shared drawer', async () => {
-    const renderer = await render('ir')
+  test('development import wizard uses the development API and template', async () => {
+    const renderer = await renderRequirements('development')
+    const templateButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('下载模板'))
+    await act(async () => templateButton.props.onClick())
+    expect(downloadFile.mock.calls.some(([url, name]) => url === '/api/data/development/import-template' && name === '需求开发度量模板.xlsx')).toBe(true)
+
+    const importButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('导入 Excel'))
+    await act(async () => importButton.props.onClick())
+    const upload = renderer.root.findByProps({ 'data-upload': true })
+    await act(async () => {
+      upload.props['data-before-upload']({ name: 'development.csv', type: 'text/csv', arrayBuffer: async () => new ArrayBuffer(0) })
+      await new Promise((resolve) => setTimeout(resolve, 0))
+    })
+    const drawer = renderer.root.findByProps({ 'data-drawer': true })
+    expect(drawer.props['aria-label']).toBe('导入开发活动 Excel')
+    const confirmButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('确认写入正式数据'))
+    await act(async () => confirmButton.props.onClick())
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
+    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/api/data/development/imports/400/confirm'))).toBe(true)
+    renderer.unmount()
+  })
+
+  test('collector batches render on the design activity and confirm through the shared drawer', async () => {
+    const renderer = await renderRequirements('design')
     expect(renderer.root.findAllByProps({ className: 'ir-collector-strip' })).toHaveLength(1)
     const batchButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('1/1'))
     await act(async () => batchButton.props.onClick())
@@ -609,18 +892,59 @@ describe('data management workbench rendering', () => {
     const confirmButton = renderer.root.findAllByType('button').find((button) => renderText(button).includes('确认采集批次'))
     await act(async () => confirmButton.props.onClick())
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
-    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/imports/301/confirm'))).toBe(true)
+    expect(fetchJson.mock.calls.some(([url]) => String(url).includes('/api/data/ir/imports/301/confirm'))).toBe(true)
     renderer.unmount()
   })
 
-  test('viewer is read-only and maintainer team scope is locked', async () => {
-    const viewer = await render('ir', { id: 3, username: 'viewer', role: 'viewer' })
-    expect(renderText(viewer.toJSON())).toContain('只读')
-    expect(viewer.root.findAllByType('button').some((button) => renderText(button).includes('新增 IR'))).toBe(false)
-    expect(viewer.root.findAllByProps({ className: 'ir-cell' })).toHaveLength(0)
-    viewer.unmount()
+  test('switching activity tabs keeps each activity draft separate', async () => {
+    fetchJson.mockImplementation(async (url) => responseFor(String(url)))
+    function Harness() {
+      const [activity, setActivity] = React.useState('design')
+      return (
+        <DataManagementPage
+          section="requirements"
+          activity={activity}
+          onActivityChange={setActivity}
+          user={{ id: 1, username: 'admin', role: 'admin' }}
+          onSessionExpired={() => undefined}
+        />
+      )
+    }
+    let renderer
+    await act(async () => { renderer = create(<Harness />) })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
 
-    const maintainer = await render('ir', { id: 2, username: 'maintainer.团队A', role: 'maintainer', maintainer_team_id: 1 })
+    const progressCell = renderer.root.findAll((node) => String(node.props.className ?? '').includes('ir-cell') && String(node.props['aria-label'] ?? '').includes('编辑进展'))[0]
+    await act(async () => progressCell.props.onClick({ stopPropagation: () => undefined }))
+    const editorSelect = renderer.root.findAllByType('select').find((select) => select.props.autoFocus)
+    await act(async () => editorSelect.props.onChange({ target: { value: '完成' } }))
+    expect(renderer.root.findAllByProps({ className: 'ir-savebar' })).toHaveLength(1)
+
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 开发活动' }).props.onClick() })
+    expect(renderer.root.findByProps({ 'data-tabs': true }).props['data-active-key']).toBe('development')
+    expect(renderer.root.findAll((node) => String(node.props.className ?? '').includes('ir-cell--dirty'))).toHaveLength(1)
+
+    await act(async () => { renderer.root.findByProps({ 'aria-label': '切换到 设计活动' }).props.onClick() })
+    expect(renderer.root.findAllByProps({ className: 'ir-savebar' })).toHaveLength(1)
+    expect(renderer.root.findAll((node) => String(node.props.className ?? '').includes('ir-cell--dirty'))).toHaveLength(1)
+    renderer.unmount()
+  })
+
+  test('viewer is read-only and maintainer team scope is locked for both activities', async () => {
+    const designViewer = await renderRequirements('design', { id: 3, username: 'viewer', role: 'viewer' })
+    expect(renderText(designViewer.toJSON())).toContain('只读')
+    expect(designViewer.root.findAllByType('button').some((button) => renderText(button).includes('新增设计记录'))).toBe(false)
+    expect(designViewer.root.findAllByProps({ className: 'ir-cell' })).toHaveLength(0)
+    await act(async () => designViewer.root.findByProps({ 'aria-label': '查看 IR-001' }).props.onClick())
+    const viewerDrawer = designViewer.root.findByProps({ 'data-drawer': true })
+    expect(viewerDrawer.findAllByType('button').some((button) => renderText(button).includes('保存需求'))).toBe(false)
+    designViewer.unmount()
+
+    const developmentViewer = await renderRequirements('development', { id: 3, username: 'viewer', role: 'viewer' })
+    expect(developmentViewer.root.findAllByType('button').some((button) => renderText(button).includes('新增开发记录'))).toBe(false)
+    developmentViewer.unmount()
+
+    const maintainer = await renderRequirements('design', { id: 2, username: 'maintainer.团队A', role: 'maintainer', maintainer_team_id: 1 })
     const teamSelect = maintainer.root.findAllByType('select').find((select) => select.props['aria-label'] === '归属组')
     expect(teamSelect.props.disabled).toBe(true)
     maintainer.unmount()

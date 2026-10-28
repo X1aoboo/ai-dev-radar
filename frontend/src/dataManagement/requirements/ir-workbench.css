@@ -1,4 +1,4 @@
-/* IR data workbench: full-width Engineering Ledger surface. */
+/* Requirement activity workbench: full-width Engineering Ledger surface. */
 
 .data-management-content--workbench {
   display: flex;
@@ -28,6 +28,12 @@
   flex: 1;
   flex-direction: column;
   min-height: 0;
+}
+
+/* Keep inactive activity workbenches mounted (draft-safe) but out of layout. */
+.ir-requirements-tabs .ant-tabs-content-hidden,
+.ir-requirements-tabs .ant-tabs-tabpane-hidden {
+  display: none;
 }
 
 .ir-workbench {
@@ -108,6 +114,15 @@
 
 .ir-summary__cell--success .ir-summary__value strong {
   color: var(--color-success);
+}
+
+.ir-summary__breakdown {
+  color: var(--color-text-tertiary);
+  font-size: 10.5px;
+  margin-top: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ir-summary__note {

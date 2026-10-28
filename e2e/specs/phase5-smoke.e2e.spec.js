@@ -18,9 +18,8 @@ const primaryRoutes = [
   ['/analytics/capabilities', '研发能力'],
   ['/analytics/teams/1', '团队详情'],
   ['/analytics/metrics/1', '指标详情'],
-  ['/data/requirements/ir', 'IR 需求'],
-  ['/data/requirements/ar', 'AR 需求'],
-  ['/data/requirements/sr', 'SR 需求'],
+  ['/data/requirements/design', '设计活动'],
+  ['/data/requirements/development', '开发活动'],
   ['/data/maturity', '成熟度评估'],
   ['/data/issues', '问题单数据'],
   ['/data/mr', 'MR数据'],
@@ -34,17 +33,22 @@ const primaryRoutes = [
 ]
 
 const legacyRedirects = [
-  ['/data/requirements', '/data/requirements/ir'],
-  ['/data/ir', '/data/requirements/ir'],
-  ['/data/ar', '/data/requirements/ar'],
-  ['/data/sr', '/data/requirements/sr'],
+  ['/data/requirements', '/data/requirements/design'],
+  ['/data/requirements/ir', '/data/requirements/design'],
+  ['/data/requirements/ar', '/data/requirements/development'],
+  ['/data/requirements/sr', '/data/requirements/design'],
+  ['/data/ir', '/data/requirements/design'],
+  ['/data/ar', '/data/requirements/development'],
+  ['/data/sr', '/data/requirements/design'],
   ['/data/dts', '/data/issues'],
-  ['/data-management', '/data/requirements/ir'],
-  ['/data-management/ir', '/data/requirements/ir'],
+  ['/data-management', '/data/requirements/design'],
+  ['/data-management/ir', '/data/requirements/design'],
+  ['/data-management/ar', '/data/requirements/development'],
+  ['/data-management/sr', '/data/requirements/design'],
   ['/team/1', '/analytics/teams/1'],
   ['/metric/1', '/analytics/metrics/1'],
   ['/config', '/settings/teams'],
-  ['/manual-entry', '/data/requirements/ir'],
+  ['/manual-entry', '/data/requirements/design'],
   ['/?category=key', '/analytics/activities'],
   ['/?category=general', '/analytics/capabilities'],
 ]
@@ -173,7 +177,7 @@ test.describe('Phase 5 Browser UI Smoke', () => {
 
   test('representative pages remain usable across the release viewports', async ({ page }) => {
     await login(page)
-    const routes = ['/', '/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/settings/teams', '/settings/collections']
+    const routes = ['/', '/analytics/activities', '/analytics/capabilities', '/data/requirements/design', '/data/requirements/development', '/settings/teams', '/settings/collections']
 
     for (const viewport of viewports) {
       await page.setViewportSize(viewport)
@@ -266,10 +270,10 @@ test.describe('Phase 5 Browser UI Smoke', () => {
     await login(page)
 
     const screenshotPlan = [
-      { viewport: viewports[0], routes: ['/', '/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/settings/teams', '/settings/collections', '/settings/users'] },
-      { viewport: viewports[1], routes: ['/', '/analytics/activities', '/analytics/capabilities', '/analytics/teams/1', '/data/requirements/ir', '/settings/teams', '/settings/collections', '/settings/users'] },
+      { viewport: viewports[0], routes: ['/', '/analytics/activities', '/analytics/capabilities', '/data/requirements/design', '/data/requirements/development', '/settings/teams', '/settings/collections', '/settings/users'] },
+      { viewport: viewports[1], routes: ['/', '/analytics/activities', '/analytics/capabilities', '/analytics/teams/1', '/data/requirements/design', '/settings/teams', '/settings/collections', '/settings/users'] },
       { viewport: wideViewport, routes: ['/', '/analytics/activities', '/analytics/capabilities', '/analytics/teams/1'] },
-      { viewport: viewports[2], routes: ['/', '/data/requirements/ir', '/settings/teams'] },
+      { viewport: viewports[2], routes: ['/', '/data/requirements/design', '/settings/teams'] },
       { viewport: viewports[3], routes: ['/', '/analytics/activities', '/settings/collections'] },
     ]
 

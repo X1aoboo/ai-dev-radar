@@ -90,7 +90,7 @@ const routeComponents = {
   CapabilitiesPage: () => <StubPage page="capabilities">研发能力</StubPage>,
   TeamDrilldownPage: () => <StubPage page="team-analytics">团队下钻</StubPage>,
   MetricDetailPage: () => <StubPage page="metric-analytics">指标详情</StubPage>,
-  DataManagementPage: ({ section }) => <StubPage page={`data-${section}`}>{section}</StubPage>,
+  DataManagementPage: ({ section, activity }) => <StubPage page={`data-${section}`}>{activity ? `${section}:${activity}` : section}</StubPage>,
   UsersSettingsPage: () => <StubPage page="settings-users">用户与权限</StubPage>,
   CollectionsSettingsPage: () => <StubPage page="settings-collections">数据采集</StubPage>,
   GatewaySettingsPage: () => <StubPage page="settings-gateway">数据网关</StubPage>,
@@ -173,7 +173,7 @@ function hasText(renderer, text) {
 }
 
 test('route metadata treats one or more trailing slashes like the canonical path', () => {
-  for (const pathname of ['/analytics/activities', '/analytics/capabilities', '/data/requirements/ir', '/data/maturity', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections', '/settings/gateway']) {
+  for (const pathname of ['/analytics/activities', '/analytics/capabilities', '/data/requirements/design', '/data/requirements/development', '/data/maturity', '/data/issues', '/settings/teams', '/settings/products', '/settings/metrics', '/settings/users', '/settings/collections', '/settings/gateway']) {
     expect(getRouteMeta(`${pathname}/`)).toEqual(getRouteMeta(pathname))
   }
   expect(getRouteMeta('/')).toEqual(getRouteMeta('////'))
@@ -194,7 +194,7 @@ afterEach(() => {
 
 test('sidebar toggles reversibly without changing navigation contracts or fetching data', async () => {
   globalThis.fetch = vi.fn(globalThis.fetch)
-  const renderer = await renderAt('/data/requirements/ir', 'viewer')
+  const renderer = await renderAt('/data/requirements/design', 'viewer')
   const links = () => renderer.root.findAllByType('a').filter(node => node.props.className?.split(' ').includes('app-nav__link'))
   const before = links().map(node => [node.props.href, node.props['aria-label']])
   const requests = globalThis.fetch.mock.calls.length
@@ -225,7 +225,7 @@ test('narrow navigation opens a drawer and closes on navigation or breakpoint ch
   let listener
   const media = { matches: true, addEventListener: (_, fn) => { listener = fn }, removeEventListener: vi.fn() }
   globalThis.matchMedia = () => media
-  const renderer = await renderAt('/data/requirements/ir')
+  const renderer = await renderAt('/data/requirements/design')
   const trigger = () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '打开导航')
   expect(trigger().props['aria-expanded']).toBe(false)
   await act(async () => trigger().props.onClick())
@@ -243,14 +243,14 @@ test('narrow navigation opens a drawer and closes on navigation or breakpoint ch
 test('desktop preference persists across mounts and storage failures are harmless', async () => {
   const values = new Map()
   globalThis.localStorage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }
-  let renderer = await renderAt('/data/requirements/ir')
+  let renderer = await renderAt('/data/requirements/design')
   await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
   await act(async () => renderer.unmount())
-  renderer = await renderAt('/data/requirements/ir')
+  renderer = await renderAt('/data/requirements/design')
   expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
   await act(async () => renderer.unmount())
   globalThis.localStorage = { getItem() { throw Error('unavailable') }, setItem() { throw Error('unavailable') } }
-  renderer = await renderAt('/data/requirements/ir')
+  renderer = await renderAt('/data/requirements/design')
   await act(async () => renderer.root.findAllByType('button').find(node => node.props['aria-label'] === '折叠导航').props.onClick())
   expect(renderer.root.findAllByType('button').some(node => node.props['aria-label'] === '展开导航')).toBe(true)
   await act(async () => renderer.unmount())
@@ -274,7 +274,7 @@ test('Team Drill-down selects Team Details while metric detail remains grouped u
 
 test('data sources are direct navigation entries for all roles', async () => {
   for (const role of ['admin', 'maintainer', 'viewer']) {
-    const renderer = await renderAt('/data/requirements/ir', role)
+    const renderer = await renderAt('/data/requirements/design', role)
     const labels = renderer.root.findAllByType('a').map(node => node.props['aria-label'])
     expect(labels).toEqual(expect.arrayContaining(['需求', '问题单', 'MR', '代码检视']))
     await act(async () => renderer.unmount())
@@ -288,9 +288,12 @@ for (const [role, pathname, page] of [
   ['admin', '/settings/teams', 'data-teams'],
   ['maintainer', '/settings/teams', 'data-teams'],
   ['viewer', '/settings/teams', 'data-teams'],
-  ['admin', '/data/requirements/ir', 'data-requirements'],
-  ['maintainer', '/data/requirements/ir', 'data-requirements'],
-  ['viewer', '/data/requirements/ir', 'data-requirements'],
+  ['admin', '/data/requirements/design', 'data-requirements'],
+  ['maintainer', '/data/requirements/design', 'data-requirements'],
+  ['viewer', '/data/requirements/design', 'data-requirements'],
+  ['admin', '/data/requirements/development', 'data-requirements'],
+  ['maintainer', '/data/requirements/development', 'data-requirements'],
+  ['viewer', '/data/requirements/development', 'data-requirements'],
 ]) {
   test(`${role} can render ${pathname}`, async () => {
     const renderer = await renderAt(pathname, role)
@@ -319,16 +322,23 @@ for (const [role, pathname] of [
 for (const [from, to] of [
   ['/team/42', '/analytics/teams/42'],
   ['/metric/99', '/analytics/metrics/99'],
-  ['/data-management', '/data/requirements/ir'],
-  ['/data-management/ir', '/data/requirements/ir'],
-  ['/data-management/ar', '/data/requirements/ar'],
-  ['/data-management/sr', '/data/requirements/sr'],
+  ['/data-management', '/data/requirements/design'],
+  ['/data-management/ir', '/data/requirements/design'],
+  ['/data-management/ar', '/data/requirements/development'],
+  ['/data-management/sr', '/data/requirements/design'],
   ['/data-management/dts', '/data/issues'],
   ['/data-management/mr', '/data/mr'],
   ['/data-management/teams', '/settings/teams'],
   ['/data-management/products', '/settings/products'],
   ['/data-management/metrics', '/settings/metrics'],
-  ['/manual-entry', '/data/requirements/ir'],
+  ['/manual-entry', '/data/requirements/design'],
+  ['/data/requirements', '/data/requirements/design'],
+  ['/data/requirements/ir', '/data/requirements/design'],
+  ['/data/requirements/ar', '/data/requirements/development'],
+  ['/data/requirements/sr', '/data/requirements/design'],
+  ['/data/ir', '/data/requirements/design'],
+  ['/data/ar', '/data/requirements/development'],
+  ['/data/sr', '/data/requirements/design'],
 ]) {
   test(`redirects ${from} to ${to}`, async () => {
     const renderer = await renderAt(from, 'admin')
@@ -336,6 +346,30 @@ for (const [from, to] of [
     renderer.unmount()
   })
 }
+
+test('renders design and development activity routes with activity breadcrumbs', async () => {
+  const design = await renderAt('/data/requirements/design', 'admin')
+  expect(hasPage(design, 'data-requirements')).toBe(true)
+  expect(hasText(design, 'requirements:design')).toBe(true)
+  expect(hasText(design, '设计活动')).toBe(true)
+  expect(hasText(design, '数据')).toBe(true)
+  design.unmount()
+
+  const development = await renderAt('/data/requirements/development', 'admin')
+  expect(hasPage(development, 'data-requirements')).toBe(true)
+  expect(hasText(development, 'requirements:development')).toBe(true)
+  expect(hasText(development, '开发活动')).toBe(true)
+  development.unmount()
+})
+
+test('route metadata names activity pages and keeps legacy types on activity breadcrumbs', () => {
+  expect(getRouteMeta('/data/requirements/design')).toEqual({ title: '设计活动', items: [{ title: '数据' }, { title: '需求' }, { title: '设计活动' }] })
+  expect(getRouteMeta('/data/requirements/development')).toEqual({ title: '开发活动', items: [{ title: '数据' }, { title: '需求' }, { title: '开发活动' }] })
+  expect(getRouteMeta('/data/requirements')).toEqual({ title: '设计活动', items: [{ title: '数据' }, { title: '需求' }, { title: '设计活动' }] })
+  expect(getRouteMeta('/data/requirements/ir')).toEqual(getRouteMeta('/data/requirements/design'))
+  expect(getRouteMeta('/data/requirements/ar')).toEqual(getRouteMeta('/data/requirements/development'))
+  expect(getRouteMeta('/data/requirements/sr')).toEqual(getRouteMeta('/data/requirements/design'))
+})
 
 test('redirects the completed /config migration to split settings', async () => {
   const renderer = await renderAt('/config', 'admin')
@@ -363,9 +397,9 @@ test('only supported pending domains render the pending state', async () => {
   unknownDomain.unmount()
 })
 
-test('unknown requirement types fall back to IR', async () => {
+test('unknown requirement activities fall back to the design activity', async () => {
   const renderer = await renderAt('/data/requirements/custom', 'admin')
-  expect(currentPath(renderer)).toBe('/data/requirements/ir')
+  expect(currentPath(renderer)).toBe('/data/requirements/design')
   expect(hasPage(renderer, 'data-requirements')).toBe(true)
   renderer.unmount()
 })
@@ -513,7 +547,8 @@ test('assigns a named content mode without changing route ownership', async () =
     ['/', 'dashboard', 'admin'],
     ['/analytics/activities', 'analytics', 'viewer'],
     ['/analytics/teams/2', 'analytics', 'viewer'],
-    ['/data/requirements/ir', 'workbench', 'viewer'],
+    ['/data/requirements/design', 'workbench', 'viewer'],
+    ['/data/requirements/development', 'workbench', 'viewer'],
     ['/settings/collections', 'admin', 'admin'],
     ['/settings/metrics', 'catalog', 'viewer'],
     ['/settings/teams', 'management', 'admin'],
@@ -586,7 +621,8 @@ test('topbar quick search navigates only through visible page entries and labels
   expect(currentPath(renderer)).toBe('/analytics/activities')
   expect(hasPage(renderer, 'activities')).toBe(true)
   expect(renderer.root.findByProps({ 'aria-label': '通知功能暂未开放' }).props.disabled).toBe(true)
-  expect(renderer.root.findByProps({ className: 'app-topbar__help-menu' })).toBeDefined()
+  const helpMenu = renderer.root.findByProps({ className: 'app-topbar__help-menu' })
+  expect(helpMenu.findAllByType('a').some((node) => node.props.href === '/data/requirements/design')).toBe(true)
   await act(async () => renderer.unmount())
 })
 

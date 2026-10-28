@@ -3,7 +3,6 @@ import {
   Alert,
   Button as AntButton,
   Empty,
-  Form as AntForm,
   Input,
   InputNumber,
   Select,
@@ -21,13 +20,11 @@ import FilterToolbar from '../components/FilterToolbar'
 import FocusRestoringDrawer from '../components/FocusRestoringDrawer'
 import PageHeader from '../components/PageHeader'
 import StatusPage, { ContentLoadingState } from '../components/StatusPage'
-import { currentMonthId, formatMetricValue, isValidMonth } from '../overview/overviewLogic'
+import { currentMonthId, isValidMonth } from '../overview/overviewLogic'
 import { maturitySavePayload, useMaturityRecords } from '../overview/maturityData'
-import {
-  metricValueLabel,
-  sectionFromPath,
-} from './dataManagementLogic'
-import IRManagementPage from './ir/IRManagementPage'
+import { sectionFromPath } from './dataManagementLogic'
+import { DEFAULT_REQUIREMENT_ACTIVITY, REQUIREMENT_PROFILES } from './requirements/requirementProfiles'
+import RequirementWorkbench from './requirements/RequirementWorkbench'
 import TeamPersonnelPage from './team/TeamPersonnelPage'
 import ProductHierarchyPage from './products/ProductHierarchyPage'
 import MetricDictionaryPage from './metrics/MetricDictionaryPage'
@@ -137,14 +134,27 @@ function useReferenceData(onSessionExpired, user) {
   return { ...data, loading, hasLoaded, error, reload }
 }
 
-function RequirementManagement({ requirementType, onRequirementTypeChange, ...props }) {
-  const activeType = ['ir', 'ar', 'sr'].includes(requirementType) ? requirementType : 'ir'
-  const pending = (type) => <div className="workbench-page"><PageIntro title={`${type} 需求`} description="当前只有 IR 需求具备字段、校验、导入和指标口径。" /><section className="operational-state" role="status"><StatusTag tone="pending">规格待定义</StatusTag><span className="operational-state__message">暂不提供 {type} 需求表单。</span></section></div>
-  return <Tabs className="ir-requirements-tabs" activeKey={activeType} onChange={onRequirementTypeChange} items={[
-    { key: 'ir', label: 'IR', children: <IRManagementPage {...props} /> },
-    { key: 'ar', label: 'AR', children: pending('AR') },
-    { key: 'sr', label: 'SR', children: pending('SR') },
-  ]} />
+function RequirementActivities({ activity, onActivityChange, ...props }) {
+  const activeActivity = REQUIREMENT_PROFILES[activity] ? activity : DEFAULT_REQUIREMENT_ACTIVITY
+  return (
+    <Tabs
+      className="ir-requirements-tabs"
+      activeKey={activeActivity}
+      onChange={onActivityChange}
+      items={[
+        {
+          key: 'design',
+          label: '设计活动',
+          children: <RequirementWorkbench profile={REQUIREMENT_PROFILES.design} {...props} />,
+        },
+        {
+          key: 'development',
+          label: '开发活动',
+          children: <RequirementWorkbench profile={REQUIREMENT_PROFILES.development} {...props} />,
+        },
+      ]}
+    />
+  )
 }
 
 function MaturityReadOnly({ month, onSessionExpired }) {
@@ -295,7 +305,7 @@ function MaturityManagement({ user, refs, initialMonth, onSessionExpired }) {
   </div>
 }
 
-export default function DataManagementPage({ pathname, section: requestedSection, requirementType = 'ir', initialMonth, onRequirementTypeChange, user, onSessionExpired }) {
+export default function DataManagementPage({ pathname, section: requestedSection, activity = DEFAULT_REQUIREMENT_ACTIVITY, initialMonth, onActivityChange, user, onSessionExpired }) {
   const section = requestedSection ?? sectionFromPath(pathname)
   const refs = useReferenceData(onSessionExpired, user)
   if (refs.loading && !refs.hasLoaded && ['teams', 'products', 'metrics'].includes(section)) return <div className="data-management-content"><LoadingState text="加载主数据…" /></div>
@@ -303,11 +313,10 @@ export default function DataManagementPage({ pathname, section: requestedSection
   let content
   if (section === 'teams') content = <TeamPersonnelPage user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'products') content = <ProductHierarchyPage user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
-  else if (section === 'ir') content = <IRManagementPage user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
-  else if (section === 'requirements') content = <RequirementManagement requirementType={requirementType} onRequirementTypeChange={onRequirementTypeChange} user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
+  else if (section === 'requirements') content = <RequirementActivities activity={activity} onActivityChange={onActivityChange} user={user} refs={refs} onRefresh={refs.reload} onSessionExpired={onSessionExpired} />
   else if (section === 'metrics') content = <MetricDictionaryPage onSessionExpired={onSessionExpired} />
   else if (section === 'maturity') content = <MaturityManagement user={user} refs={refs} initialMonth={initialMonth} onSessionExpired={onSessionExpired} />
   else content = <EmptyState>该数据域尚未定义。</EmptyState>
-  const workbench = section === 'ir' || section === 'requirements'
+  const workbench = section === 'requirements'
   return <div className={`data-management-content${workbench ? ' data-management-content--workbench' : ''}`}><ReferenceError error={refs.error} />{content}</div>
 }

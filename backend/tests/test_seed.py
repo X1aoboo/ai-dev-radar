@@ -7,7 +7,7 @@ from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
 from app.db import Base, SessionLocal
-from app.models import AIReviewOpinion, Activity, FactRecord, IRRequirement, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
+from app.models import AIReviewOpinion, Activity, DevelopmentRequirement, FactRecord, IRRequirement, Iteration, Metric, MaturityRecord, ProductVersion, Team, User
 from app.seed import CATALOG, month_start, run_seed
 
 
@@ -37,6 +37,8 @@ def test_demo_dimensions():
         assert db.scalar(select(func.count()).select_from(User)) == 6  # admin + 4 maintainer + viewer
         assert db.scalar(select(func.count()).select_from(MaturityRecord)) == 4 * 15 * 6
         assert db.scalar(select(func.count()).select_from(IRRequirement)) == 12
+        assert db.scalar(select(func.count()).select_from(DevelopmentRequirement)) == 12
+        assert set(db.scalars(select(DevelopmentRequirement.requirement_type))) == {"AR", "SR"}
         assert db.scalar(select(func.count()).select_from(AIReviewOpinion)) == 4 * 6 * 8
 
 
@@ -83,6 +85,7 @@ def test_seed_idempotent():
             "sum_num": db.scalar(select(func.sum(FactRecord.numerator))) or 0,
             "maturity": db.scalar(select(func.count()).select_from(MaturityRecord)),
             "ir": db.scalar(select(func.count()).select_from(IRRequirement)),
+            "development": db.scalar(select(func.count()).select_from(DevelopmentRequirement)),
             "ai_review_opinions": db.scalar(select(func.count()).select_from(AIReviewOpinion)),
         }
 

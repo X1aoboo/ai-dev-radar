@@ -27,6 +27,7 @@ from .models import (
     AIReviewOpinion,
     Activity,
     AuditLog,
+    DevelopmentRequirement,
     FactRecord,
     IRRequirement,
     ImportBatch,
@@ -420,6 +421,55 @@ def seed_demo(db: Session, today: date) -> None:
                 updated_at=entered_at,
             ))
 
+    # 开发活动工作台：每月两条正式源记录，与设计记录独立存储并覆盖 AR/SR 类型。
+    for month_index, (it, _start, fact_date) in enumerate(iterations):
+        version = next(version for version in versions if version.id == it.version_id)
+        for sample_index in range(2):
+            index = month_index * 2 + sample_index
+            implementation_assisted = sample_index == 0
+            requirement_type = "AR" if sample_index == 0 else "SR"
+            db.add(DevelopmentRequirement(
+                requirement_type=requirement_type,
+                requirement_no=f"{requirement_type}-DEMO-{index + 1:03d}",
+                requirement_name=f"CNAE 开发需求 {index + 1}",
+                product_id=products[0].id,
+                version_id=version.id,
+                iteration_id=it.id,
+                completed_at=fact_date,
+                progress="完成",
+                implementation_owner_name="团队A成员1",
+                implementation_employee_id="A001",
+                development_owner_name="团队A成员2",
+                development_employee_id="A002",
+                implementation_estimated_workload=3.0,
+                implementation_actual_workload=2.0,
+                development_estimated_workload=5.0 + sample_index,
+                development_actual_workload=3.0 + sample_index,
+                ai_applicability=True,
+                implementation_ai_assisted=implementation_assisted,
+                development_ai_assisted=implementation_assisted,
+                ai_dev_mode="设计开发一体化" if implementation_assisted else "全栈开发",
+                ai_assisted=implementation_assisted,
+                ai_attribute_metadata={
+                    field: {
+                        "source": "manual",
+                        "updated_by": "演示种子",
+                        "updated_at": entered_at.isoformat(),
+                    }
+                    for field in (
+                        "ai_assisted",
+                        "ai_applicability",
+                        "implementation_ai_assisted",
+                        "development_ai_assisted",
+                        "ai_dev_mode",
+                    )
+                },
+                remark="演示数据",
+                record_source="seed",
+                updated_by="演示种子",
+                updated_at=entered_at,
+            ))
+
 
 def clear(db: Session) -> None:
     """先清后插：按外键依赖逆序清空。"""
@@ -427,6 +477,7 @@ def clear(db: Session) -> None:
     db.execute(delete(ImportRow))
     db.execute(delete(ImportBatch))
     db.execute(delete(AIReviewOpinion))
+    db.execute(delete(DevelopmentRequirement))
     db.execute(delete(IRRequirement))
     db.execute(delete(MaturityRecord))
     db.execute(delete(FactRecord))

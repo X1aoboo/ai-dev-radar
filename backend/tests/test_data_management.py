@@ -11,8 +11,8 @@ from sqlalchemy import delete
 
 from app.db import SessionLocal
 from app.data_management import _xlsx_rows, build_ir_overview_series, normalize_ir_row
-from app.ir_fields import IR_TEMPLATE_HEADERS
 from app.models import AuditLog, IRRequirement, ImportBatch, ImportRow, Iteration, Product, ProductVersion, TeamMember
+from app.requirement_fields import DESIGN_PROFILE, DEVELOPMENT_PROFILE
 
 
 TEST_PRODUCT_IDS = set()
@@ -28,7 +28,7 @@ def clean_data_management_test_rows():
         product_ids = set(TEST_PRODUCT_IDS)
         version_ids = set(TEST_VERSION_IDS)
         iteration_ids = set(TEST_ITERATION_IDS)
-        db.execute(delete(AuditLog).where(AuditLog.domain == "ir"))
+        db.execute(delete(AuditLog).where(AuditLog.domain.in_(("ir", "development"))))
         db.execute(delete(ImportRow))
         db.execute(delete(ImportBatch))
         db.execute(delete(IRRequirement).where(~IRRequirement.requirement_no.like("IR-DEMO-%")))
@@ -150,6 +150,7 @@ def ir_payload(product, version, iteration, requirement_no="IR-001", **overrides
     if requirement_no == "IR-001":
         requirement_no = f"IR-{uuid4().hex[:8]}"
     payload = {
+        "requirement_type": "IR",
         "requirement_no": requirement_no,
         "requirement_name": "CNAE 需求一",
         "responsible_employee_id": "E001",
@@ -160,6 +161,9 @@ def ir_payload(product, version, iteration, requirement_no="IR-001", **overrides
         "completed_at": "2026-08-15",
         "business_module": "CNAE",
         "requirement_scenario": "智能配置",
+        "progress": "进行中",
+        "sa_owner_name": "设计成员A",
+        "se_owner_name": "设计成员B",
         "estimated_workload": 10,
         "actual_workload": 5,
         "sa_estimated_workload": 4,
@@ -234,7 +238,6 @@ def test_ir_import_preview_confirm_merges_only_empty_fields_and_records_audit(cl
             iteration,
             requirement_no="IR-EXISTING",
             requirement_name="正式名称",
-            parent_requirement_no=None,
             requirement_scenario="正式场景",
             ai_assisted=False,
         ),
@@ -244,35 +247,34 @@ def test_ir_import_preview_confirm_merges_only_empty_fields_and_records_audit(cl
     preview = client.post(
         "/api/data/ir/imports/preview",
         json={
-            "filename": "ir-2026-08.csv",
+            "filename": "design-template.xlsx",
             "rows": [
-                ir_payload(
-                    product,
+                _template_row(
+                    client,
                     version,
                     iteration,
-                    requirement_no="IR-EXISTING",
-                    requirement_name="导入名称不应覆盖",
-                    parent_requirement_no="IR-PARENT",
-                    requirement_scenario="导入场景不应覆盖",
-                    ai_assisted=True,
+                    需求编号="IR-EXISTING",
+                    需求标题="导入名称不应覆盖",
                 ),
-                ir_payload(
-                    product,
+                _template_row(
+                    client,
                     version,
                     iteration,
-                    requirement_no="IR-NEW",
-                    responsible_employee_id="UNKNOWN-001",
+                    需求编号="IR-NEW",
+                    SA="未知设计者 UNKNOWN-001",
                 ),
             ],
         },
     )
     assert preview.status_code == 201, preview.text
     preview_body = preview.json()
+    assert preview_body["domain"] == "ir"
     assert preview_body["status"] == "pending"
     assert preview_body["valid_rows"] == 2
     assert preview_body["invalid_rows"] == 0
     assert preview_body["rows"][0]["operation"] == "fill"
     assert preview_body["rows"][0]["diff"]["requirement_name"]["action"] == "keep"
+    assert preview_body["rows"][0]["diff"]["sa_owner_name"]["action"] == "keep"
     assert preview_body["rows"][1]["warnings"]
 
     confirmed = client.post(f"/api/data/ir/imports/{preview_body['id']}/confirm")
@@ -285,14 +287,16 @@ def test_ir_import_preview_confirm_merges_only_empty_fields_and_records_audit(cl
     new_after = next(item for item in records["items"] if item["requirement_no"] == "IR-NEW")
     assert existing_after["requirement_name"] == "正式名称"
     assert existing_after["requirement_scenario"] == "正式场景"
-    assert existing_after["parent_requirement_no"] == "IR-PARENT"
-    assert existing_after["ai_assisted"] is False
-    assert new_after["responsible_employee_id"] == "UNKNOWN-001"
-    assert new_after["responsible_employee_pending"] is True
+    # AI usage is derived from the filled SA/SE flags, not the stale aggregate.
+    assert existing_after["sa_ai_assisted"] is True
+    assert existing_after["ai_assisted"] is True
+    assert new_after["sa_employee_id"] == "UNKNOWN-001"
+    assert new_after["sa_employee_pending"] is True
 
     audit = client.get(f"/api/data/ir/{existing_after['id']}/audit-logs")
     assert audit.status_code == 200
     assert audit.json()[0]["action"] == "import_confirm"
+
 
 
 def test_ir_import_is_atomic_when_any_row_is_invalid(client):
@@ -301,10 +305,16 @@ def test_ir_import_is_atomic_when_any_row_is_invalid(client):
     preview = client.post(
         "/api/data/ir/imports/preview",
         json={
-            "filename": "invalid.csv",
+            "filename": "invalid-design-template.xlsx",
             "rows": [
-                ir_payload(product, version, iteration, requirement_no="IR-VALID"),
-                ir_payload(product, version, iteration, requirement_no="", requirement_name="缺少编号"),
+                _template_row(client, version, iteration, 需求编号="IR-VALID"),
+                _template_row(
+                    client,
+                    version,
+                    iteration,
+                    需求编号="",
+                    需求标题="缺少编号",
+                ),
             ],
         },
     )
@@ -316,6 +326,7 @@ def test_ir_import_is_atomic_when_any_row_is_invalid(client):
     confirmed = client.post(f"/api/data/ir/imports/{body['id']}/confirm")
     assert confirmed.status_code == 422
     assert client.get("/api/data/ir", params={"requirement_no": "IR-VALID"}).json()["total"] == 0
+
 
 
 def test_ir_query_and_metrics_use_valid_formal_records(client):
@@ -330,6 +341,17 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
         "/api/data/ir",
         json=ir_payload(product_b, version_b, iteration_b, business_module="CNAE-TEST", ai_assisted=False),
     ).status_code == 201
+    # SR is a valid design type but must stay out of the provisional IR KPIs.
+    assert client.post(
+        "/api/data/ir",
+        json=ir_payload(
+            product,
+            version,
+            iteration,
+            requirement_type="SR",
+            business_module="CNAE-TEST",
+        ),
+    ).status_code == 201
 
     filtered = client.get(
         "/api/data/ir",
@@ -342,7 +364,8 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
         },
     )
     assert filtered.status_code == 200
-    assert filtered.json()["total"] == 1
+    # Both the IR and the SR design records match the query filters.
+    assert filtered.json()["total"] == 2
 
     overview = client.get("/api/data-metrics/overview", params={"from_month": "2026-08", "to_month": "2026-09"})
     assert overview.status_code == 200, overview.text
@@ -382,21 +405,32 @@ def test_ir_query_and_metrics_use_valid_formal_records(client):
     assert invalid_window.status_code == 422
 
 
+
 def test_ir_file_preview_accepts_csv_and_xlsx_payloads(client):
     login(client)
     product, version, iteration = create_ir_context(client)
-    csv_content = "需求编号,需求名称,产品ID,版本ID,迭代ID,完成时间,业务模块,需求场景\n"
-    csv_content += f"IR-CSV,CSV导入,{product['id']},{version['id']},{iteration['id']},2026-08-20,CNAE,文件导入\n"
+    team = next(item for item in client.get("/api/teams").json() if item["id"] == 1)
+    member = [item for item in client.get("/api/team-members").json() if item["team_id"] == 1][-1]
+    owner = f"{member['name']} {member['employee_id']}"
+    headers = ["需求类型", "需求编号", "需求标题", "进展", "归属组", "PI", "迭代", "SA", "SE", "设计时间"]
+    csv_content = ",".join(headers) + "\n"
+    csv_content += ",".join([
+        "IR", "IR-CSV", "CSV导入", "进行中", team["name"], version["name"],
+        iteration["name"], owner, owner, "2026/8/20",
+    ]) + "\n"
     csv_preview = client.post(
         "/api/data/ir/imports/preview",
         content=csv_content.encode("utf-8"),
-        headers={"content-type": "text/csv", "x-filename": "ir.csv"},
+        headers={"content-type": "text/csv", "x-filename": "design.csv"},
     )
     assert csv_preview.status_code == 201, csv_preview.text
+    assert csv_preview.json()["valid_rows"] == 1
     assert csv_preview.json()["rows"][0]["source_id"] == "IR-CSV"
 
-    headers = ["需求编号", "需求名称", "产品ID", "版本ID", "迭代ID", "完成时间", "业务模块", "需求场景"]
-    values = ["IR-XLSX", "XLSX导入", str(product["id"]), str(version["id"]), str(iteration["id"]), "2026-08-21", "CNAE", "文件导入"]
+    values = [
+        "IR", "IR-XLSX", "XLSX导入", "进行中", team["name"], version["name"],
+        iteration["name"], owner, owner, "2026/8/21",
+    ]
     worksheet = "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>"
     worksheet += "<row r=\"1\">" + "".join(
         f"<c r=\"{chr(65 + index)}1\" t=\"inlineStr\"><is><t>{value}</t></is></c>"
@@ -412,10 +446,12 @@ def test_ir_file_preview_accepts_csv_and_xlsx_payloads(client):
     xlsx_preview = client.post(
         "/api/data/ir/imports/preview",
         content=xlsx.getvalue(),
-        headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "x-filename": "ir.xlsx"},
+        headers={"content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "x-filename": "design.xlsx"},
     )
     assert xlsx_preview.status_code == 201, xlsx_preview.text
+    assert xlsx_preview.json()["valid_rows"] == 1
     assert xlsx_preview.json()["rows"][0]["source_id"] == "IR-XLSX"
+
 
 
 def test_admin_can_edit_managed_hierarchy_and_metric_rules(client):
@@ -505,9 +541,21 @@ def test_ir_schema_and_import_template_match_field_registry(client):
     schema = client.get("/api/data/ir/schema")
     assert schema.status_code == 200
     body = schema.json()
-    assert body["template_headers"] == list(IR_TEMPLATE_HEADERS)
-    assert "se_owner" in body["import_required"]
-    assert "sa_owner" not in body["import_required"]
+    assert body["profile"] == "design"
+    assert body["domain"] == "ir"
+    assert body["template_headers"] == [
+        "需求类型", "需求编号", "需求标题", "所属功能", "进展", "归属组", "PI",
+        "迭代", "SA", "SE", "AI质检等级", "AI适用性", "SA是否使用AI",
+        "SE是否使用AI", "AI研发模式", "预估工作量(SA)", "实际工作量(SA)",
+        "预估工作量(SE)", "实际工作量(SE)", "设计时间", "备注",
+    ]
+    assert body["template_headers"] == list(DESIGN_PROFILE.template_headers)
+    required = set(body["import_required"])
+    assert {"requirement_type", "requirement_no", "requirement_name", "progress", "sa_owner", "se_owner", "completed_at"}.issubset(required)
+    assert "business_module" not in required
+    ai_quality = next(field for field in body["fields"] if field["key"] == "ai_quality_level")
+    assert ai_quality["options"] == ["优秀", "良好", "合格", "不合格"]
+    assert body["requirement_types"] == ["IR", "SR"]
 
     template = client.get("/api/data/ir/import-template")
     assert template.status_code == 200
@@ -516,7 +564,9 @@ def test_ir_schema_and_import_template_match_field_registry(client):
     )
     assert zipfile.is_zipfile(io.BytesIO(template.content))
     rows = _xlsx_rows(template.content)
-    assert rows[0] == list(IR_TEMPLATE_HEADERS)
+    assert rows[0] == list(DESIGN_PROFILE.template_headers)
+    assert "design-requirements-template.xlsx" in template.headers["content-disposition"]
+
 
 
 def test_template_import_upsert_and_fill_empty_modes(client):
@@ -597,34 +647,35 @@ def test_template_import_upsert_and_fill_empty_modes(client):
     assert after_fill["requirement_name"] == "模板更新"
 
 
-def test_template_import_requires_se_allows_optional_sa_and_validates_refs(client):
+def test_template_import_requires_sa_and_se_and_allows_optional_business_module(client):
     login(client)
     product, version, iteration = create_ir_context(client)
 
-    missing_se = _template_row(client, version, iteration)
-    missing_se.pop("SE")
-    body = client.post(
-        "/api/data/ir/imports/preview",
-        params={"mode": "upsert"},
-        json={"filename": "ir.xlsx", "rows": [missing_se]},
-    ).json()
-    assert body["valid_rows"] == 0
-    assert any("缺少SE" in error for error in body["rows"][0]["errors"])
+    for missing_field, label in (("SE", "SE"), ("SA", "SA")):
+        row = _template_row(client, version, iteration)
+        row.pop(missing_field)
+        body = client.post(
+            "/api/data/ir/imports/preview",
+            params={"mode": "upsert"},
+            json={"filename": "design.xlsx", "rows": [row]},
+        ).json()
+        assert body["valid_rows"] == 0
+        assert any(f"缺少{label}" in error for error in body["rows"][0]["errors"])
 
-    optional_sa = _template_row(client, version, iteration)
-    optional_sa.pop("SA")
+    optional_business = _template_row(client, version, iteration)
+    optional_business.pop("所属功能")
     body = client.post(
         "/api/data/ir/imports/preview",
         params={"mode": "upsert"},
-        json={"filename": "ir.xlsx", "rows": [optional_sa]},
+        json={"filename": "design.xlsx", "rows": [optional_business]},
     ).json()
-    assert body["valid_rows"] == 1
+    assert body["valid_rows"] == 1, body["rows"][0]["errors"]
 
     unknown_team = _template_row(client, version, iteration, 归属组="不存在的团队")
     body = client.post(
         "/api/data/ir/imports/preview",
         params={"mode": "upsert"},
-        json={"filename": "ir.xlsx", "rows": [unknown_team]},
+        json={"filename": "design.xlsx", "rows": [unknown_team]},
     ).json()
     assert body["valid_rows"] == 0
     assert any("归属组" in error for error in body["rows"][0]["errors"])
@@ -633,11 +684,12 @@ def test_template_import_requires_se_allows_optional_sa_and_validates_refs(clien
     body = client.post(
         "/api/data/ir/imports/preview",
         params={"mode": "upsert"},
-        json={"filename": "ir.xlsx", "rows": [duplicate, {**duplicate, "需求标题": "重复"}]},
+        json={"filename": "design.xlsx", "rows": [duplicate, {**duplicate, "需求标题": "重复"}]},
     ).json()
     assert body["valid_rows"] == 0
     assert body["invalid_rows"] == 2
     assert all("需求编号在文件中重复" in error for row in body["rows"] for error in row["errors"])
+
 
 
 def test_bulk_ir_update_is_atomic_and_audited(client):
@@ -713,6 +765,7 @@ def test_normalize_ir_row_accepts_template_aliases_and_excel_dates():
             "归属组": "团队A",
             "PI": "版本",
             "迭代": "迭代",
+            "SA": "成员A 001",
             "SE": "成员 001",
             "设计时间": 46244,
         },
@@ -721,8 +774,25 @@ def test_normalize_ir_row_accepts_template_aliases_and_excel_dates():
     assert errors == []
     assert normalized["completed_at"] == date(2026, 8, 10)
     assert normalized["progress"] == "完成"
+    assert normalized["sa_owner"] == "成员A 001"
     assert normalized["se_owner"] == "成员 001"
-    assert "sa_owner" not in normalized
+
+    _, strict_errors = normalize_ir_row(
+        {
+            "需求编号": "IR-NO-TYPE",
+            "需求标题": "缺类型",
+            "进展": "进行中",
+            "归属组": "团队A",
+            "PI": "版本",
+            "迭代": "迭代",
+            "SA": "成员A 001",
+            "SE": "成员 001",
+            "设计时间": "2026/8/10",
+        },
+        strict_template=True,
+    )
+    assert any("缺少需求类型" in error for error in strict_errors)
+
 
 
 def test_ensure_ir_schema_adds_template_columns_and_update_mode():
@@ -755,3 +825,160 @@ def test_ensure_ir_schema_adds_template_columns_and_update_mode():
     assert "update_mode" in batch_columns
     with engine.connect() as connection:
         assert connection.execute(text("SELECT requirement_type FROM ir_requirements WHERE id = 1")).scalar() == "IR"
+
+
+def test_design_create_requires_type_progress_and_owners(client):
+    login(client)
+    product, version, iteration = create_ir_context(client)
+    payload = ir_payload(product, version, iteration)
+    for field in ("requirement_type", "progress", "sa_owner_name", "se_owner_name"):
+        broken = {key: value for key, value in payload.items() if key != field}
+        response = client.post("/api/data/ir", json=broken)
+        assert response.status_code == 422, (field, response.text)
+
+    without_business_module = {
+        key: value for key, value in payload.items() if key != "business_module"
+    }
+    created = client.post("/api/data/ir", json=without_business_module)
+    assert created.status_code == 201, created.text
+    assert created.json()["business_module"] == ""
+    assert created.json()["requirement_type"] == "IR"
+    assert created.json()["valid"] is True
+
+    sr = client.post(
+        "/api/data/ir",
+        json={**payload, "requirement_type": "SR", "requirement_no": "SR-001"},
+    )
+    assert sr.status_code == 201, sr.text
+    assert sr.json()["requirement_type"] == "SR"
+
+    sr_only = client.get(
+        "/api/data/ir", params={"team_id": 1, "requirement_type": "SR"}
+    ).json()
+    assert sr_only["total"] == 1
+    assert sr_only["items"][0]["requirement_no"] == "SR-001"
+
+    invalid_type = client.post(
+        "/api/data/ir",
+        json={**payload, "requirement_type": "AR", "requirement_no": "IR-BAD-TYPE"},
+    )
+    assert invalid_type.status_code == 422
+
+    employee_only = client.post(
+        "/api/data/ir",
+        json={
+            **payload,
+            "requirement_no": "IR-EMPLOYEE-ONLY",
+            "sa_owner_name": None,
+            "sa_employee_id": "E001",
+        },
+    )
+    assert employee_only.status_code == 201, employee_only.text
+    assert employee_only.json()["sa_employee_id"] == "E001"
+
+
+def test_design_import_updates_owner_columns_in_diff_and_merge(client):
+    login(client)
+    product, version, iteration = create_ir_context(client)
+    row = _template_row(client, version, iteration)
+    preview = client.post(
+        "/api/data/ir/imports/preview",
+        params={"mode": "upsert"},
+        json={"filename": "design.xlsx", "rows": [row]},
+    ).json()
+    assert preview["rows"][0]["operation"] == "insert"
+    assert client.post(f"/api/data/ir/imports/{preview['id']}/confirm").status_code == 200
+
+    updated = {**row, "SA": "替换设计者 REPLACE-001"}
+    update_preview = client.post(
+        "/api/data/ir/imports/preview",
+        params={"mode": "upsert"},
+        json={"filename": "design.xlsx", "rows": [updated]},
+    ).json()
+    update_row = update_preview["rows"][0]
+    assert update_row["operation"] == "update"
+    assert update_row["diff"]["sa_owner_name"]["action"] == "overwrite"
+    assert update_row["diff"]["sa_employee_id"]["to"] == "REPLACE-001"
+    assert client.post(f"/api/data/ir/imports/{update_preview['id']}/confirm").json()["updated"] == 1
+
+    stored = client.get("/api/data/ir", params={"requirement_no": row["需求编号"]}).json()["items"][0]
+    assert stored["sa_owner_name"] == "替换设计者"
+    assert stored["sa_employee_id"] == "REPLACE-001"
+
+
+def test_design_pending_file_batch_is_revalidated_on_confirm(client):
+    from app.ir_imports import IRImportRowInput, create_ir_import_batch
+
+    login(client)
+    product, version, iteration = create_ir_context(client)
+    requirement_no = f"IR-STALE-{uuid4().hex[:8]}"
+    legacy_row = {
+        "requirement_no": requirement_no,
+        "requirement_name": "旧批次设计需求",
+        "product_id": product["id"],
+        "version_id": version["id"],
+        "iteration_id": iteration["id"],
+        "completed_at": "2026-08-20",
+        "business_module": "CNAE",
+    }
+    with SessionLocal() as db:
+        batch = create_ir_import_batch(
+            db,
+            [IRImportRowInput(raw=legacy_row)],
+            source_kind="import",
+            created_by="admin",
+            filename="old-design.xlsx",
+            strict_template=False,
+        )
+        db.commit()
+        batch_id = batch.id
+
+    confirmed = client.post(f"/api/data/ir/imports/{batch_id}/confirm")
+    assert confirmed.status_code == 422, confirmed.text
+    detail = confirmed.json()["detail"]
+    assert "preview again" in detail["message"]
+    assert client.get("/api/data/ir", params={"requirement_no": requirement_no}).json()["total"] == 0
+
+
+def test_collector_legacy_batch_still_accepts_missing_design_required_fields(client):
+    from app.ir_imports import IRImportRowInput, create_ir_import_batch
+
+    login(client)
+    product, version, iteration = create_ir_context(client)
+    requirement_no = f"IR-COLLECTOR-LEGACY-{uuid4().hex[:8]}"
+    legacy_row = {
+        "requirement_no": requirement_no,
+        "requirement_name": "采集旧字段需求",
+        "product_id": product["id"],
+        "version_id": version["id"],
+        "iteration_id": iteration["id"],
+        "completed_at": "2026-08-20",
+        "business_module": "CNAE",
+        "actual_workload": 3,
+        "ai_assisted": False,
+    }
+    with SessionLocal() as db:
+        batch = create_ir_import_batch(
+            db,
+            [IRImportRowInput(raw=legacy_row, source_id=requirement_no)],
+            source_kind="collector",
+            team_id=1,
+            created_by="scheduled-collector",
+            first_row_number=1,
+        )
+        db.commit()
+        batch_id = batch.id
+
+    confirmed = client.post(f"/api/data/ir/imports/{batch_id}/confirm")
+    assert confirmed.status_code == 200, confirmed.text
+    assert confirmed.json()["created"] == 1
+
+    record = client.get("/api/data/ir", params={"requirement_no": requirement_no}).json()["items"][0]
+    assert record["requirement_type"] == "IR"
+    assert record["progress"] is None
+    assert record["sa_owner_name"] is None
+    assert record["se_owner_name"] is None
+    assert record["actual_workload"] == 3
+    assert record["ai_assisted"] is False
+    assert record["valid"] is True
+    assert record["record_source"] == "collector"

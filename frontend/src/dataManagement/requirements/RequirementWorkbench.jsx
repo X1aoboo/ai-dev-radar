@@ -9,42 +9,18 @@ import {
 
 import { downloadFile, fetchJson } from '../../api'
 import PageHeader from '../../components/PageHeader'
-import IRDataGrid from './IRDataGrid'
-import IRFilterBar from './IRFilterBar'
-import IRImportWizard from './IRImportWizard'
-import IRRecordDrawer from './IRRecordDrawer'
-import IRSummaryStrip from './IRSummaryStrip'
+import RequirementDataGrid from './RequirementDataGrid'
+import RequirementFilterBar from './RequirementFilterBar'
+import RequirementImportWizard from './RequirementImportWizard'
+import RequirementRecordDrawer from './RequirementRecordDrawer'
+import RequirementSummaryStrip from './RequirementSummaryStrip'
 import {
-  IR_FIELD_LABELS,
-  IR_TEMPLATE_FIELDS,
-  IR_VIEW_PRESETS,
-  irActiveFilterCount,
-  irChangesFromDraft,
-  irDefaultFilters,
-} from './irFields'
+  formatRequirementTimestamp,
+  requirementQuery,
+} from './requirementProfiles'
 import './ir-workbench.css'
 
 const { Text } = Typography
-
-function buildQuery(filters) {
-  const params = new URLSearchParams()
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value === '' || value === null || value === undefined) return
-    params.set(key, String(value))
-  })
-  return params.toString()
-}
-
-function Notice({ notice }) {
-  if (!notice) return null
-  return <Alert className="ir-notice" type={notice.type === 'error' ? 'error' : 'success'} showIcon closable message={notice.text} />
-}
-
-function formatTimestamp(value) {
-  if (!value) return '—'
-  const text = String(value)
-  return text.includes('T') ? `${text.slice(0, 10)} ${text.slice(11, 19)}` : text
-}
 
 const OPERATION_LABELS = {
   insert: '新增',
@@ -53,7 +29,13 @@ const OPERATION_LABELS = {
   unchanged: '无变化',
 }
 
-function CollectorBatchDrawer({ open, batch, teamName, onClose, onConfirm, confirming }) {
+function Notice({ notice }) {
+  if (!notice) return null
+  return <Alert className="ir-notice" type={notice.type === 'error' ? 'error' : 'success'} showIcon closable message={notice.text} />
+}
+
+function CollectorBatchDrawer({ profile, open, batch, teamName, onClose, onConfirm, confirming }) {
+  const labels = useMemo(() => ({ ...profile.ownerLabels, ...profile.fieldLabels }), [profile])
   const rows = batch?.rows ?? []
   const columns = [
     { title: '行', dataIndex: 'row_number', width: 56 },
@@ -65,7 +47,7 @@ function CollectorBatchDrawer({ open, batch, teamName, onClose, onConfirm, confi
       render: (diff = {}) => (
         <Space orientation="vertical" size={2}>
           {Object.entries(diff).filter(([, value]) => value.action !== 'unchanged').slice(0, 4).map(([field, value]) => (
-            <Text key={field} type="secondary">{IR_FIELD_LABELS[field] ?? field}：{value.action === 'keep' ? '保留正式值' : `→ ${value.to ?? '空'}`}</Text>
+            <Text key={field} type="secondary">{labels[field] ?? field}：{value.action === 'keep' ? '保留正式值' : `→ ${value.to ?? '空'}`}</Text>
           ))}
           {!Object.values(diff).some((value) => value.action !== 'unchanged') && <Text type="secondary">—</Text>}
         </Space>
@@ -107,7 +89,7 @@ function CollectorBatchDrawer({ open, batch, teamName, onClose, onConfirm, confi
     >
       <div className="ir-collector-meta">
         <Tag className="ir-tag ir-tag--neutral">平台采集</Tag>
-        <Text type="secondary">生成时间 {formatTimestamp(batch?.created_at)}</Text>
+        <Text type="secondary">生成时间 {formatRequirementTimestamp(batch?.created_at)}</Text>
         <Text type="secondary">总行数 {batch?.total_rows ?? 0} · 有效 {batch?.valid_rows ?? 0} · 错误 {batch?.invalid_rows ?? 0}</Text>
       </div>
       {batch?.invalid_rows > 0 && <Alert type="error" showIcon message="存在错误行，整批不能确认。" />}
@@ -123,9 +105,9 @@ function CollectorBatchDrawer({ open, batch, teamName, onClose, onConfirm, confi
   )
 }
 
-export default function IRManagementPage({ user, refs, onRefresh, onSessionExpired }) {
+export default function RequirementWorkbench({ profile, user, refs, onSessionExpired }) {
   const canEdit = user.role === 'admin' || user.role === 'maintainer'
-  const [filters, setFilters] = useState(() => irDefaultFilters(user))
+  const [filters, setFilters] = useState(() => profile.defaultFilters(user))
   const [data, setData] = useState({ items: [], total: 0, summary: null })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
@@ -149,7 +131,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
     setLoading(true)
     setError(null)
     try {
-      const next = await fetchJson(`/api/data/ir?${buildQuery(filters)}`)
+      const next = await fetchJson(`${profile.apiBase}?${requirementQuery(filters)}`)
       setData(next)
       if (clearNotice) setNotice(null)
     } catch (nextError) {
@@ -158,12 +140,12 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
     } finally {
       setLoading(false)
     }
-  }, [filters, onSessionExpired])
+  }, [filters, onSessionExpired, profile.apiBase])
 
   useEffect(() => { load() }, [load])
 
   const loadCollectorBatches = useCallback(async () => {
-    if (!canEdit) return
+    if (!profile.hasCollector || !canEdit) return
     setCollectorLoading(true)
     try {
       setCollectorBatches(await fetchJson('/api/data/ir/imports?source_kind=collector&status=pending'))
@@ -172,13 +154,13 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
     } finally {
       setCollectorLoading(false)
     }
-  }, [canEdit, onSessionExpired])
+  }, [canEdit, onSessionExpired, profile.hasCollector])
 
   useEffect(() => { loadCollectorBatches() }, [loadCollectorBatches])
 
-  const preset = IR_VIEW_PRESETS.find((item) => item.value === viewPreset) ?? IR_VIEW_PRESETS[0]
+  const preset = profile.viewPresets.find((item) => item.value === viewPreset) ?? profile.viewPresets[0]
   const visibleKeys = useMemo(() => customKeys ?? preset.keys, [customKeys, preset.keys])
-  const activeCount = irActiveFilterCount(filters)
+  const activeCount = profile.activeFilterCount(filters)
 
   function updateFilter(key, value) {
     setFilters((current) => ({
@@ -191,7 +173,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
   }
 
   function resetFilters() {
-    setFilters(irDefaultFilters(user))
+    setFilters(profile.defaultFilters(user))
     setViewPreset('all')
     setCustomKeys(null)
     setAdvancedOpen(false)
@@ -200,7 +182,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
   async function saveDraft() {
     const items = Object.entries(draft).map(([id, changes]) => {
       const record = data.items.find((item) => item.id === Number(id))
-      return { id: Number(id), changes: irChangesFromDraft(record, changes) }
+      return { id: Number(id), changes: profile.changesFromDraft(record, changes) }
     }).filter((item) => Object.keys(item.changes).length)
     if (!items.length) {
       setDraft({})
@@ -208,7 +190,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
     }
     setSaving(true)
     try {
-      await fetchJson('/api/data/ir/bulk', {
+      await fetchJson(`${profile.apiBase}/bulk`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ items }),
@@ -273,19 +255,19 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
     <div className="ir-workbench">
       <PageHeader
         className="ir-page-header"
-        eyebrow="IR 数据工作台"
-        title="IR 需求数据"
-        description="按 IR 模板维护正式需求、AI 研发属性与 SA/SE 工作量。支持 Excel 导入、筛选、内联编辑与整批确认。"
+        eyebrow={profile.eyebrow}
+        title={profile.title}
+        description={profile.description}
         actions={canEdit ? (
           <Space wrap>
             <Button
               icon={<DownloadOutlined />}
-              onClick={() => downloadFile('/api/data/ir/import-template', 'IR需求导入模板.xlsx').catch((nextError) => setNotice({ type: 'error', text: nextError.message }))}
+              onClick={() => Promise.resolve(downloadFile(profile.templateUrl, profile.templateName)).catch((nextError) => setNotice({ type: 'error', text: nextError.message }))}
             >
               下载模板
             </Button>
             <Button icon={<UploadOutlined />} onClick={() => setImportOpen(true)}>导入 Excel</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null })}>新增 IR</Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={() => setEditor({ record: null })}>新增{profile.recordLabel}</Button>
           </Space>
         ) : <Tag className="ir-tag ir-tag--neutral">只读</Tag>}
       />
@@ -296,14 +278,15 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
           className="ir-notice"
           type="error"
           showIcon
-          message="IR 数据加载失败"
+          message={`${profile.tabLabel}数据加载失败`}
           description={error.message}
           action={<Button size="small" onClick={() => load()}>重试</Button>}
         />
       )}
 
-      <IRSummaryStrip summary={data.summary} loading={loading} />
-      <IRFilterBar
+      <RequirementSummaryStrip profile={profile} summary={data.summary} loading={loading} />
+      <RequirementFilterBar
+        profile={profile}
         filters={filters}
         onChange={updateFilter}
         onRemoveFilter={(key) => updateFilter(key, '')}
@@ -321,7 +304,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
         loading={loading}
       />
 
-      {canEdit && (collectorLoading || collectorBatches.length > 0) && (
+      {profile.hasCollector && canEdit && (collectorLoading || collectorBatches.length > 0) && (
         <section className="ir-collector-strip" aria-label="待确认采集批次">
           <div className="ir-collector-strip__heading">
             <Tag className="ir-tag ir-tag--warning">平台采集</Tag>
@@ -338,18 +321,19 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
         </section>
       )}
 
-      <section className="ir-workspace" aria-labelledby="ir-table-heading">
+      <section className="ir-workspace" aria-labelledby={`ir-table-heading-${profile.key}`}>
         <div className="ir-workspace__head">
           <div>
-            <h2 id="ir-table-heading" className="ir-workspace__title">IR 正式数据</h2>
+            <h2 id={`ir-table-heading-${profile.key}`} className="ir-workspace__title">{profile.workspaceTitle}</h2>
             <span className="ir-workspace__meta">共 {data.total} 条 · 本页 {data.items.length} 条</span>
           </div>
           <Space size={4}>
             <Text type="secondary">当前筛选范围</Text>
-            <Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => load()} aria-label="刷新 IR 数据" />
+            <Button type="text" size="small" icon={<ReloadOutlined />} onClick={() => load()} aria-label={`刷新${profile.tabLabel}数据`} />
           </Space>
         </div>
-        <IRDataGrid
+        <RequirementDataGrid
+          profile={profile}
           items={data.items}
           loading={loading}
           total={data.total}
@@ -367,28 +351,34 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
         />
       </section>
 
-      <IRRecordDrawer
+      <RequirementRecordDrawer
+        profile={profile}
         editor={editor}
         refs={refs}
         user={user}
+        readOnly={!canEdit}
         onClose={() => setEditor(null)}
         onSaved={handleSaved}
         onSessionExpired={onSessionExpired}
       />
-      <IRImportWizard
+      <RequirementImportWizard
+        profile={profile}
         open={importOpen}
         onClose={() => setImportOpen(false)}
         onConfirmed={handleImportConfirmed}
         onSessionExpired={onSessionExpired}
       />
-      <CollectorBatchDrawer
-        open={collectorOpen}
-        batch={collectorBatch}
-        teamName={refs.teams.find((team) => team.id === collectorBatch?.team_id)?.name}
-        onClose={() => setCollectorOpen(false)}
-        onConfirm={confirmCollectorBatch}
-        confirming={collectorConfirming}
-      />
+      {profile.hasCollector && (
+        <CollectorBatchDrawer
+          profile={profile}
+          open={collectorOpen}
+          batch={collectorBatch}
+          teamName={refs.teams.find((team) => team.id === collectorBatch?.team_id)?.name}
+          onClose={() => setCollectorOpen(false)}
+          onConfirm={confirmCollectorBatch}
+          confirming={collectorConfirming}
+        />
+      )}
 
       <Drawer
         title="列设置"
@@ -404,7 +394,7 @@ export default function IRManagementPage({ user, refs, onRefresh, onSessionExpir
           className="ir-column-settings"
           value={customKeys ?? preset.keys}
           options={[
-            ...IR_TEMPLATE_FIELDS.map((field) => ({ value: field.key, label: field.label })),
+            ...profile.templateFields.map((field) => ({ value: field.key, label: field.label })),
             { value: 'total_workload', label: '合计（预估 / 实际）' },
           ]}
           onChange={(values) => setCustomKeys(values)}

@@ -43,6 +43,7 @@ def make_ir_context(client):
 
 def ir_payload(product, version, iteration, requirement_no, **overrides):
     return {
+        "requirement_type": "IR",
         "requirement_no": requirement_no,
         "requirement_name": "正式需求名称",
         "responsible_employee_id": None,
@@ -53,6 +54,9 @@ def ir_payload(product, version, iteration, requirement_no, **overrides):
         "completed_at": "2026-09-17",
         "business_module": "CNAE",
         "requirement_scenario": "采集测试",
+        "progress": "进行中",
+        "sa_owner_name": "采集SA",
+        "se_owner_name": "采集SE",
         "estimated_workload": 10,
         "actual_workload": 5,
         "sa_estimated_workload": None,

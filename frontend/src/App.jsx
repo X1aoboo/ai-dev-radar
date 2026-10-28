@@ -38,7 +38,15 @@ import {
   isValidMonth,
   teamProductVersions,
 } from './overview/overviewLogic'
-import { ADMIN_ROLES, DATA_READ_ROLES, SETTINGS_READ_ROLES, canAccess, isPendingDomain } from './routing/routeLogic'
+import {
+  ADMIN_ROLES,
+  DATA_READ_ROLES,
+  SETTINGS_READ_ROLES,
+  canAccess,
+  isPendingDomain,
+  isRequirementActivity,
+  normalizeRequirementActivity,
+} from './routing/routeLogic'
 import { getRouteMeta, LEGACY_REDIRECT_TARGETS, ROUTE_PATHS, SIDEBAR_GROUPS } from './routing/routeMetadata'
 
 const OverviewPage = lazy(() => import('./overview/OverviewPage'))
@@ -111,7 +119,7 @@ function NotFoundPage() {
 function PendingDomainPage({ domain }) {
   const navigate = useNavigate()
   return (
-    <StatusPage status="pending" layout="compact" title={`${domain}数据暂未开放`} description="该数据源的字段、校验规则和指标口径尚未定义，当前不提供数据表单。" actions={<Button onClick={() => navigate('/data/requirements/ir')}>查看需求数据</Button>} />
+    <StatusPage status="pending" layout="compact" title={`${domain}数据暂未开放`} description="该数据源的字段、校验规则和指标口径尚未定义，当前不提供数据表单。" actions={<Button onClick={() => navigate('/data/requirements/design')}>查看需求数据</Button>} />
   )
 }
 
@@ -360,7 +368,7 @@ function AppShell({ user, onLogout }) {
                 <summary aria-label="帮助与常用入口"><QuestionCircleOutlined aria-hidden="true" /></summary>
                 <nav className="app-topbar__help-menu" aria-label="常用入口">
                   <strong>常用入口</strong>
-                  <NavLink to="/data/requirements/ir">需求数据</NavLink>
+                  <NavLink to="/data/requirements/design">需求数据</NavLink>
                   <NavLink to="/analytics/activities">研发活动</NavLink>
                   <NavLink to="/data/maturity">成熟度评估</NavLink>
                 </nav>
@@ -432,11 +440,13 @@ function MetricAnalyticsRoute({ Page, onSessionExpired }) {
 }
 
 function DataRoute({ Page, section, user, onSessionExpired }) {
-  const { requirementType } = useParams()
+  const { activity } = useParams()
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
-  if (section === 'requirements' && !['ir', 'ar', 'sr'].includes(requirementType)) return <Navigate to="/data/requirements/ir" replace />
-  return <Page section={section} requirementType={requirementType} initialMonth={searchParams.get('month')} onRequirementTypeChange={(type) => navigate(`/data/requirements/${type}`)} user={user} onSessionExpired={onSessionExpired} />
+  if (section === 'requirements' && !isRequirementActivity(activity)) {
+    return <Navigate to={`/data/requirements/${normalizeRequirementActivity(activity)}`} replace />
+  }
+  return <Page section={section} activity={activity} initialMonth={searchParams.get('month')} onActivityChange={(nextActivity) => navigate(`/data/requirements/${nextActivity}`)} user={user} onSessionExpired={onSessionExpired} />
 }
 
 function RequireRole({ user, roles }) {
@@ -494,17 +504,17 @@ export function ApplicationRoutes({ user, onLogout, onSessionExpired, routeCompo
             <Route path={ROUTE_PATHS.metricAnalytics} element={<MetricAnalyticsRoute Page={MetricDetailComponent} onSessionExpired={onSessionExpired} />} />
           </Route>
           <Route element={<RequireRole user={user} roles={DATA_READ_ROLES} />}>
-            <Route path={ROUTE_PATHS.requirements} element={<Navigate to="/data/requirements/ir" replace />} />
-            <Route path={ROUTE_PATHS.requirementType} element={<DataRoute Page={DataManagementComponent} section="requirements" user={user} onSessionExpired={onSessionExpired} />} />
+            <Route path={ROUTE_PATHS.requirements} element={<Navigate to="/data/requirements/design" replace />} />
+            <Route path={ROUTE_PATHS.requirementActivity} element={<DataRoute Page={DataManagementComponent} section="requirements" user={user} onSessionExpired={onSessionExpired} />} />
             <Route path={ROUTE_PATHS.maturity} element={<DataRoute Page={DataManagementComponent} section="maturity" user={user} onSessionExpired={onSessionExpired} />} />
-            <Route path="data/ir" element={<Navigate to="/data/requirements/ir" replace />} />
-            <Route path="data/ar" element={<Navigate to="/data/requirements/ar" replace />} />
-            <Route path="data/sr" element={<Navigate to="/data/requirements/sr" replace />} />
+            <Route path="data/ir" element={<Navigate to="/data/requirements/design" replace />} />
+            <Route path="data/ar" element={<Navigate to="/data/requirements/development" replace />} />
+            <Route path="data/sr" element={<Navigate to="/data/requirements/design" replace />} />
             <Route path="data/dts" element={<Navigate to="/data/issues" replace />} />
             <Route path={ROUTE_PATHS.dataDomain} element={<PendingDomainRoute />} />
             <Route path={ROUTE_PATHS.legacyData} element={<LegacyDataManagementRootRedirect />} />
             <Route path={ROUTE_PATHS.legacyDataDomain} element={<LegacyDataManagementRoute />} />
-            <Route path={ROUTE_PATHS.legacyManualEntry} element={<Navigate to="/data/requirements/ir" replace />} />
+            <Route path={ROUTE_PATHS.legacyManualEntry} element={<Navigate to="/data/requirements/design" replace />} />
           </Route>
           <Route element={<RequireRole user={user} roles={SETTINGS_READ_ROLES} />}>
             <Route path={ROUTE_PATHS.teams} element={<DataRoute Page={DataManagementComponent} section="teams" user={user} onSessionExpired={onSessionExpired} />} />

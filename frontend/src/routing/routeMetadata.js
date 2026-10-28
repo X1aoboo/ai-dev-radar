@@ -11,7 +11,14 @@ import {
   UserOutlined,
 } from '@ant-design/icons'
 
-import { ADMIN_ROLES, ANALYTICS_ROLES, DATA_READ_ROLES, PENDING_DOMAINS, SETTINGS_READ_ROLES } from './routeLogic'
+import {
+  ADMIN_ROLES,
+  ANALYTICS_ROLES,
+  DATA_READ_ROLES,
+  PENDING_DOMAINS,
+  SETTINGS_READ_ROLES,
+  normalizeRequirementActivity,
+} from './routeLogic'
 
 export { PENDING_DOMAINS }
 
@@ -23,7 +30,7 @@ export const ROUTE_PATHS = Object.freeze({
   metricAnalytics: 'analytics/metrics/:metricId',
   maturity: 'data/maturity',
   requirements: 'data/requirements',
-  requirementType: 'data/requirements/:requirementType',
+  requirementActivity: 'data/requirements/:activity',
   dataDomain: 'data/:domain',
   teams: 'settings/teams',
   products: 'settings/products',
@@ -40,17 +47,17 @@ export const ROUTE_PATHS = Object.freeze({
 })
 
 export const LEGACY_REDIRECT_TARGETS = Object.freeze({
-  '/data-management': '/data/requirements/ir',
-  '/data-management/ir': '/data/requirements/ir',
-  '/data-management/ar': '/data/requirements/ar',
-  '/data-management/sr': '/data/requirements/sr',
+  '/data-management': '/data/requirements/design',
+  '/data-management/ir': '/data/requirements/design',
+  '/data-management/ar': '/data/requirements/development',
+  '/data-management/sr': '/data/requirements/design',
   '/data-management/dts': '/data/issues',
   '/data-management/mr': '/data/mr',
   '/data-management/teams': '/settings/teams',
   '/data-management/products': '/settings/products',
   '/data-management/metrics': '/settings/metrics',
   '/config': '/settings/teams',
-  '/manual-entry': '/data/requirements/ir',
+  '/manual-entry': '/data/requirements/design',
 })
 
 export const SIDEBAR_GROUPS = [
@@ -66,7 +73,7 @@ export const SIDEBAR_GROUPS = [
   {
     label: '数据',
     items: [
-      { key: 'requirements', label: '需求', to: '/data/requirements/ir', activePrefix: '/data/requirements/', icon: FileTextOutlined, roles: DATA_READ_ROLES },
+      { key: 'requirements', label: '需求', to: '/data/requirements/design', activePrefix: '/data/requirements/', icon: FileTextOutlined, roles: DATA_READ_ROLES },
       { key: 'maturity', label: '成熟度评估', to: `/${ROUTE_PATHS.maturity}`, icon: BarChartOutlined, roles: DATA_READ_ROLES },
       { key: 'issues', label: '问题单', to: '/data/issues', icon: BugOutlined, roles: DATA_READ_ROLES },
       { key: 'mr', label: 'MR', to: '/data/mr', icon: PullRequestOutlined, roles: DATA_READ_ROLES },
@@ -97,8 +104,15 @@ export function getRouteMeta(pathname) {
   if (/^\/analytics\/metrics\//.test(normalizedPathname)) {
     return { title: '指标详情', items: [{ title: '分析' }, { title: '研发总览' }, { title: '指标详情' }] }
   }
-  const requirementMatch = normalizedPathname.match(/^\/data\/requirements\/(ir|ar|sr)$/i)
-  if (requirementMatch) return { title: `${requirementMatch[1].toUpperCase()} 需求`, items: [{ title: '数据' }, { title: '需求' }, { title: requirementMatch[1].toUpperCase() }] }
+  const requirementMatch = normalizedPathname.match(/^\/data\/requirements\/([^/]+)$/i)
+  if (requirementMatch) {
+    const activity = normalizeRequirementActivity(requirementMatch[1])
+    const label = activity === 'development' ? '开发活动' : '设计活动'
+    return { title: label, items: [{ title: '数据' }, { title: '需求' }, { title: label }] }
+  }
+  if (normalizedPathname === '/data/requirements') {
+    return { title: '设计活动', items: [{ title: '数据' }, { title: '需求' }, { title: '设计活动' }] }
+  }
   const sourceLabel = { '/data/issues': '问题单', '/data/mr': 'MR', '/data/code-review': '代码检视' }[normalizedPathname]
   if (sourceLabel) {
     return { title: `${sourceLabel}数据`, items: [{ title: '数据' }, { title: sourceLabel }] }

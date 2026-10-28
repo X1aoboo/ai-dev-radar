@@ -22,6 +22,7 @@ from .migrations import (
     ensure_ai_review_opinion_schema,
     ensure_auth_schema,
     ensure_data_management_schema,
+    ensure_development_schema,
     ensure_fact_schema,
     ensure_gateway_schema,
     ensure_ir_schema,
@@ -30,6 +31,7 @@ from .migrations import (
 from .models import (  # noqa: F401
     Activity,
     AuditLog,
+    DevelopmentRequirement,
     FactRecord,
     GatewayConfigAudit,
     GatewayConfiguration,
@@ -97,6 +99,7 @@ async def lifespan(app: FastAPI):
     ensure_auth_schema()
     ensure_data_management_schema()
     ensure_ir_schema()
+    ensure_development_schema()
     ensure_maturity_schema()
     ensure_gateway_schema()
     with SessionLocal() as db:

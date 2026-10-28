@@ -9,6 +9,7 @@ from .db import SessionLocal, engine
 from .models import (
     AIReviewOpinion,
     Activity,
+    DevelopmentRequirement,
     GatewayConfigAudit,
     GatewayConfiguration,
     GatewayHealthStatus,
@@ -137,6 +138,17 @@ def ensure_ir_schema(db_engine: Engine = engine) -> None:
                     text("ALTER TABLE import_batches ADD COLUMN update_mode VARCHAR(20) "
                          "NOT NULL DEFAULT 'fill_empty'")
                 )
+
+
+def ensure_development_schema(db_engine: Engine = engine) -> None:
+    """Create the independent development-activity record table.
+
+    The design activity keeps ``ir_requirements``; development records live in
+    their own table so the same requirement number can appear in both. There is
+    no data migration or backfill.
+    """
+
+    DevelopmentRequirement.__table__.create(db_engine, checkfirst=True)
 
 
 def ensure_maturity_schema(db_engine: Engine = engine) -> None:
